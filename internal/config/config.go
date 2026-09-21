@@ -17,18 +17,19 @@ import (
 )
 
 type Config struct {
-	Version   int                  `yaml:"version"`
-	DNS       DNS                  `yaml:"dns"`
-	Admin     Admin                `yaml:"admin"`
-	Paths     Paths                `yaml:"paths"`
-	Cache     Cache                `yaml:"cache"`
-	Lists     []lists.Subscription `yaml:"lists,omitempty"`
-	Rules     []CustomRule         `yaml:"rules,omitempty"`
-	Records   []Record             `yaml:"records,omitempty"`
-	Clients   []ClientOverride     `yaml:"clients,omitempty"`
-	Zones     []localdns.Zone      `yaml:"zones,omitempty"`
-	Filtering policy.Settings      `yaml:"filtering,omitempty"`
-	Naming    clients.Settings     `yaml:"naming,omitempty"`
+	Version    int                  `yaml:"version"`
+	DNS        DNS                  `yaml:"dns"`
+	Admin      Admin                `yaml:"admin"`
+	Paths      Paths                `yaml:"paths"`
+	Cache      Cache                `yaml:"cache"`
+	Lists      []lists.Subscription `yaml:"lists,omitempty"`
+	Rules      []CustomRule         `yaml:"rules,omitempty"`
+	Records    []Record             `yaml:"records,omitempty"`
+	Clients    []ClientOverride     `yaml:"clients,omitempty"`
+	Zones      []localdns.Zone      `yaml:"zones,omitempty"`
+	Filtering  policy.Settings      `yaml:"filtering,omitempty"`
+	Naming     clients.Settings     `yaml:"naming,omitempty"`
+	Statistics Statistics           `yaml:"statistics,omitempty" json:"statistics"`
 }
 type DNS struct {
 	Listen         []string         `yaml:"listen"`
@@ -52,6 +53,17 @@ type Cache struct {
 	MaxStaleSeconds       int    `yaml:"max_stale_seconds" json:"max_stale_seconds"`
 }
 
+type Statistics struct {
+	DetailDays int `yaml:"detail_days" json:"detail_days"`
+	MinuteDays int `yaml:"minute_days" json:"minute_days"`
+	HourDays   int `yaml:"hour_days" json:"hour_days"`
+	DayDays    int `yaml:"day_days" json:"day_days"`
+}
+
+func DefaultStatistics() Statistics {
+	return Statistics{DetailDays: 7, MinuteDays: 7, HourDays: 90, DayDays: 365}
+}
+
 // Document owns the original bytes. Never serialize Config over the user's file:
 // doing so would discard comments and formatting.
 type Document struct {
@@ -69,7 +81,7 @@ var ErrConflict = errors.New("configuration revision conflict")
 // Default is a safe local development baseline; file parsing requires explicit
 // version, listeners and paths, and defaults only optional cache settings.
 func Default() Config {
-	return Config{Version: 1, DNS: DNS{Listen: []string{"127.0.0.1:5353"}}, Admin: Admin{Listen: "127.0.0.1:8080"}, Paths: Paths{DataDir: "./data", SecretsDir: "./secrets"}, Cache: Cache{Bytes: 8 << 20, Shards: 4, MaxNegativeTTLSeconds: 300, StaleTTLSeconds: 30, StaleMode: "immediate", MaxStaleSeconds: 3600}}
+	return Config{Version: 1, DNS: DNS{Listen: []string{"127.0.0.1:5353"}}, Admin: Admin{Listen: "127.0.0.1:8080"}, Paths: Paths{DataDir: "./data", SecretsDir: "./secrets"}, Cache: Cache{Bytes: 8 << 20, Shards: 4, MaxNegativeTTLSeconds: 300, StaleTTLSeconds: 30, StaleMode: "immediate", MaxStaleSeconds: 3600}, Statistics: DefaultStatistics()}
 }
 
 func Parse(source []byte) (*Document, error) {
@@ -78,6 +90,7 @@ func Parse(source []byte) (*Document, error) {
 	}
 	d := &Document{source: bytes.Clone(source)}
 	d.value.Cache = Default().Cache
+	d.value.Statistics = DefaultStatistics()
 	dec := yaml.NewDecoder(bytes.NewReader(source))
 	dec.KnownFields(true)
 	if err := dec.Decode(&d.value); err != nil {

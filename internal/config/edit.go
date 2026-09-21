@@ -15,6 +15,14 @@ import (
 // in block mappings. Unsupported shapes fail rather than reformat user content.
 // Collection insertion/deletion is deliberately left to later control tasks.
 func (d *Document) Edit(edits []Edit) (*Document, error) {
+	out, err := d.editSource(edits)
+	if err != nil {
+		return nil, err
+	}
+	return Parse(out)
+}
+
+func (d *Document) editSource(edits []Edit) ([]byte, error) {
 	type splice struct {
 		start, end int
 		text       []byte
@@ -79,7 +87,7 @@ func (d *Document) Edit(edits []Edit) (*Document, error) {
 		pos = c.end
 	}
 	out = append(out, d.source[pos:]...)
-	return Parse(out)
+	return out, nil
 }
 
 func scalarSpan(source []byte, n *yaml.Node) (int, int, error) {

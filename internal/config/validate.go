@@ -122,6 +122,11 @@ func Validate(c Config) error {
 	if c.Cache.MaxStaleSeconds < 0 || uint64(c.Cache.MaxStaleSeconds) > uint64(^uint32(0)) {
 		return fmt.Errorf("cache.max_stale_seconds: must be 0..4294967295 seconds")
 	}
+	for field, days := range map[string]int{"detail_days": c.Statistics.DetailDays, "minute_days": c.Statistics.MinuteDays, "hour_days": c.Statistics.HourDays, "day_days": c.Statistics.DayDays} {
+		if days < 1 || days > 3650 {
+			return fmt.Errorf("statistics.%s: must be 1..3650 days", field)
+		}
+	}
 	return validatePolicy(c)
 }
 
