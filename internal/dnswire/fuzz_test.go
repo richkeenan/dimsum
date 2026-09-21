@@ -3,6 +3,9 @@ package dnswire
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func FuzzQuestion(f *testing.F) {
@@ -15,18 +18,16 @@ func FuzzQuestion(f *testing.F) {
 		before := bytes.Clone(p)
 		var q Question
 		if err := ParseQuestion(p, &q); err == nil {
-			if q.End > len(p) || q.Start != 12 || q.End <= q.Start || !bytes.Equal(q.Original, p[q.Start:q.End]) {
-				t.Fatal("question offsets")
-			}
+			require.LessOrEqual(t, q.End, len(p), "question end")
+			require.Equal(t, 12, q.Start, "question start")
+			require.Greater(t, q.End, q.Start, "question bounds")
+			assert.Equal(t, p[q.Start:q.End], q.Original)
 			checkNameOracle(t, p, 12, &q.Name)
 			var canonical Name
-			if err := DecodeName(q.Name.Canonical[:q.Name.Length], 0, &canonical); err != nil || !bytes.Equal(canonical.Canonical[:canonical.Length], q.Name.Canonical[:q.Name.Length]) {
-				t.Fatal("canonical idempotence")
-			}
+			require.NoError(t, DecodeName(q.Name.Canonical[:q.Name.Length], 0, &canonical))
+			assert.Equal(t, q.Name.Canonical[:q.Name.Length], canonical.Canonical[:canonical.Length], "canonical idempotence")
 		}
-		if !bytes.Equal(before, p) {
-			t.Fatal("input mutated")
-		}
+		assert.Equal(t, before, p, "input mutated")
 	})
 }
 
@@ -39,14 +40,13 @@ func FuzzName(f *testing.F) {
 		before := bytes.Clone(p)
 		var n Name
 		if err := DecodeName(p, off, &n); err == nil {
-			if n.Length < 1 || n.Length > 255 || n.End <= off || n.End > len(p) {
-				t.Fatal("name bounds")
-			}
+			require.GreaterOrEqual(t, n.Length, uint16(1))
+			require.LessOrEqual(t, n.Length, uint16(255))
+			require.Greater(t, n.End, off)
+			require.LessOrEqual(t, n.End, len(p))
 			checkNameOracle(t, p, off, &n)
 		}
-		if !bytes.Equal(before, p) {
-			t.Fatal("input mutated")
-		}
+		assert.Equal(t, before, p, "input mutated")
 	})
 }
 
@@ -71,74 +71,79 @@ func FuzzScanner(f *testing.F) {
 			var r Record
 			for s.Next(&r) {
 				count++
-				if r.Start != off || r.End <= off || r.End > len(p) || r.DataOffset > r.End || !bytes.Equal(r.RData, p[r.DataOffset:r.End]) || count > len(p)/11 {
-					t.Fatal("record bounds")
-				}
+				require.Equal(t, off, r.Start)
+				require.Greater(t, r.End, off)
+				require.LessOrEqual(t, r.End, len(p))
+				require.GreaterOrEqual(t, r.DataOffset, 0)
+				require.LessOrEqual(t, r.DataOffset, r.End)
+				// bytes.Equal intentionally treats nil and empty RDATA alike.
+				assert.True(t, bytes.Equal(r.RData, p[r.DataOffset:r.End]), "borrowed RDATA")
+				require.LessOrEqual(t, count, len(p)/11)
 				off = r.End
 			}
-			if s.Err() == nil && off != len(p) {
-				t.Fatal("trailing data")
+			if s.Err() == nil {
+				assert.Equal(t, len(p), off, "trailing data")
 			}
 		}
 		var m Message
 		fullErr := ScanMessage(p, &m)
-		if (fullErr == nil) != (err == nil && s.Err() == nil) {
-			t.Fatal("scanner/whole-message mismatch")
-		}
+		assert.Equal(t, err == nil && s.Err() == nil, fullErr == nil, "scanner/whole-message mismatch")
 		_ = ParseRequest(p, &m)
-		if !bytes.Equal(before, p) {
-			t.Fatal("input mutated")
-		}
+		assert.Equal(t, before, p, "input mutated")
 	})
 }
 
 func TestCommonPathAllocations(t *testing.T) {
 	p := query()
 	var m Message
-	if n := testing.AllocsPerRun(1000, func() {
+	n := testing.AllocsPerRun(1000, func() {
 		if err := ParseRequest(p, &m); err != nil {
 			panic(err)
 		}
-	}); n != 0 {
-		t.Fatalf("request allocations %g", n)
-	}
+	})
+	assert.Zero(t, n, "request allocations")
 	p = answer(1, fromHex("c0000201"))
-	if n := testing.AllocsPerRun(1000, func() {
+	n = testing.AllocsPerRun(1000, func() {
 		if err := ScanMessage(p, &m); err != nil {
 			panic(err)
 		}
-	}); n != 0 {
-		t.Fatalf("scan allocations %g", n)
-	}
+	})
+	assert.Zero(t, n, "scan allocations")
 }
 
 func BenchmarkQuestion(b *testing.B) {
 	p := query()
 	var q Question
+	var err error
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := ParseQuestion(p, &q); err != nil {
-			b.Fatal(err)
+		if err = ParseQuestion(p, &q); err != nil {
+			break
 		}
 	}
+	require.NoError(b, err)
 }
 func BenchmarkRequest(b *testing.B) {
 	p := query()
 	var m Message
+	var err error
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := ParseRequest(p, &m); err != nil {
-			b.Fatal(err)
+		if err = ParseRequest(p, &m); err != nil {
+			break
 		}
 	}
+	require.NoError(b, err)
 }
 func BenchmarkResponse(b *testing.B) {
 	p := answer(1, fromHex("c0000201"))
 	var m Message
+	var err error
 	b.ReportAllocs()
 	for b.Loop() {
-		if err := ScanMessage(p, &m); err != nil {
-			b.Fatal(err)
+		if err = ScanMessage(p, &m); err != nil {
+			break
 		}
 	}
+	require.NoError(b, err)
 }

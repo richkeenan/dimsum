@@ -3,8 +3,10 @@ package dnswire
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // RR owner is a pointer to offset 12; the independent fixture RDATA is opaque
@@ -38,26 +40,25 @@ func TestRecordMatrix(t *testing.T) {
 			p := answer(tt.typ, fromHex(tt.data))
 			before := bytes.Clone(p)
 			var s Scanner
-			if err := s.Init(p); err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, s.Init(p))
 			var rr Record
-			if !s.Next(&rr) {
-				t.Fatal(s.Err())
-			}
-			if rr.Type != tt.typ || rr.Class != 1 || rr.TTL != 300 || rr.TTLOffset != 39 || rr.Start != 33 || rr.DataOffset != 45 || rr.End != len(p) || rr.Section != Answer || !bytes.Equal(rr.RData, fromHex(tt.data)) {
-				t.Fatalf("record %+v", rr)
-			}
-			if s.Next(&rr) || s.Err() != nil {
-				t.Fatalf("end: %v", s.Err())
-			}
-			if !bytes.Equal(p, before) {
-				t.Fatal("input mutated")
-			}
+			require.True(t, s.Next(&rr), "record missing: %v", s.Err())
+			assert.Equal(t, tt.typ, rr.Type)
+			assert.Equal(t, uint16(1), rr.Class)
+			assert.Equal(t, uint32(300), rr.TTL)
+			assert.Equal(t, 39, rr.TTLOffset)
+			assert.Equal(t, 33, rr.Start)
+			assert.Equal(t, 45, rr.DataOffset)
+			assert.Equal(t, len(p), rr.End)
+			assert.Equal(t, Answer, rr.Section)
+			assert.Equal(t, fromHex(tt.data), rr.RData)
+			require.False(t, s.Next(&rr), "unexpected extra record")
+			assert.NoError(t, s.Err())
+			assert.Equal(t, before, p, "input mutated")
 			p[45] ^= 0xff
-			if rr.RData[0] != p[45] || rr.Name.Wire[1] != 'W' {
-				t.Fatal("borrowed RDATA / copied owner contract")
-			}
+			require.NotEmpty(t, rr.RData)
+			assert.Equal(t, p[45], rr.RData[0], "borrowed RDATA contract")
+			assert.Equal(t, byte('W'), rr.Name.Wire[1], "copied owner contract")
 		})
 	}
 }
@@ -77,67 +78,57 @@ func TestEDNS(t *testing.T) {
 		options := fromHex("0008000400010000000a00080102030405060708000c00020000000f00020000fde80000")
 		p = append(p, opt(size, 0x00008000, options)...)
 		var m Message
-		if err := ParseRequest(p, &m); err != nil {
-			t.Fatal(err)
-		}
-		if !m.EDNS.Present || !m.EDNS.DO || m.EDNS.UDPSize != size || m.EDNS.Version != 0 || m.EDNS.Flags != 0x8000 || m.EDNS.RecordOffset != 33 || !bytes.Equal(m.EDNS.Options, options) {
-			t.Fatalf("EDNS %+v", m.EDNS)
-		}
+		require.NoError(t, ParseRequest(p, &m))
+		assert.True(t, m.EDNS.Present)
+		assert.True(t, m.EDNS.DO)
+		assert.Equal(t, size, m.EDNS.UDPSize)
+		assert.Zero(t, m.EDNS.Version)
+		assert.Equal(t, uint16(0x8000), m.EDNS.Flags)
+		assert.Equal(t, 33, m.EDNS.RecordOffset)
+		assert.Equal(t, options, m.EDNS.Options)
 		codes := []uint16{8, 10, 12, 15, 65000}
 		off := 0
 		for _, code := range codes {
 			o, next, err := ReadOption(m.EDNS.Options, off)
-			if err != nil || o.Code != code || next <= off {
-				t.Fatalf("option %+v %d %v", o, next, err)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, code, o.Code)
+			require.Greater(t, next, off)
 			off = next
 		}
-		if off != len(options) {
-			t.Fatal(off)
-		}
+		assert.Equal(t, len(options), off)
 		var s Scanner
-		if err := s.Init(p); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, s.Init(p))
 		var rr Record
-		if !s.Next(&rr) || rr.TTLOffset != -1 || rr.TTL != 0x8000 {
-			t.Fatalf("OPT treated as TTL: %+v", rr)
-		}
+		require.True(t, s.Next(&rr), "OPT missing: %v", s.Err())
+		assert.Equal(t, -1, rr.TTLOffset, "OPT treated as TTL")
+		assert.Equal(t, uint32(0x8000), rr.TTL)
 	}
 	var m Message
-	if err := ParseRequest(query(), &m); err != nil || m.EDNS.Present || m.RCode != 0 {
-		t.Fatalf("plain %v %+v", err, m)
-	}
+	require.NoError(t, ParseRequest(query(), &m))
+	assert.False(t, m.EDNS.Present)
+	assert.Zero(t, m.RCode)
 	p := query()
 	p[11] = 1
 	p = append(p, opt(1232, 0x01000000, nil)...)
 	p[2] = 0x81
 	p[3] = 3
-	if err := ScanMessage(p, &m); err != nil || m.RCode != 19 {
-		t.Fatalf("extended rcode %d %v", m.RCode, err)
-	}
+	require.NoError(t, ScanMessage(p, &m))
+	assert.Equal(t, uint16(19), m.RCode, "extended rcode")
 	p[2] = 1
 	p[3] = 0
-	if err := ParseRequest(p, &m); !errors.Is(err, ErrEDNS) {
-		t.Fatalf("request extended rcode: %v", err)
-	}
+	assert.ErrorIs(t, ParseRequest(p, &m), ErrEDNS, "request extended rcode")
 	p = query()
 	p[11] = 1
 	p = append(p, opt(1232, 0x00010000, nil)...)
-	if err := ParseRequest(p, &m); !errors.Is(err, ErrBadVersion) || m.EDNS.Version != 1 {
-		t.Fatalf("BADVERS %v", err)
-	}
-	if err := ScanMessage(p, &m); err != nil {
-		t.Fatalf("structurally valid unknown version: %v", err)
-	}
+	assert.ErrorIs(t, ParseRequest(p, &m), ErrBadVersion)
+	assert.Equal(t, uint8(1), m.EDNS.Version)
+	assert.NoError(t, ScanMessage(p, &m), "structurally valid unknown version")
 }
 
 func TestMalformedRecordsAndEDNS(t *testing.T) {
 	for n := 33; n < len(answer(1, fromHex("c0000201"))); n++ {
 		var m Message
-		if err := ScanMessage(answer(1, fromHex("c0000201"))[:n], &m); err == nil {
-			t.Fatalf("accepted prefix %d", n)
-		}
+		assert.Error(t, ScanMessage(answer(1, fromHex("c0000201"))[:n], &m), "accepted prefix %d", n)
 	}
 	for _, tt := range []struct {
 		typ  uint16
@@ -150,18 +141,14 @@ func TestMalformedRecordsAndEDNS(t *testing.T) {
 		{46, "000108"}, {47, "0161000000"},
 	} {
 		var m Message
-		if err := ScanMessage(answer(tt.typ, fromHex(tt.data)), &m); err == nil {
-			t.Fatalf("accepted malformed type %d data %s", tt.typ, tt.data)
-		}
+		assert.Error(t, ScanMessage(answer(tt.typ, fromHex(tt.data)), &m), "accepted malformed type %d data %s", tt.typ, tt.data)
 	}
 	for _, data := range []string{"00", "000800", "00080002ff"} {
 		p := query()
 		p[11] = 1
 		p = append(p, opt(1232, 0, fromHex(data))...)
 		var m Message
-		if err := ScanMessage(p, &m); !errors.Is(err, ErrEDNS) {
-			t.Fatalf("TLV %s: %v", data, err)
-		}
+		assert.ErrorIs(t, ScanMessage(p, &m), ErrEDNS, "TLV %s", data)
 	}
 	tests := []struct {
 		name   string
@@ -182,15 +169,12 @@ func TestMalformedRecordsAndEDNS(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var m Message
-			if err := ScanMessage(tt.modify(query()), &m); !errors.Is(err, tt.want) {
-				t.Fatalf("%v want %v", err, tt.want)
-			}
+			assert.ErrorIs(t, ScanMessage(tt.modify(query()), &m), tt.want)
 		})
 	}
 	for _, off := range []int{-1, 0, 1, 99} {
-		if _, _, err := ReadOption(nil, off); !errors.Is(err, ErrEDNS) {
-			t.Fatal(err)
-		}
+		_, _, err := ReadOption(nil, off)
+		assert.ErrorIs(t, err, ErrEDNS, "offset %d", off)
 	}
 }
 
@@ -201,34 +185,24 @@ func TestSectionsAndScannerFailure(t *testing.T) {
 	p = append(p, r...)
 	p = append(p, r...)
 	var s Scanner
-	if err := s.Init(p); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.Init(p))
 	var rr Record
 	for _, section := range []Section{Answer, Authority, Additional} {
-		if !s.Next(&rr) || rr.Section != section {
-			t.Fatalf("section %d: %v", section, s.Err())
-		}
+		require.True(t, s.Next(&rr), "section %d: %v", section, s.Err())
+		assert.Equal(t, section, rr.Section)
 	}
-	if s.Next(&rr) || s.Err() != nil {
-		t.Fatal(s.Err())
-	}
+	assert.False(t, s.Next(&rr))
+	assert.NoError(t, s.Err())
 	p = append(p, 0)
-	if err := s.Init(p); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.Init(p))
 	for s.Next(&rr) {
 	}
-	if !errors.Is(s.Err(), ErrTrailing) || s.Next(&rr) {
-		t.Fatal(s.Err())
-	}
-	if err := s.Init(nil); !errors.Is(err, ErrBounds) || s.Next(&rr) {
-		t.Fatal("failed init usable")
-	}
+	assert.ErrorIs(t, s.Err(), ErrTrailing)
+	assert.False(t, s.Next(&rr))
+	assert.ErrorIs(t, s.Init(nil), ErrBounds)
+	assert.False(t, s.Next(&rr), "failed init usable")
 	var m Message
 	p = answer(250, nil)
 	p[2] = 1
-	if err := ParseRequest(p, &m); !errors.Is(err, ErrUnsupported) {
-		t.Fatalf("TSIG RR: %v", err)
-	}
+	assert.ErrorIs(t, ParseRequest(p, &m), ErrUnsupported, "TSIG RR")
 }

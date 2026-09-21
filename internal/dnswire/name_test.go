@@ -2,8 +2,10 @@ package dnswire
 
 import (
 	"bytes"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDecodeName(t *testing.T) {
@@ -55,16 +57,11 @@ func TestDecodeName(t *testing.T) {
 			before := bytes.Clone(tt.wire)
 			var n Name
 			err := DecodeName(tt.wire, tt.off, &n)
-			if !errors.Is(err, tt.err) {
-				t.Fatalf("error = %v, want %v", err, tt.err)
-			}
-			if !bytes.Equal(before, tt.wire) {
-				t.Fatal("mutated input")
-			}
-			if err == nil && (n.End != tt.end || !bytes.Equal(n.Canonical[:n.Length], tt.canonical)) {
-				t.Fatalf("end=%d canonical=%x", n.End, n.Canonical[:n.Length])
-			}
+			require.ErrorIs(t, err, tt.err)
+			assert.Equal(t, before, tt.wire, "mutated input")
 			if err == nil {
+				assert.Equal(t, tt.end, n.End)
+				assert.Equal(t, tt.canonical, n.Canonical[:n.Length])
 				checkNameOracle(t, tt.wire, tt.off, &n)
 			}
 		})
@@ -74,19 +71,12 @@ func TestDecodeName(t *testing.T) {
 func TestNameBoundariesAndOwnership(t *testing.T) {
 	var a, b Name
 	wa, wb := []byte{3, 'A', '.', 'B', 0}, []byte{1, 'A', 1, 'B', 0}
-	if err := DecodeName(wa, 0, &a); err != nil {
-		t.Fatal(err)
-	}
-	if err := DecodeName(wb, 0, &b); err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Equal(a.Canonical[:a.Length], b.Canonical[:b.Length]) {
-		t.Fatal("label boundaries merged")
-	}
+	require.NoError(t, DecodeName(wa, 0, &a))
+	require.NoError(t, DecodeName(wb, 0, &b))
+	assert.NotEqual(t, a.Canonical[:a.Length], b.Canonical[:b.Length], "label boundaries merged")
 	wa[1] = 'Z'
-	if a.Wire[1] != 'A' || a.Canonical[1] != 'a' {
-		t.Fatal("name borrowed input")
-	}
+	assert.Equal(t, byte('A'), a.Wire[1], "name borrowed input")
+	assert.Equal(t, byte('a'), a.Canonical[1], "name borrowed input")
 }
 
 func TestCompressionAndMessageLimits(t *testing.T) {
@@ -95,9 +85,9 @@ func TestCompressionAndMessageLimits(t *testing.T) {
 	p[256], p[257], p[258] = 1, 'Z', 0
 	p[298], p[299] = 0xc1, 0
 	var n Name
-	if err := DecodeName(p, 298, &n); err != nil || n.End != 300 || !bytes.Equal(n.Canonical[:n.Length], []byte{1, 'z', 0}) {
-		t.Fatalf("14-bit pointer: %v %+v", err, n)
-	}
+	require.NoError(t, DecodeName(p, 298, &n), "14-bit pointer")
+	assert.Equal(t, 300, n.End)
+	assert.Equal(t, []byte{1, 'z', 0}, n.Canonical[:n.Length])
 	p = []byte{0}
 	for i := 0; i < 32; i++ {
 		target := len(p) - 2
@@ -106,14 +96,11 @@ func TestCompressionAndMessageLimits(t *testing.T) {
 		}
 		p = append(p, 0xc0, byte(target))
 	}
-	if err := DecodeName(p, 63, &n); err != nil || n.Length != 1 || n.End != 65 {
-		t.Fatalf("32 pointers: %v", err)
-	}
+	require.NoError(t, DecodeName(p, 63, &n), "32 pointers")
+	assert.Equal(t, uint16(1), n.Length)
+	assert.Equal(t, 65, n.End)
 	p = make([]byte, 65535)
-	if err := DecodeName(p, 65534, &n); err != nil || n.End != 65535 {
-		t.Fatalf("last legal byte: %v", err)
-	}
-	if err := DecodeName(append(p, 0), 0, &n); !errors.Is(err, ErrBounds) {
-		t.Fatalf("oversize: %v", err)
-	}
+	require.NoError(t, DecodeName(p, 65534, &n), "last legal byte")
+	assert.Equal(t, 65535, n.End)
+	assert.ErrorIs(t, DecodeName(append(p, 0), 0, &n), ErrBounds, "oversize")
 }

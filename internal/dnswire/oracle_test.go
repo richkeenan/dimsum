@@ -7,21 +7,19 @@ import (
 	"testing"
 
 	"github.com/miekg/dns"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
 func TestIndependentOracles(t *testing.T) {
 	text, err := os.ReadFile("testdata/dns/rfc1035-a.hex")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	fixture := fromHex(strings.TrimSpace(string(text)))
 	if !bytes.Equal(fixture, answer(1, fromHex("c0000201"))) { // Fixture RA bit is independent of helper.
 		p := answer(1, fromHex("c0000201"))
 		p[3] = 0x80
-		if !bytes.Equal(fixture, p) {
-			t.Fatal("fixture/helper disagreement")
-		}
+		require.Equal(t, fixture, p, "fixture/helper disagreement")
 	}
 	inputs := [][]byte{fixture, query()}
 	for _, tt := range recordFixtures {
@@ -33,33 +31,33 @@ func TestIndependentOracles(t *testing.T) {
 	inputs = append(inputs, p)
 	for i, p := range inputs {
 		var ours Message
-		if err := ScanMessage(p, &ours); err != nil {
-			t.Fatalf("fixture %d: %v", i, err)
-		}
+		require.NoError(t, ScanMessage(p, &ours), "fixture %d", i)
 		var m dns.Msg
-		if err := m.Unpack(p); err != nil {
-			t.Fatalf("miekg fixture %d: %v", i, err)
-		}
+		require.NoError(t, m.Unpack(p), "miekg fixture %d", i)
 		var independent dnsmessage.Message
-		if err := independent.Unpack(p); err != nil {
-			t.Fatalf("x/net fixture %d: %v", i, err)
-		}
-		if m.Id != ours.Question.Header.ID || len(m.Question) != 1 || m.Question[0].Name != "WWW.Example.COM." || m.Question[0].Qtype != ours.Question.Type || m.Question[0].Qclass != ours.Question.Class || independent.Questions[0].Name.String() != m.Question[0].Name {
-			t.Fatalf("question fixture %d differs", i)
-		}
-		if len(m.Answer) != int(ours.Question.Header.Answers) || len(independent.Answers) != len(m.Answer) || len(m.Extra) != int(ours.Question.Header.Additionals) {
-			t.Fatalf("counts fixture %d differ", i)
-		}
+		require.NoError(t, independent.Unpack(p), "x/net fixture %d", i)
+		assert.Equal(t, ours.Question.Header.ID, m.Id, "fixture %d", i)
+		require.Len(t, m.Question, 1, "fixture %d", i)
+		require.Len(t, independent.Questions, 1, "fixture %d", i)
+		assert.Equal(t, "WWW.Example.COM.", m.Question[0].Name, "fixture %d", i)
+		assert.Equal(t, ours.Question.Type, m.Question[0].Qtype, "fixture %d", i)
+		assert.Equal(t, ours.Question.Class, m.Question[0].Qclass, "fixture %d", i)
+		assert.Equal(t, m.Question[0].Name, independent.Questions[0].Name.String(), "fixture %d", i)
+		assert.Len(t, m.Answer, int(ours.Question.Header.Answers), "fixture %d", i)
+		require.Len(t, independent.Answers, len(m.Answer), "fixture %d", i)
+		assert.Len(t, m.Extra, int(ours.Question.Header.Additionals), "fixture %d", i)
 		if len(m.Answer) > 0 {
 			h := m.Answer[0].Header()
 			ih := independent.Answers[0].Header
 			var s Scanner
-			_ = s.Init(p)
+			require.NoError(t, s.Init(p))
 			var r Record
-			s.Next(&r)
-			if h.Name != "WWW.Example.COM." || h.Rrtype != r.Type || h.Ttl != r.TTL || uint16(ih.Type) != r.Type || ih.TTL != r.TTL {
-				t.Fatalf("RR fixture %d differs", i)
-			}
+			require.True(t, s.Next(&r), "fixture %d: %v", i, s.Err())
+			assert.Equal(t, "WWW.Example.COM.", h.Name, "fixture %d", i)
+			assert.Equal(t, r.Type, h.Rrtype, "fixture %d", i)
+			assert.Equal(t, r.TTL, h.Ttl, "fixture %d", i)
+			assert.Equal(t, r.Type, uint16(ih.Type), "fixture %d", i)
+			assert.Equal(t, r.TTL, ih.TTL, "fixture %d", i)
 		}
 	}
 }
@@ -67,14 +65,12 @@ func TestIndependentOracles(t *testing.T) {
 func checkNameOracle(t testing.TB, p []byte, off int, n *Name) {
 	t.Helper()
 	display, end, err := dns.UnpackDomainName(p, off)
-	if err != nil || end != n.End {
-		t.Fatalf("oracle end=%d err=%v, ours=%d", end, err, n.End)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, n.End, end, "oracle end")
 	var wire [255]byte
 	next, err := dns.PackDomainName(display, wire[:], 0, nil, false)
-	if err != nil || !bytes.Equal(wire[:next], n.Wire[:n.Length]) {
-		t.Fatalf("oracle roundtrip %q %x: %v", display, wire[:next], err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, n.Wire[:n.Length], wire[:next], "oracle roundtrip %q", display)
 }
 
 func TestBinaryAndUnknownOracle(t *testing.T) {
@@ -84,29 +80,22 @@ func TestBinaryAndUnknownOracle(t *testing.T) {
 			off = 5
 		}
 		var n Name
-		if err := DecodeName(p, off, &n); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, DecodeName(p, off, &n))
 		checkNameOracle(t, p, off, &n)
 	}
 	p := query()
 	p[29], p[30] = 0xff, 0x78
 	var q Question
-	if err := ParseQuestion(p, &q); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, ParseQuestion(p, &q))
 	var m dns.Msg
-	if err := m.Unpack(p); err != nil {
-		t.Fatal(err)
-	}
-	if q.Type != 65400 || m.Question[0].Qtype != 65400 {
-		t.Fatal("unknown QTYPE lost")
-	}
+	require.NoError(t, m.Unpack(p))
+	require.Len(t, m.Question, 1)
+	assert.Equal(t, uint16(65400), q.Type, "unknown QTYPE lost")
+	assert.Equal(t, uint16(65400), m.Question[0].Qtype, "unknown QTYPE lost")
 	var unknown dns.Msg
-	if err := unknown.Unpack(answer(65400, fromHex("c0ff00ff"))); err != nil {
-		t.Fatal(err)
-	}
-	if rr, ok := unknown.Answer[0].(*dns.RFC3597); !ok || rr.Rdata != "c0ff00ff" {
-		t.Fatal("unknown bytes interpreted as pointers")
-	}
+	require.NoError(t, unknown.Unpack(answer(65400, fromHex("c0ff00ff"))))
+	require.Len(t, unknown.Answer, 1)
+	rr, ok := unknown.Answer[0].(*dns.RFC3597)
+	require.True(t, ok, "unknown RR should use RFC3597 representation")
+	assert.Equal(t, "c0ff00ff", rr.Rdata, "unknown bytes interpreted as pointers")
 }

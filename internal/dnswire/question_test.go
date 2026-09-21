@@ -3,8 +3,10 @@ package dnswire
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func fromHex(s string) []byte {
@@ -25,38 +27,33 @@ func TestQuestionOffsetsFlagsAndOwnership(t *testing.T) {
 	p[2], p[3] = 0xff, 0xff
 	before := bytes.Clone(p)
 	var q Question
-	if err := ParseQuestion(p, &q); err != nil {
-		t.Fatal(err)
-	}
-	if q.Header.ID != 0x1234 || q.Header.Flags != 0xffff || q.Type != 1 || q.Class != 1 || q.Start != 12 || q.End != 33 || q.Name.End != 29 {
-		t.Fatalf("question: %+v", q)
-	}
-	if !bytes.Equal(q.Name.Canonical[:q.Name.Length], []byte("\x03www\x07example\x03com\x00")) || !bytes.Equal(q.Original, p[12:33]) {
-		t.Fatal("question bytes")
-	}
-	if !bytes.Equal(p, before) {
-		t.Fatal("mutated input")
-	}
+	require.NoError(t, ParseQuestion(p, &q))
+	assert.Equal(t, uint16(0x1234), q.Header.ID)
+	assert.Equal(t, uint16(0xffff), q.Header.Flags)
+	assert.Equal(t, uint16(1), q.Type)
+	assert.Equal(t, uint16(1), q.Class)
+	assert.Equal(t, 12, q.Start)
+	assert.Equal(t, 33, q.End)
+	assert.Equal(t, 29, q.Name.End)
+	assert.Equal(t, []byte("\x03www\x07example\x03com\x00"), q.Name.Canonical[:q.Name.Length])
+	assert.Equal(t, p[12:33], q.Original)
+	assert.Equal(t, before, p, "mutated input")
 	p[13] = 'X'
-	if q.Original[1] != 'X' || q.Name.Wire[1] != 'W' {
-		t.Fatal("borrowed/copy contract")
-	}
+	require.Greater(t, len(q.Original), 1)
+	assert.Equal(t, byte('X'), q.Original[1], "borrowed question contract")
+	assert.Equal(t, byte('W'), q.Name.Wire[1], "copied name contract")
 }
 
 func TestQuestionValidation(t *testing.T) {
 	for n := 0; n < len(query()); n++ {
 		var q Question
-		if err := ParseQuestion(query()[:n], &q); err == nil {
-			t.Fatalf("accepted prefix %d", n)
-		}
+		assert.Error(t, ParseQuestion(query()[:n], &q), "accepted prefix %d", n)
 	}
 	for _, count := range []byte{0, 2, 255} {
 		p := query()
 		p[5] = count
 		var q Question
-		if err := ParseQuestion(p, &q); !errors.Is(err, ErrQuestionCount) {
-			t.Fatalf("count %d: %v", count, err)
-		}
+		assert.ErrorIs(t, ParseQuestion(p, &q), ErrQuestionCount, "count %d", count)
 	}
 	tests := []struct {
 		name              string
@@ -76,22 +73,14 @@ func TestQuestionValidation(t *testing.T) {
 			p[29], p[30] = byte(tt.typ>>8), byte(tt.typ)
 			p[31], p[32] = byte(tt.class>>8), byte(tt.class)
 			var q Question
-			if err := ParseQuestion(p, &q); err != nil {
-				t.Fatal(err)
-			}
-			if err := q.RequestError(); !errors.Is(err, tt.want) {
-				t.Fatalf("%v want %v", err, tt.want)
-			}
+			require.NoError(t, ParseQuestion(p, &q))
+			assert.ErrorIs(t, q.RequestError(), tt.want)
 			var m Message
-			if err := ParseRequest(p, &m); !errors.Is(err, tt.want) {
-				t.Fatalf("whole request: %v want %v", err, tt.want)
-			}
+			assert.ErrorIs(t, ParseRequest(p, &m), tt.want, "whole request")
 		})
 	}
 	var q Question
-	if err := ParseQuestion(make([]byte, 65536), &q); !errors.Is(err, ErrBounds) {
-		t.Fatal(err)
-	}
+	assert.ErrorIs(t, ParseQuestion(make([]byte, 65536), &q), ErrBounds)
 }
 
 func TestCompressedQuestion(t *testing.T) {
@@ -99,10 +88,9 @@ func TestCompressedQuestion(t *testing.T) {
 	// the copied Name.Wire rather than relocate this borrowed pointer.
 	p := fromHex("014100000001000000000000c000ffff0001")
 	var q Question
-	if err := ParseQuestion(p, &q); err != nil {
-		t.Fatal(err)
-	}
-	if q.End != 18 || !q.Name.Compressed || !bytes.Equal(q.Name.Canonical[:q.Name.Length], []byte{1, 'a', 0}) || !bytes.Equal(q.Original, fromHex("c000ffff0001")) {
-		t.Fatal(q)
-	}
+	require.NoError(t, ParseQuestion(p, &q))
+	assert.Equal(t, 18, q.End)
+	assert.True(t, q.Name.Compressed)
+	assert.Equal(t, []byte{1, 'a', 0}, q.Name.Canonical[:q.Name.Length])
+	assert.Equal(t, fromHex("c000ffff0001"), q.Original)
 }
