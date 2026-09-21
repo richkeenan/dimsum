@@ -34,6 +34,17 @@ func (x *suffixIndex) key(off uint32) string {
 }
 func (x *suffixIndex) build(in []suffixBuild, rules []ruleMeta) {
 	sort.Slice(in, func(i, j int) bool { return in[i].key < in[j].key })
+	// Count after sorting so duplicate memberships reserve no extra index space.
+	// Exact arenas avoid geometric growth and its transient copies during refresh.
+	entries, keyBytes := 0, 0
+	for i, v := range in {
+		if i == 0 || v.key != in[i-1].key {
+			entries++
+			keyBytes += 1 + len(v.key)
+		}
+	}
+	x.entries = make([]suffixEntry, 0, entries)
+	x.keys = make([]byte, 0, keyBytes)
 	for _, v := range in {
 		if len(x.entries) > 0 && x.key(x.entries[len(x.entries)-1].off) == v.key {
 			p := &x.entries[len(x.entries)-1]
