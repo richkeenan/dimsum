@@ -106,6 +106,7 @@ func routerPTR(ctx context.Context, endpoint string, a netip.Addr) (string, uint
 	if e != nil {
 		return "", 0, e
 	}
+	defer client.Close()
 	out := make([]byte, 65535)
 	result, e := client.Exchange(ctx, wire, out)
 	if e != nil {
