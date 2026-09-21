@@ -6,6 +6,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"net/netip"
 	"testing"
 )
 
@@ -28,6 +29,7 @@ func TestZones(t *testing.T) {
 		{"2.1.168.192.in-addr.arpa.", 12, 0, 1, true}, {"missing.home.arpa.", 1, 3, 0, true},
 		{"host.home.arpa.", 65, 0, 0, true}, {"branch.home.arpa.", 1, 0, 0, true}, {"home.arpa.", 1, 0, 0, true},
 		{"outside.example.", 1, 0, 0, false},
+		{"home.arpa.", 6, 0, 1, true},
 	} {
 		t.Run(tc.name+dns.TypeToString[tc.typ], func(t *testing.T) {
 			q := new(dns.Msg)
@@ -65,5 +67,44 @@ func TestRejectLocalConflictsAndLoops(t *testing.T) {
 	} {
 		_, err := localdns.Build(nil, records)
 		assert.Error(t, err)
+	}
+}
+
+func TestExplicitSuffixRewriteAndAutoPTR(t *testing.T) {
+	z, e := localdns.Build(nil, []localdns.Record{{Name: "lab.test", Type: "A", Value: "192.168.1.5", Match: "suffix", TTL: 12}, {Name: "exact.lab.test", Type: "AAAA", Value: "fd00::5", AutoPTR: true, TTL: 13}})
+	require.NoError(t, e)
+	for _, tc := range []struct {
+		name    string
+		typ     uint16
+		answer  string
+		handled bool
+	}{
+		{"a.b.lab.test.", 1, "192.168.1.5", true}, {"lab.test.", 1, "192.168.1.5", true}, {"a\\046b.lab.test.", 1, "192.168.1.5", true},
+		{"notlab.test.", 1, "", false}, {"exact.lab.test.", 1, "", true},
+		{localdns.Reverse(netip.MustParseAddr("fd00::5")) + ".", 12, "exact.lab.test.", true},
+	} {
+		q := new(dns.Msg)
+		q.SetQuestion(tc.name, tc.typ)
+		b, e := q.Pack()
+		require.NoError(t, e)
+		var request dnswire.Message
+		require.NoError(t, dnswire.ParseRequest(b, &request))
+		out := make([]byte, 65535)
+		n, handled, e := z.Answer(out, &request)
+		require.NoError(t, e)
+		require.Equal(t, tc.handled, handled)
+		if !handled {
+			continue
+		}
+		var got dns.Msg
+		require.NoError(t, got.Unpack(out[:n]))
+		if tc.answer == "" {
+			assert.Empty(t, got.Answer)
+			assert.Len(t, got.Ns, 1)
+		} else {
+			require.Len(t, got.Answer, 1)
+			assert.Contains(t, got.Answer[0].String(), tc.answer)
+			assert.Equal(t, got.Question[0].Name, got.Answer[0].Header().Name)
+		}
 	}
 }

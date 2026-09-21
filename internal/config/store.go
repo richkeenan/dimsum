@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"io"
 	"os"
@@ -295,7 +296,11 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err != nil {
 		return s.fail(err)
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, generation: generation}, statuses, false)
+	names, err := clients.NewView(c.Naming, c.Clients, local.Names())
+	if err != nil {
+		return s.fail(err)
+	}
+	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: generation}, statuses, false)
 	return s.Inspect(), nil
 }
 func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) {
@@ -326,7 +331,11 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, generation: a.Generation}, a.Sources, true)
+	names, err := clients.NewView(d.value.Naming, d.value.Clients, local.Names())
+	if err != nil {
+		return err
+	}
+	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: a.Generation}, a.Sources, true)
 	return nil
 }
 

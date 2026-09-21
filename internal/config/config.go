@@ -8,23 +8,27 @@ import (
 	"io"
 	"strings"
 
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/localdns"
+	"github.com/richkeenan/dimsum/internal/policy"
 
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
-	Version int                  `yaml:"version"`
-	DNS     DNS                  `yaml:"dns"`
-	Admin   Admin                `yaml:"admin"`
-	Paths   Paths                `yaml:"paths"`
-	Cache   Cache                `yaml:"cache"`
-	Lists   []lists.Subscription `yaml:"lists,omitempty"`
-	Rules   []CustomRule         `yaml:"rules,omitempty"`
-	Records []Record             `yaml:"records,omitempty"`
-	Clients []ClientOverride     `yaml:"clients,omitempty"`
-	Zones   []localdns.Zone      `yaml:"zones,omitempty"`
+	Version   int                  `yaml:"version"`
+	DNS       DNS                  `yaml:"dns"`
+	Admin     Admin                `yaml:"admin"`
+	Paths     Paths                `yaml:"paths"`
+	Cache     Cache                `yaml:"cache"`
+	Lists     []lists.Subscription `yaml:"lists,omitempty"`
+	Rules     []CustomRule         `yaml:"rules,omitempty"`
+	Records   []Record             `yaml:"records,omitempty"`
+	Clients   []ClientOverride     `yaml:"clients,omitempty"`
+	Zones     []localdns.Zone      `yaml:"zones,omitempty"`
+	Filtering policy.Settings      `yaml:"filtering,omitempty"`
+	Naming    clients.Settings     `yaml:"naming,omitempty"`
 }
 type DNS struct {
 	Listen    []string `yaml:"listen"`

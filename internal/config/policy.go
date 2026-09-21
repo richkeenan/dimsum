@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -21,13 +22,10 @@ type CustomRule struct {
 
 // Typed text boundaries for the next local-data and naming producers.
 type Record = localdns.Record
-type ClientOverride struct {
-	Address string `yaml:"address"`
-	Name    string `yaml:"name"`
-}
+type ClientOverride = clients.Override
 
 func (c Config) PolicyRules() []policy.Rule {
-	var out []policy.Rule
+	out := c.Filtering.Rules()
 	for _, r := range c.Rules {
 		if r.Enabled {
 			class := policy.CustomDeny
@@ -40,6 +38,9 @@ func (c Config) PolicyRules() []policy.Rule {
 	return out
 }
 func validatePolicy(c Config) error {
+	if err := c.Filtering.Validate(); err != nil {
+		return fmt.Errorf("filtering: %w", err)
+	}
 	if _, err := localdns.Build(c.Zones, c.Records); err != nil {
 		return fmt.Errorf("records: %w", err)
 	}

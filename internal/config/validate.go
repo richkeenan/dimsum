@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/richkeenan/dimsum/internal/clients"
 	"net"
 	"net/netip"
 	"strings"
@@ -10,6 +11,9 @@ import (
 // Validate is shared by file loading and future UI/CLI adapters. Port zero is
 // explicitly supported for isolated test runners; hostnames never trigger DNS.
 func Validate(c Config) error {
+	if _, err := clients.NewView(c.Naming, c.Clients, nil); err != nil {
+		return fmt.Errorf("naming: %w", err)
+	}
 	if c.Version != 1 {
 		return fmt.Errorf("version: unsupported schema %d (want 1)", c.Version)
 	}
@@ -32,7 +36,11 @@ func Validate(c Config) error {
 	if len(c.DNS.Upstreams) > 16 {
 		return fmt.Errorf("dns.upstreams: at most 16 endpoints")
 	}
-	for i, a := range c.DNS.Upstreams {
+	endpoints := append([]string(nil), c.DNS.Upstreams...)
+	if c.Naming.Resolver != "" {
+		endpoints = append(endpoints, c.Naming.Resolver)
+	}
+	for i, a := range endpoints {
 		endpoint, err := netip.ParseAddrPort(a)
 		if err != nil || endpoint.Port() == 0 || endpoint.Addr().Unmap().IsUnspecified() || endpoint.Addr().Unmap().IsMulticast() {
 			return fmt.Errorf("dns.upstreams[%d]: expected unicast literal IP and nonzero port", i)

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
 )
@@ -12,11 +13,14 @@ type Snapshot struct {
 	policy     *policy.PolicySnapshot
 	generation uint64
 	local      *localdns.Zones
+	names      *clients.View
 }
 
 func (s *Snapshot) Config() Config                 { return s.document.Config() }
 func (s *Snapshot) Policy() *policy.PolicySnapshot { return s.policy }
 func (s *Snapshot) Local() *localdns.Zones         { return s.local }
+func (s *Snapshot) Names() *clients.View           { return s.names }
+func (s *Snapshot) Filtering() policy.Settings     { return s.document.value.Filtering }
 func (s *Snapshot) Generation() uint64             { return s.generation }
 func (s *Snapshot) Revision() string               { return s.document.Revision() }
 

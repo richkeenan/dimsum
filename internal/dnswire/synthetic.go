@@ -56,10 +56,8 @@ func BuildSynthetic(dst []byte, request *Message, rcode uint16, authoritative bo
 
 // NegativeSOA supplies a valid negative-cache lifetime, including at the root.
 func NegativeSOA(zone []byte, ttl uint32) SyntheticRecord {
-	data := append([]byte{2, 'n', 's'}, zone...)
-	data = append(data, 10)
-	data = append(data, []byte("hostmaster")...)
-	data = append(data, zone...)
+	// Fixed valid names avoid exceeding 255 octets with a maximal-length zone.
+	data := []byte{2, 'n', 's', 7, 'i', 'n', 'v', 'a', 'l', 'i', 'd', 0, 10, 'h', 'o', 's', 't', 'm', 'a', 's', 't', 'e', 'r', 7, 'i', 'n', 'v', 'a', 'l', 'i', 'd', 0}
 	fields := make([]byte, 20)
 	binary.BigEndian.PutUint32(fields, 1)
 	binary.BigEndian.PutUint32(fields[4:], 3600)

@@ -9,6 +9,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/resolve"
 	"github.com/richkeenan/dimsum/internal/transport"
@@ -27,6 +28,7 @@ type Service struct {
 	addresses Addresses
 	ready     bool
 	err       error
+	names     *clients.Manager
 }
 type Addresses struct {
 	DNS   []string
@@ -43,7 +45,7 @@ type Listeners struct {
 var ErrStarted = errors.New("service already started")
 
 func (s *Service) Start(ctx context.Context, c config.Config) error {
-	return s.start(ctx, c, nil, nil)
+	return s.start(ctx, c, nil, nil, nil)
 }
 
 // StartForwarding binds all sockets transactionally and attaches the DNS pipeline.
@@ -75,14 +77,18 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	if err != nil {
 		return err
 	}
-	server, err := transport.New(transport.Options{}, resolve.NewWithStore(u, store))
+	var names *clients.Manager
+	if store != nil {
+		names = clients.New(func() *clients.View { return store.Snapshot().Names() })
+	}
+	server, err := transport.New(transport.Options{}, resolve.NewWithNames(u, store, names))
 	if err != nil {
 		return err
 	}
-	return s.start(ctx, c, server, store)
+	return s.start(ctx, c, server, store, names)
 }
 
-func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store) error {
+func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store, names *clients.Manager) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
@@ -127,6 +133,7 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		return err
 	}
 	s.listeners = sockets
+	s.names = names
 	s.addresses = addresses
 	s.started = true
 	s.stop = make(chan struct{})
@@ -153,6 +160,10 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	if store != nil {
 		workers.Add(1)
 		go func() { defer workers.Done(); store.Watch(runCtx) }()
+	}
+	if names != nil {
+		workers.Add(1)
+		go func() { defer workers.Done(); names.Run(runCtx) }()
 	}
 	if server != nil {
 		for _, listener := range sockets.TCP {
@@ -186,7 +197,16 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 // Ready means DNS handlers are attached; it does not assert upstream health or
 // administration API availability. Err reports an unexpected DNS serving exit.
 func (s *Service) Ready() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.ready }
-func (s *Service) Err() error  { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
+func (s *Service) ClientName(address netip.Addr) clients.Name {
+	s.mu.Lock()
+	m := s.names
+	s.mu.Unlock()
+	if m == nil {
+		return clients.Name{Address: address, Source: "unknown"}
+	}
+	return m.Get(address)
+}
+func (s *Service) Err() error { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 
 func closeListeners(l Listeners) {
 	for _, v := range l.TCP {

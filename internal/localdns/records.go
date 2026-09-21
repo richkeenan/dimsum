@@ -9,6 +9,7 @@ import (
 )
 
 type Record struct {
+	Match   string `yaml:"match,omitempty"`
 	Name    string `yaml:"name"`
 	Type    string `yaml:"type"`
 	Value   string `yaml:"value"`
