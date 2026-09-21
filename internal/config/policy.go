@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/richkeenan/dimsum/internal/lists"
+	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
 )
 
@@ -19,12 +20,7 @@ type CustomRule struct {
 }
 
 // Typed text boundaries for the next local-data and naming producers.
-type Record struct {
-	Name  string `yaml:"name"`
-	Type  string `yaml:"type"`
-	Value string `yaml:"value"`
-	TTL   uint32 `yaml:"ttl"`
-}
+type Record = localdns.Record
 type ClientOverride struct {
 	Address string `yaml:"address"`
 	Name    string `yaml:"name"`
@@ -44,6 +40,9 @@ func (c Config) PolicyRules() []policy.Rule {
 	return out
 }
 func validatePolicy(c Config) error {
+	if _, err := localdns.Build(c.Zones, c.Records); err != nil {
+		return fmt.Errorf("records: %w", err)
+	}
 	if len(c.Lists) > 64 || len(c.Rules) > 100000 {
 		return fmt.Errorf("policy: at most 64 sources and 100000 custom rules")
 	}

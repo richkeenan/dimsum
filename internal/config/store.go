@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/richkeenan/dimsum/internal/localdns"
 	"io"
 	"os"
 	"path/filepath"
@@ -173,8 +174,9 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		}
 	}
 	// Local-data behavior is a task-9 consumer: never report unsupported records active.
-	if len(c.Records) > 0 {
-		return s.fail(fmt.Errorf("records: local-data activation is not implemented yet"))
+	local, err := localdns.Build(c.Zones, c.Records)
+	if err != nil {
+		return s.fail(err)
 	}
 	rules := c.PolicyRules()
 	fetcher := s.options.Fetcher
@@ -293,7 +295,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err != nil {
 		return s.fail(err)
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, generation: generation}, statuses, false)
+	s.publish(&Snapshot{document: d, policy: compiled, local: local, generation: generation}, statuses, false)
 	return s.Inspect(), nil
 }
 func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) {
@@ -320,7 +322,11 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, generation: a.Generation}, a.Sources, true)
+	local, err := localdns.Build(d.value.Zones, d.value.Records)
+	if err != nil {
+		return err
+	}
+	s.publish(&Snapshot{document: d, policy: compiled, local: local, generation: a.Generation}, a.Sources, true)
 	return nil
 }
 

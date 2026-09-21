@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/richkeenan/dimsum/internal/lists"
+	"github.com/richkeenan/dimsum/internal/localdns"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -23,6 +24,7 @@ type Config struct {
 	Rules   []CustomRule         `yaml:"rules,omitempty"`
 	Records []Record             `yaml:"records,omitempty"`
 	Clients []ClientOverride     `yaml:"clients,omitempty"`
+	Zones   []localdns.Zone      `yaml:"zones,omitempty"`
 }
 type DNS struct {
 	Listen    []string `yaml:"listen"`
@@ -118,6 +120,7 @@ func (d *Document) Config() Config {
 	c.Rules = append([]CustomRule(nil), c.Rules...)
 	c.Records = append([]Record(nil), c.Records...)
 	c.Clients = append([]ClientOverride(nil), c.Clients...)
+	c.Zones = append([]localdns.Zone(nil), c.Zones...)
 	return c
 }
 func (d *Document) Bytes() []byte    { return bytes.Clone(d.source) }

@@ -26,15 +26,15 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		return 0, err
 	}
 	q := &r.Message.Question
-	if q.Header.Flags&dnswire.FlagRD == 0 {
-		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 5, RecursionAvailable: true}, 1232)
-	}
 	if p.store != nil {
 		// One immutable generation for this request. Alias/local-response policy
 		// will use this same snapshot when that pipeline is added.
 		snapshot := p.store.Snapshot()
 		if snapshot == nil {
 			return 0, errors.New("resolve: no active policy")
+		}
+		if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
+			return n, err
 		}
 		name, err := policy.NameFromWire(q.Name.Canonical[:q.Name.Length])
 		if err != nil {
@@ -43,6 +43,9 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		if snapshot.Policy().Match(name).Result == policy.Block {
 			return dnswire.BuildReply(out, &r.Message, dnswire.Reply{Null: true, TTL: 60, RecursionAvailable: true}, 1232)
 		}
+	}
+	if q.Header.Flags&dnswire.FlagRD == 0 {
+		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 5, RecursionAvailable: true}, 1232)
 	}
 	if p.upstream == nil {
 		return 0, errors.New("resolve: no upstream")

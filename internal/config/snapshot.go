@@ -1,6 +1,9 @@
 package config
 
-import "github.com/richkeenan/dimsum/internal/policy"
+import (
+	"github.com/richkeenan/dimsum/internal/localdns"
+	"github.com/richkeenan/dimsum/internal/policy"
+)
 
 // Snapshot is immutable. A request loads it once and holds that pointer through
 // all name checks. No generation registry retains retired snapshots.
@@ -8,10 +11,12 @@ type Snapshot struct {
 	document   *Document
 	policy     *policy.PolicySnapshot
 	generation uint64
+	local      *localdns.Zones
 }
 
 func (s *Snapshot) Config() Config                 { return s.document.Config() }
 func (s *Snapshot) Policy() *policy.PolicySnapshot { return s.policy }
+func (s *Snapshot) Local() *localdns.Zones         { return s.local }
 func (s *Snapshot) Generation() uint64             { return s.generation }
 func (s *Snapshot) Revision() string               { return s.document.Revision() }
 
