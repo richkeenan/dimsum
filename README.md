@@ -2,7 +2,7 @@
 
 A hand-built, performance-focused DNS ad blocker in Go, with a React, shadcn/ui, and Tailwind administration interface.
 
-**Status: early implementation.** Milestone A provides hand-built DNS parsing, bounded client transports, and validated UDP/TCP forwarding on configured test ports. See the [protocol support and test-port guide](docs/milestone-a-forwarding.md). Filtering, caching, administration, and release qualification remain pending; performance targets still require experiments.
+**Status: implementation paused at the reviewed task-11 checkpoint, awaiting owner instruction.** The service supports validated UDP/TCP forwarding, filtering/list updates, watched configuration, local DNS, background client naming, and upstream health/fallback. The byte-bounded cache is implemented as a library but is not yet connected to the resolver. Statistics, full CLI/API, frontend, packaging, and release qualification remain pending. See [implementation status](docs/implementation-status.md) and the [protocol support and test-port guide](docs/milestone-a-forwarding.md).
 
 ## Read in this order
 
