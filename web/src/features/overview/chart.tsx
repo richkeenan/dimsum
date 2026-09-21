@@ -10,6 +10,18 @@ const labels: Record<(typeof outcomes)[number], string> = {
   error: "Failed",
   rejected: "Rejected",
 };
+const colours: Record<
+  (typeof outcomes)[number],
+  { swatch: string; fill: string }
+> = {
+  local: { swatch: "bg-emerald-500", fill: "fill-emerald-500" },
+  blocked: { swatch: "bg-red-600", fill: "fill-red-600" },
+  cache: { swatch: "bg-teal-400", fill: "fill-teal-400" },
+  stale: { swatch: "bg-amber-400", fill: "fill-amber-400" },
+  forwarded: { swatch: "bg-blue-600", fill: "fill-blue-600" },
+  error: { swatch: "bg-rose-900", fill: "fill-rose-900" },
+  rejected: { swatch: "bg-orange-500", fill: "fill-orange-500" },
+};
 export default function TrafficChart({ buckets }: { buckets: Point[] }) {
   const [table, setTable] = useState(false);
   const values = buckets.map((b) =>
@@ -24,9 +36,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
       <div className="flex flex-wrap items-center gap-2.5 px-5 py-[18px] text-xs text-muted-foreground min-[701px]:gap-[18px]">
         {outcomes.map((k) => (
           <span className="flex items-center gap-[5px]" key={k}>
-            <i
-              className={`size-2 rounded-[2px] ${k === "forwarded" ? "bg-blue-600" : k === "blocked" ? "bg-slate-500" : k === "cache" ? "bg-blue-300" : k === "local" ? "bg-sky-500" : k === "error" ? "bg-indigo-800" : k === "rejected" ? "bg-violet-400" : "bg-slate-300"}`}
-            />
+            <i className={`size-2 rounded-[2px] ${colours[k].swatch}`} />
             {labels[k]}
           </span>
         ))}
@@ -62,21 +72,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
                   {outcomes.map((k, j) => (
                     <rect
                       key={k}
-                      className={
-                        k === "forwarded"
-                          ? "fill-blue-600"
-                          : k === "blocked"
-                            ? "fill-slate-500"
-                            : k === "cache"
-                              ? "fill-blue-300"
-                              : k === "local"
-                                ? "fill-sky-500"
-                                : k === "error"
-                                  ? "fill-indigo-800"
-                                  : k === "rejected"
-                                    ? "fill-violet-400"
-                                    : "fill-slate-300"
-                      }
+                      className={colours[k].fill}
                       x={0}
                       y={
                         100 -
