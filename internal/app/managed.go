@@ -104,7 +104,8 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 	}
 	m.control = control.New(control.Options{Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
 		transport, cache := service.DNSStats()
-		return map[string]any{"dns_ready": service.Ready(), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil
+		interfaces, _ := net.InterfaceAddrs()
+		return map[string]any{"dns_ready": service.Ready(), "dns_addresses": clientDNSAddresses(service.Addresses().DNS, interfaces), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil
 	}})
 	allowed := append([]string(nil), c.Admin.AllowedHosts...)
 	allowed = append(allowed, address)

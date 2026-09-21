@@ -61,6 +61,7 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	assert.Zero(t, cli.Run(context.Background(), []string{"--socket", s.Addresses().Control, "diagnostics"}, &output, &stderr), stderr.String())
 	var diagnostics map[string]any
 	require.NoError(t, json.Unmarshal(output.Bytes(), &diagnostics))
+	assert.Equal(t, []any{}, diagnostics["dns_addresses"], "loopback-only DNS has no address for other devices")
 	q := new(dns.Msg)
 	q.SetQuestion("1.0.0.10.in-addr.arpa.", dns.TypePTR)
 	dnsClient := dns.Client{Timeout: time.Second}

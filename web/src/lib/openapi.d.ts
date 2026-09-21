@@ -1226,7 +1226,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Configuration and installed diagnostic measurements */
+        /** @description Configuration and installed diagnostic measurements. dns_addresses lists client-facing IP:port endpoints from running DNS listeners, expanding wildcard binds to interface addresses and excluding loopback and link-local addresses. IPv6 endpoints use brackets. An empty list means no client-facing address was discovered. */
         200: {
           headers: {
             [name: string]: unknown;
