@@ -54,6 +54,14 @@ browser scenarios skip in the ordinary fixture run; output is separated under
 
 ## Contract boundary
 
+`ClientIdentity` renders the server-selected name and device category in Devices,
+Top clients, and query rows. Devices opens an evidence dialog; missing metadata
+uses the generic Device icon. Discovery settings edit `naming.mdns.enabled` and
+the interface string array through the shared revision-checked settings API.
+The backend keeps explicit names authoritative. See
+[`docs/local-policy-and-naming.md`](../docs/local-policy-and-naming.md) for CLI
+equivalents and runtime behavior.
+
 `src/lib/openapi.d.ts` is generated from `api/openapi.yaml`. `src/lib/api.ts`
 normalizes nested activation status for visual components, preserves large
 decimal counters, and handles CSRF/session expiry and structured errors.
