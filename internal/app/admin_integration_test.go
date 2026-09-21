@@ -30,7 +30,9 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	s := new(app.Service)
 	require.NoError(t, s.StartManaged(context.Background(), store))
 	t.Cleanup(func() { assert.NoError(t, s.Close()) })
-	client := http.Client{Timeout: time.Second}
+	// Password verification performs 600,000 PBKDF2 iterations; race-instrumented
+	// Linux CI can exceed one second even when the local service is healthy.
+	client := http.Client{Timeout: 10 * time.Second}
 	base := "http://" + s.Addresses().Admin
 	login, err := client.Post(base+"/session", "application/json", strings.NewReader(`{"password":"admin"}`))
 	require.NoError(t, err)
