@@ -5,42 +5,69 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 )
 
 // BackupVersion is independent of the configuration schema version.
-const BackupVersion = 1
+const BackupVersion = 2
 const MaxBackupBytes = 2 << 20
 
-// Version 1 has no secret entries: the configuration schema has no secret
-// references. Never walk secrets_dir (which may contain unrelated credentials).
-// Supporting external credentials requires an explicit allowlist and an atomic
-// secret-generation publication contract before expanding this format.
 type backupManifest struct {
-	Version          int      `json:"version"`
-	ConfigSHA256     string   `json:"config_sha256"`
-	NecessarySecrets []string `json:"necessary_secrets"`
+	Version          int               `json:"version"`
+	ConfigSHA256     string            `json:"config_sha256"`
+	NecessarySecrets []string          `json:"necessary_secrets"`
+	SecretSHA256     map[string]string `json:"secret_sha256,omitempty"`
 }
 
 // Backup returns an owned, uncompressed tar archive containing the exact source
 // text, including comments. Treat the result as private; write it with mode 0600.
 // Derived state, downloaded lists, recovery artifacts and history are excluded.
 func Backup(d *Document) ([]byte, error) {
+	return BackupWithSecrets(d, nil)
+}
+
+// BackupWithSecrets includes only explicitly supplied necessary credentials.
+// It never follows configuration paths; the caller owns the supplied bytes.
+// Use Store.Backup to collect credentials from the saved document's generation.
+func BackupWithSecrets(d *Document, secrets map[string][]byte) ([]byte, error) {
 	if d == nil {
 		return nil, fmt.Errorf("backup: nil document")
 	}
 	if _, err := Parse(d.Bytes()); err != nil {
 		return nil, err
 	}
-	manifest, err := json.Marshal(backupManifest{BackupVersion, d.Revision(), []string{}})
+	m := backupManifest{Version: BackupVersion, ConfigSHA256: d.Revision(), NecessarySecrets: []string{}}
+	for name, data := range secrets {
+		if err := validateSecret(name, data); err != nil {
+			return nil, err
+		}
+		m.NecessarySecrets = append(m.NecessarySecrets, name)
+		m.SecretSHA256 = map[string]string{name: revision(data)}
+	}
+	if d.Config().Admin.SecretGeneration != "" && len(secrets) == 0 {
+		return nil, fmt.Errorf("backup: referenced credential generation requires %s", AdminSecretName)
+	}
+	return encodeBackup(d, m, secrets)
+}
+
+func encodeBackup(d *Document, m backupManifest, secrets map[string][]byte) ([]byte, error) {
+	manifest, err := json.Marshal(m)
 	if err != nil {
 		return nil, err
 	}
 	var out bytes.Buffer
 	w := tar.NewWriter(&out)
-	for _, entry := range []struct {
+	entries := []struct {
 		name string
 		data []byte
-	}{{"manifest.json", manifest}, {"config.yaml", d.Bytes()}} {
+	}{{"manifest.json", manifest}, {"config.yaml", d.Bytes()}}
+	for _, name := range m.NecessarySecrets {
+		entries = append(entries, struct {
+			name string
+			data []byte
+		}{"secrets/" + name, secrets[name]})
+	}
+	for _, entry := range entries {
 		if err := w.WriteHeader(&tar.Header{Name: entry.name, Mode: 0600, Size: int64(len(entry.data)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}); err != nil {
 			return nil, err
 		}
@@ -66,5 +93,12 @@ func (s *Store) Backup() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Backup(d)
+	secrets := map[string][]byte{}
+	b, err = s.documentSecret(d, AdminSecretName)
+	if err == nil {
+		secrets[AdminSecretName] = b
+	} else if !os.IsNotExist(err) || d.Config().Admin.SecretGeneration != "" {
+		return nil, err
+	}
+	return BackupWithSecrets(d, secrets)
 }

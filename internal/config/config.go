@@ -38,7 +38,8 @@ type DNS struct {
 	UpstreamPolicy UpstreamSettings `yaml:"upstream_policy,omitempty"`
 }
 type Admin struct {
-	Listen string `yaml:"listen"`
+	Listen           string `yaml:"listen"`
+	SecretGeneration string `yaml:"secret_generation,omitempty"`
 }
 type Paths struct {
 	DataDir    string `yaml:"data_dir"`

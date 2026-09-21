@@ -175,7 +175,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if old := s.Snapshot(); old != nil {
 		generation = old.generation + 1
 		previous := old.Config()
-		if !s.starting && (!reflect.DeepEqual(c.DNS.Listen, previous.DNS.Listen) || c.Admin != previous.Admin || c.Paths != previous.Paths) {
+		if !s.starting && (!reflect.DeepEqual(c.DNS.Listen, previous.DNS.Listen) || c.Admin.Listen != previous.Admin.Listen || c.Paths != previous.Paths) {
 			s.mu.Lock()
 			s.status.RestartRequired = true
 			s.mu.Unlock()
@@ -189,6 +189,9 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		}
 	}
 	// Compile every request-visible producer before staging the recovery unit.
+	if err := s.validateDocumentSecrets(d); err != nil {
+		return s.fail(err)
+	}
 	local, err := localdns.Build(c.Zones, c.Records)
 	if err != nil {
 		return s.fail(err)
@@ -335,6 +338,9 @@ func (s *Store) recover() error {
 	}
 	d, err := Parse(a.Config)
 	if err != nil {
+		return err
+	}
+	if err := s.validateDocumentSecrets(d); err != nil {
 		return err
 	}
 	compiled, err := policy.CompileSnapshot(a.Generation, a.Rules, policy.DefaultLimits())

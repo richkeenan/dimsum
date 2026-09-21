@@ -34,6 +34,9 @@ func Validate(c Config) error {
 	if err := address("admin.listen", c.Admin.Listen); err != nil {
 		return err
 	}
+	if !validSecretGeneration(c.Admin.SecretGeneration) {
+		return fmt.Errorf("admin.secret_generation: expected at most 64 lowercase hex characters")
+	}
 	if len(c.DNS.Upstreams) > 16 || len(c.DNS.Fallback) > 16 {
 		return fmt.Errorf("dns.upstreams: at most 16 endpoints")
 	}
