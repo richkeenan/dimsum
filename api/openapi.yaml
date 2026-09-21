@@ -18,6 +18,36 @@ info:
 security:
   - session: []
 paths:
+  /api/v1/password:
+    post:
+      summary: Change the administrator password
+      description: |
+        Accepts 1–1024 UTF-8 bytes, including admin; no forced-change flow.
+        Browser requests require the session cookie, Origin and X-CSRF-Token.
+        The permission-protected Unix socket uses filesystem authentication.
+        Publishes an immutable credential generation through the configuration coordinator.
+        All previous browser sessions are revoked before success returns; log in again.
+        Pending external configuration edits or concurrent writes can return 409.
+        CLI equivalent is dimsum control password @- with the same JSON body.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PasswordChange'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/catalog:
+    get:
+      summary: Inspect predefined subscription choices
+      description: Availability describes parser support, not download state. Defaults are metadata and do not enable subscriptions. CLI equivalent is dimsum control catalog.
+      responses:
+        '200':
+          description: Predefined catalog metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Catalog'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/config/backups/{id}:
     get:
       summary: Download the most recent completed configuration backup
@@ -353,6 +383,37 @@ components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: dimsum_session}
   schemas:
+    PasswordChange:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          writeOnly: true
+          description: Nonempty password, maximum 1024 UTF-8 bytes. Fresh installations initialize a salted hash of admin only when no credential exists.
+    Catalog:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/CatalogItem'}
+    CatalogItem:
+      type: object
+      required: [id, label, description, url, dialect, domain_kind, available, unavailable_reason, default_enabled]
+      properties:
+        id: {type: string}
+        label: {type: string}
+        description: {type: string}
+        url: {type: string, format: uri}
+        dialect: {type: string, enum: [hosts, domains, dns-adblock]}
+        domain_kind: {type: string, enum: [exact, suffix]}
+        available: {type: boolean}
+        unavailable_reason: {type: string}
+        default_enabled: {type: boolean}
     UpstreamProbeInput:
       type: object
       additionalProperties: false

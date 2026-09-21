@@ -41,6 +41,18 @@ type managedRuntime struct {
 
 func newManagedRuntime(service *Service, store *config.Store, o *observability, address string) (*managedRuntime, error) {
 	c := store.Snapshot().Config()
+	if _, err := store.ActiveSecret(config.AdminSecretName); err != nil {
+		if !os.IsNotExist(err) || c.Admin.SecretGeneration != "" {
+			return nil, err
+		}
+		hash, err := admin.HashPassword("admin")
+		if err != nil {
+			return nil, err
+		}
+		if err = store.EnsureAdminSecret([]byte(hash + "\n")); err != nil {
+			return nil, err
+		}
+	}
 	m := &managedRuntime{store: store, observations: o}
 	jobs := map[string]func(context.Context, json.RawMessage) (any, error){
 		"upstream-probe": m.upstreamProbe,
@@ -154,12 +166,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 func (m *managedRuntime) refresh() {
 	m.refreshMu.Lock()
 	defer m.refreshMu.Unlock()
-	b, err := m.store.ActiveSecret(config.AdminSecretName)
-	if err != nil {
-		m.admin.SetPasswordHash("")
-	} else {
-		m.admin.SetPasswordHash(strings.TrimSpace(string(b)))
-	}
+	m.admin.RefreshPasswordHash()
 	m.observations.retention(m.store.Snapshot().Config().Statistics)
 }
 func (m *managedRuntime) watch(ctx context.Context) {

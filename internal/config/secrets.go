@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -12,6 +13,58 @@ import (
 
 const AdminSecretName = "admin.hash"
 const MaxSecretBytes = 512
+
+// EnsureAdminSecret creates the legacy startup credential only when absent.
+// Linking a fully synced temporary file publishes complete bytes exclusively;
+// existing credentials and referenced restore generations are never replaced.
+func (s *Store) EnsureAdminSecret(hash []byte) error {
+	s.build.Lock()
+	defer s.build.Unlock()
+	if err := validateSecret(AdminSecretName, hash); err != nil {
+		return err
+	}
+	active := s.Snapshot()
+	if active == nil {
+		return fmt.Errorf("secret: no active configuration")
+	}
+	_, err := s.documentSecret(active.document, AdminSecretName)
+	if err == nil {
+		return nil
+	}
+	if !os.IsNotExist(err) || active.Config().Admin.SecretGeneration != "" {
+		return err
+	}
+	root, err := openSecretRoot(s.ResolvePath(active.Config().Paths.SecretsDir), true)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := ".admin-" + rand.Text()
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer root.Remove(name)
+	_, err = f.Write(hash)
+	if err == nil {
+		err = f.Sync()
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if err = root.Link(name, AdminSecretName); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if err = syncSecretDir(root); err != nil {
+		return err
+	}
+	_, err = s.documentSecret(active.document, AdminSecretName)
+	return err
+}
 
 func validSecretGeneration(id string) bool {
 	if len(id) > 64 {

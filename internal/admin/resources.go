@@ -26,6 +26,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		var v any
 		var e error
 		switch resource {
+		case "catalog":
+			v = s.service.Catalog()
 		case "clients":
 			v, e = s.service.Clients(r.Context(), r.URL.Query())
 		case "settings", "lists", "rules", "records", "upstreams", "blocking":
@@ -47,6 +49,23 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.result(w, r, v, e)
+		return
+	}
+	if resource == "password" && r.Method == "POST" {
+		var b struct {
+			Password string `json:"password"`
+		}
+		if !decode(w, r, &b) {
+			return
+		}
+		hash, err := HashPassword(b.Password)
+		if err != nil {
+			s.fail(w, r, 400, "bad_request", err.Error())
+			return
+		}
+		v, err := s.service.SetPasswordHash(r.Context(), hash)
+		s.RefreshPasswordHash()
+		s.result(w, r, v, err)
 		return
 	}
 	if resource == "rules/test" && r.Method == "POST" {

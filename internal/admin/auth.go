@@ -20,8 +20,8 @@ const passwordIterations = 600000
 
 // HashPassword uses a salted PBKDF2-SHA256 record with a fixed work factor.
 func HashPassword(password string) (string, error) {
-	if len(password) < 12 || len(password) > 1024 {
-		return "", fmt.Errorf("password must contain 12–1024 bytes")
+	if len(password) == 0 || len(password) > 1024 {
+		return "", fmt.Errorf("password must contain 1–1024 bytes")
 	}
 	salt := make([]byte, 16)
 	if _, e := rand.Read(salt); e != nil {
@@ -102,6 +102,22 @@ type authState struct {
 func (s *Server) SetPasswordHash(hash string) {
 	s.auth.Lock()
 	defer s.auth.Unlock()
+	s.setPasswordHash(hash)
+}
+
+// RefreshPasswordHash reads and installs under the same lock, so concurrent
+// refreshes cannot reinstall an older credential after a completed change.
+func (s *Server) RefreshPasswordHash() {
+	s.auth.Lock()
+	defer s.auth.Unlock()
+	hash, err := s.service.PasswordHash()
+	if err != nil {
+		hash = ""
+	}
+	s.setPasswordHash(hash)
+}
+
+func (s *Server) setPasswordHash(hash string) {
 	if s.auth.hash == hash {
 		return
 	}

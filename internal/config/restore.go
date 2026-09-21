@@ -120,6 +120,24 @@ func (s *Store) Restore(ctx context.Context, expected string, archive []byte) (A
 	if err != nil {
 		return s.Inspect(), err
 	}
+	return s.restoreContents(ctx, expected, bundle)
+}
+
+// SetAdminSecret publishes a new immutable credential generation while retaining
+// the active document. Pending external configuration edits are never adopted.
+func (s *Store) SetAdminSecret(ctx context.Context, expected string, hash []byte) (ActivationResult, error) {
+	if err := validateSecret(AdminSecretName, hash); err != nil {
+		return s.Inspect(), err
+	}
+	active := s.Snapshot()
+	if active == nil || active.Revision() != expected {
+		return s.Inspect(), ErrConflict
+	}
+	return s.restoreContents(ctx, expected, &BackupContents{Document: active.document, Secrets: map[string][]byte{AdminSecretName: hash}})
+}
+
+func (s *Store) restoreContents(ctx context.Context, expected string, bundle *BackupContents) (ActivationResult, error) {
+	var err error
 	d := bundle.Document
 	target, err := s.restoreTarget(expected, d)
 	if err != nil {
