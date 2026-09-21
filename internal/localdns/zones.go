@@ -154,6 +154,34 @@ func (z *Zones) Origin(name policy.Name) string {
 	return "forward"
 }
 
+// Continuation returns the final nonlocal target of a configured CNAME chain.
+// The result is independent wire storage; no forwarding is needed for CNAME
+// questions or for a terminal owner inside our records/owned zones.
+func (z *Zones) Continuation(q *dnswire.Message) []byte {
+	if q.Question.Type == 5 {
+		return nil
+	}
+	n, e := policy.NameFromWire(q.Question.Name.Canonical[:q.Question.Name.Length])
+	if e != nil {
+		return nil
+	}
+	name := n.Display()
+	for depth := 0; depth <= 16; depth++ {
+		rr := z.lookup(name)
+		if len(rr) == 0 {
+			if depth > 0 && z.zone(name) == nil {
+				return wire(name)
+			}
+			return nil
+		}
+		if rr[0].Type != "CNAME" {
+			return nil
+		}
+		name = rr[0].Value
+	}
+	return nil
+}
+
 func (z *Zones) Answer(dst []byte, q *dnswire.Message) (int, bool, error) {
 	n, e := policy.NameFromWire(q.Question.Name.Canonical[:q.Question.Name.Length])
 	if e != nil {

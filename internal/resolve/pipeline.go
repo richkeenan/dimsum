@@ -50,6 +50,11 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			return 0, errors.New("resolve: no active policy")
 		}
 		if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
+			if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
+				if target := snapshot.Local().Continuation(&r.Message); target != nil {
+					return p.completeLocal(ctx, r, out, n, target, snapshot)
+				}
+			}
 			return n, err
 		}
 		settings = snapshot.Filtering()
