@@ -1,0 +1,105 @@
+package policy
+
+import (
+	"fmt"
+	"strings"
+
+	"golang.org/x/net/idna"
+)
+
+// Name is an immutable, ASCII-case-folded, byte-safe DNS name. Its zero value
+// is the root. Configuration hostnames and decoded wire names use separate
+// constructors: IDNA must never be applied to arbitrary wire bytes.
+type Name struct{ wire string }
+
+var hostnameProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
+	idna.StrictDomainName(true), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
+
+// NormalizeName validates a configuration hostname, maps IDNA nontransitionally,
+// and removes exactly one terminal root dot after IDNA separator mapping.
+func NormalizeName(s string) (Name, error) {
+	ascii, err := hostnameProfile.ToASCII(s)
+	if err != nil {
+		return Name{}, fmt.Errorf("policy: invalid hostname %q: %w", s, err)
+	}
+	ascii = strings.TrimSuffix(ascii, ".")
+	if ascii == "" {
+		return Name{}, fmt.Errorf("policy: empty configuration hostname")
+	}
+	var wire []byte
+	for _, label := range strings.Split(ascii, ".") {
+		if len(label) == 0 || len(label) > 63 {
+			return Name{}, fmt.Errorf("policy: invalid label length")
+		}
+		wire = append(wire, byte(len(label)))
+		wire = append(wire, label...)
+	}
+	wire = append(wire, 0)
+	return NameFromWire(wire)
+}
+
+// NameFromWire copies one complete uncompressed length-prefixed name, including
+// its root byte. Pass dnswire.Name.Canonical[:Length] or Wire[:Length]; only ASCII
+// A-Z is folded. Compression pointers, trailing bytes and invalid lengths fail.
+func NameFromWire(b []byte) (Name, error) {
+	if len(b) == 0 || len(b) > 255 {
+		return Name{}, fmt.Errorf("policy: invalid wire name length")
+	}
+	out := append([]byte(nil), b...)
+	for i := 0; i < len(out); {
+		length := int(out[i])
+		if length == 0 {
+			if i != len(out)-1 {
+				break
+			}
+			return Name{wire: string(out[:i])}, nil
+		}
+		if length > 63 || i+1+length >= len(out) {
+			break
+		}
+		for j := i + 1; j < i+1+length; j++ {
+			if out[j] >= 'A' && out[j] <= 'Z' {
+				out[j] += 'a' - 'A'
+			}
+		}
+		i += length + 1
+	}
+	return Name{}, fmt.Errorf("policy: malformed uncompressed name")
+}
+
+// Display returns the lowercase presentation without a terminal dot (root is
+// empty). Only letters, digits, hyphen and underscore are emitted literally;
+// all other label octets use unambiguous three-digit decimal escapes. Dots
+// emitted literally are exclusively label separators. Regex sees this string.
+func (n Name) Display() string {
+	var b strings.Builder
+	for i := 0; i < len(n.wire); {
+		if i > 0 {
+			b.WriteByte('.')
+		}
+		end := i + 1 + int(n.wire[i])
+		for j := i + 1; j < end; j++ {
+			c := n.wire[j]
+			if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_' {
+				b.WriteByte(c)
+			} else {
+				b.WriteByte('\\')
+				b.WriteByte('0' + c/100)
+				b.WriteByte('0' + c/10%10)
+				b.WriteByte('0' + c%10)
+			}
+		}
+		i = end
+	}
+	return b.String()
+}
+
+func (n Name) labels() []string {
+	var labels []string
+	for i := 0; i < len(n.wire); {
+		end := i + 1 + int(n.wire[i])
+		labels = append(labels, n.wire[i+1:end])
+		i = end
+	}
+	return labels
+}
