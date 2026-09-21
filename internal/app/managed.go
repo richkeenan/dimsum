@@ -43,6 +43,8 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 	c := store.Snapshot().Config()
 	m := &managedRuntime{store: store, observations: o}
 	jobs := map[string]func(context.Context, json.RawMessage) (any, error){
+		"upstream-probe": m.upstreamProbe,
+		"support-bundle": m.supportBundle,
 		"backup": func(ctx context.Context, _ json.RawMessage) (any, error) {
 			if err := ctx.Err(); err != nil {
 				return nil, err
