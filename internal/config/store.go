@@ -46,9 +46,6 @@ type recovery struct {
 }
 
 func OpenStore(ctx context.Context, path, state string, o StoreOptions) (*Store, error) {
-	if o.Fetcher == nil {
-		o.Fetcher = lists.NewFetcher(nil)
-	}
 	if o.PollInterval <= 0 {
 		o.PollInterval = 100 * time.Millisecond
 	}
@@ -180,6 +177,15 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		return s.fail(fmt.Errorf("records: local-data activation is not implemented yet"))
 	}
 	rules := c.PolicyRules()
+	fetcher := s.options.Fetcher
+	if fetcher == nil {
+		var err error
+		fetcher, err = lists.NewFetcherWithUpstreams(c.DNS.Upstreams)
+		if err != nil {
+			return s.fail(err)
+		}
+		defer fetcher.Client.CloseIdleConnections()
+	}
 	var statuses []SourceStatus
 	var retained *recovery
 	for _, sub := range c.Lists {
@@ -188,7 +194,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		}
 		status := SourceStatus{ID: sub.ID, Enabled: sub.Enabled}
 		if sub.Enabled {
-			v, err := s.options.Fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
+			v, err := fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
 			prior, wasUsable := s.previousSource(sub)
 			if err == nil && wasUsable && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
 				err = fmt.Errorf("source deletion requires review: %d -> %d rules", prior.Rules, len(v.Rules))

@@ -23,3 +23,16 @@ func TestForwardUpstreamConfiguration(t *testing.T) {
 	assert.Equal(t, "127.0.0.1:1053", d.Config().DNS.Upstreams[0])
 	assert.Equal(t, source, d.Bytes())
 }
+
+func TestRejectSelfListenerUpstreams(t *testing.T) {
+	for _, pair := range [][2]string{{"127.0.0.1:5353", "127.0.0.1:5353"}, {"[::1]:5353", "[::1]:5353"}, {"0.0.0.0:5353", "127.0.0.1:5353"}, {"[::]:5353", "[::1]:5353"}, {"[::]:5353", "127.0.0.1:5353"}, {"127.0.0.1:5353", "[::ffff:127.0.0.1]:5353"}} {
+		c := config.Default()
+		c.DNS.Listen = []string{pair[0]}
+		c.DNS.Upstreams = []string{pair[1]}
+		assert.ErrorContains(t, config.Validate(c), "listener", pair)
+	}
+	c := config.Default()
+	c.DNS.Listen = []string{"0.0.0.0:5353"}
+	c.DNS.Upstreams = []string{"192.0.2.1:5353", "127.0.0.1:5354"}
+	assert.NoError(t, config.Validate(c))
+}

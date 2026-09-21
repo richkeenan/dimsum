@@ -5,8 +5,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,9 +21,48 @@ type Fetcher struct {
 
 func NewFetcher(client *http.Client) *Fetcher {
 	if client == nil {
-		client = &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second}}
+		client = bootstrapClient(nil)
 	}
 	return &Fetcher{Client: client, MaxCompressed: 32 << 20, MaxExpanded: 128 << 20, Timeout: 30 * time.Second}
+}
+
+// NewFetcherWithUpstreams resolves subscription (and HTTP proxy) hostnames via
+// literal configured DNS endpoints, never the host's DNS service. The caller
+// rejects endpoints that point back to its own listeners. An empty set fails
+// hostname lookups closed, while literal HTTP destinations still work.
+func NewFetcherWithUpstreams(upstreams []string) (*Fetcher, error) {
+	endpoints := make([]netip.AddrPort, len(upstreams))
+	if len(upstreams) > 16 {
+		return nil, fmt.Errorf("lists: at most 16 bootstrap endpoints")
+	}
+	for i, address := range upstreams {
+		endpoint, err := netip.ParseAddrPort(address)
+		if err != nil || endpoint.Port() == 0 || endpoint.Addr().Unmap().IsUnspecified() || endpoint.Addr().Unmap().IsMulticast() {
+			return nil, fmt.Errorf("lists: bootstrap endpoint must be a unicast literal IP and nonzero port")
+		}
+		endpoints[i] = endpoint
+	}
+	return NewFetcher(bootstrapClient(endpoints)), nil
+}
+
+func bootstrapClient(endpoints []netip.AddrPort) *http.Client {
+	var next atomic.Uint64
+	resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		if len(endpoints) == 0 {
+			return nil, fmt.Errorf("lists: no explicit bootstrap DNS upstreams configured")
+		}
+		// Resolver owns DNS message framing, UDP retries and TCP fallback. Its
+		// system-server address is deliberately ignored; only these literals dial.
+		endpoint := endpoints[(next.Add(1)-1)%uint64(len(endpoints))]
+		dialer := net.Dialer{Timeout: 5 * time.Second}
+		return dialer.DialContext(ctx, network, endpoint.String())
+	}}
+	dialer := &net.Dialer{Resolver: resolver, Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	return &http.Client{Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment, DialContext: dialer.DialContext,
+		DisableCompression: true, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	}}
 }
 
 // Explicit Accept-Encoding prevents net/http's transparent decompression from
