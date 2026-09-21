@@ -27,7 +27,7 @@ Mutation operations:
   rules-test JSON            {"name":"example.org","generation":"1"}
   stage JSON                 revision and grouped scalar edits
   commit ID
-  job JSON                   {"kind":"refresh|backup|restore","input":{...}}
+  job JSON                   {"kind":"refresh|backup|restore|upstream-probe|support-bundle","input":{...}}
   events                     SSE stream; reconnect requires a fresh summary fetch
   request METHOD PATH [JSON] complete HTTP parity, including future operations
 
