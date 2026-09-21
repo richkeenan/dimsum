@@ -1,0 +1,27 @@
+services:
+  dimsum:
+    image: dimsum:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    # Linux host networking avoids Docker's bridge DNS source NAT. Verify on
+    # the intended host; Docker Desktop is not native Linux host networking.
+    network_mode: host
+    user: "65532:65532"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /run/dimsum:size=1m,mode=0750,uid=65532,gid=65532
+    volumes:
+      # Mount the directory, never just dimsum.yaml: saves use atomic rename.
+      - type: bind
+        source: ${DIMSUM_CONFIG_DIR:?set DIMSUM_CONFIG_DIR}
+        target: /etc/dimsum
+      - type: bind
+        source: ${DIMSUM_STATE_DIR:?set DIMSUM_STATE_DIR}
+        target: /var/lib/dimsum
+    restart: "no"
+    stop_grace_period: 30s

@@ -1,0 +1,41 @@
+[Unit]
+Description=dimsum DNS and administration
+After=network.target
+Documentation=https://github.com/richkeenan/dimsum
+
+[Service]
+Type=simple
+User=dimsum
+Group=dimsum
+ExecStart=/usr/bin/dimsum serve -config /etc/dimsum/dimsum.yaml -state /var/lib/dimsum/recovery
+WorkingDirectory=/var/lib/dimsum
+ConfigurationDirectory=dimsum
+ConfigurationDirectoryMode=0750
+StateDirectory=dimsum
+StateDirectoryMode=0750
+RuntimeDirectory=dimsum
+RuntimeDirectoryMode=0750
+UMask=0077
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/etc/dimsum /var/lib/dimsum
+TimeoutStopSec=30
+KillSignal=SIGTERM
+Restart=no
+MemoryAccounting=yes
+CPUAccounting=yes
+TasksAccounting=yes
+LimitNOFILE=8192
+
+[Install]
+WantedBy=multi-user.target

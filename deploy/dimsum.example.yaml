@@ -1,0 +1,10 @@
+# Isolated initial installation: change listeners only after owner acceptance.
+version: 1
+dns:
+  listen: ["127.0.0.1:5353"]
+  upstreams: ["1.1.1.1:53", "9.9.9.9:53"]
+admin:
+  listen: "127.0.0.1:8080"
+paths:
+  data_dir: /var/lib/dimsum/data
+  secrets_dir: /etc/dimsum/secrets
