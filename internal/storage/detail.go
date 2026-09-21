@@ -59,7 +59,12 @@ func (d *DB) GetClients(ctx context.Context, start, end time.Time, limit int) (C
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	rows, e := d.read.QueryContext(ctx, `SELECT c.address,COUNT(*),SUM(CASE WHEN e.outcome=? THEN 1 ELSE 0 END),MAX(e.timestamp)
+	view, e := d.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		return result, e
+	}
+	defer view.Rollback()
+	rows, e := view.QueryContext(ctx, `SELECT c.address,COUNT(*),SUM(CASE WHEN e.outcome=? THEN 1 ELSE 0 END),MAX(e.timestamp)
  FROM query_events e JOIN clients c ON c.id=e.client_id
  WHERE e.timestamp>=? AND e.timestamp<? AND e.outcome<>? AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')
  GROUP BY c.address ORDER BY COUNT(*) DESC,c.address LIMIT ?`, stats.PolicyBlock, start.UnixMicro(), end.UnixMicro(), stats.AdmissionRejected, limit+1)
@@ -91,13 +96,10 @@ func (d *DB) GetClients(ctx context.Context, start, end time.Time, limit int) (C
 		result.Items = result.Items[:limit]
 		result.Truncated = true
 	}
-	// Use Query's public completeness contract so coverage and retention fixes
-	// remain centralized in storage rather than being duplicated in this adapter.
-	page, e := d.Query(ctx, QueryOptions{Start: start, End: end, Limit: 1})
+	result.Complete, e = complete(ctx, view, start, end, "detail_cutoff")
 	if e != nil {
 		return result, e
 	}
-	result.Complete = page.Complete
 	return result, nil
 }
 
@@ -114,7 +116,12 @@ func (d *DB) PartialSeriesPoint(ctx context.Context, start, end time.Time) (Poin
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	rows, e := d.read.QueryContext(ctx, `SELECT outcome,COUNT(*),SUM(duration),
+	view, e := d.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		return point, false, e
+	}
+	defer view.Rollback()
+	rows, e := view.QueryContext(ctx, `SELECT outcome,COUNT(*),SUM(duration),
  SUM(CASE WHEN duration<100 THEN 1 ELSE 0 END),
  SUM(CASE WHEN duration>=100 AND duration<500 THEN 1 ELSE 0 END),
  SUM(CASE WHEN duration>=500 AND duration<1000 THEN 1 ELSE 0 END),
@@ -150,6 +157,6 @@ func (d *DB) PartialSeriesPoint(ctx context.Context, start, end time.Time) (Poin
 	if e != nil {
 		return point, false, e
 	}
-	page, e := d.Query(ctx, QueryOptions{Start: start, End: end, Limit: 1})
-	return point, page.Complete, e
+	available, e := complete(ctx, view, start, end, "detail_cutoff")
+	return point, available, e
 }
