@@ -42,8 +42,9 @@ func NormalizeName(s string) (Name, error) {
 	if s == "" {
 		return Name{}, fmt.Errorf("policy: empty configuration hostname")
 	}
-	var wire []byte
-	for _, label := range strings.Split(s, ".") {
+	var buffer [255]byte
+	wire := buffer[:0]
+	for label := range strings.SplitSeq(s, ".") {
 		if strings.Contains(label, "_") && !strings.HasPrefix(strings.ToLower(label), "xn--") {
 			if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
 				return Name{}, fmt.Errorf("policy: invalid underscore label hyphen")
@@ -62,6 +63,9 @@ func NormalizeName(s string) (Name, error) {
 		}
 		if len(label) == 0 || len(label) > 63 {
 			return Name{}, fmt.Errorf("policy: invalid label length")
+		}
+		if len(wire)+1+len(label) > 254 {
+			return Name{}, fmt.Errorf("policy: invalid DNS name length")
 		}
 		wire = append(wire, byte(len(label)))
 		wire = append(wire, label...)
@@ -86,7 +90,9 @@ func NameFromWire(b []byte) (Name, error) {
 	if len(b) == 0 || len(b) > 255 {
 		return Name{}, fmt.Errorf("policy: invalid wire name length")
 	}
-	out := append([]byte(nil), b...)
+	var buffer [255]byte
+	out := buffer[:len(b)]
+	copy(out, b)
 	for i := 0; i < len(out); {
 		length := int(out[i])
 		if length == 0 {
