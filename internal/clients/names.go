@@ -49,14 +49,15 @@ func localAddress(a netip.Addr) bool {
 }
 
 type Name struct {
-	Address  netip.Addr `json:"address"`
-	Name     string     `json:"name,omitempty"`
-	Source   string     `json:"source"`
-	Updated  time.Time  `json:"updated,omitempty"`
-	Expires  time.Time  `json:"expires,omitempty"`
-	Fresh    bool       `json:"fresh"`
-	Negative bool       `json:"negative"`
-	Error    string     `json:"error,omitempty"`
+	Device   *Enrichment `json:"device,omitempty"`
+	Address  netip.Addr  `json:"address"`
+	Name     string      `json:"name,omitempty"`
+	Source   string      `json:"source"`
+	Updated  time.Time   `json:"updated,omitempty"`
+	Expires  time.Time   `json:"expires,omitempty"`
+	Fresh    bool        `json:"fresh"`
+	Negative bool        `json:"negative"`
+	Error    string      `json:"error,omitempty"`
 }
 type entry struct {
 	view *View
