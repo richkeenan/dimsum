@@ -98,6 +98,38 @@ func (s *Scanner) Init(msg []byte) error {
 
 func (s *Scanner) Err() error { return s.err }
 
+// InitMulticast accepts the zero or multiple questions used by mDNS without
+// weakening Init's unicast single-question contract. Record validation is shared.
+func (s *Scanner) InitMulticast(msg []byte) error {
+	*s = Scanner{msg: msg}
+	h, err := ParseHeader(msg)
+	if err != nil {
+		s.err = err
+		return err
+	}
+	if h.Questions > 128 {
+		s.err = ErrQuestionCount
+		return s.err
+	}
+	off := 12
+	for range h.Questions {
+		var n Name
+		if err = DecodeName(msg, off, &n); err != nil {
+			s.err = err
+			return err
+		}
+		off = n.End + 4
+		if off > len(msg) {
+			s.err = ErrBounds
+			return s.err
+		}
+	}
+	s.Question.Header = h
+	s.off = off
+	s.counts = [3]uint16{h.Answers, h.Authorities, h.Additionals}
+	return nil
+}
+
 func (s *Scanner) Next(out *Record) bool {
 	return s.next(out, nil)
 }
