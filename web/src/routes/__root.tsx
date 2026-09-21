@@ -8,6 +8,7 @@ import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import App from "../app";
 import css from "../styles.css?url";
+import favicon from "../assets/favicon.svg?url";
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
     ssr: false,
@@ -17,7 +18,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         { name: "viewport", content: "width=device-width,initial-scale=1" },
         { title: "dimsum · DNS administration" },
       ],
-      links: [{ rel: "stylesheet", href: css }],
+      links: [
+        { rel: "stylesheet", href: css },
+        { rel: "icon", type: "image/svg+xml", href: favicon },
+      ],
     }),
     shellComponent: Document,
     component: Root,

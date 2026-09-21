@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="45 50 235 190" fill="none">
+  <title>dimsum, a happy lotus-leaf rice parcel</title>
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <path d="m118 209-7 20m93-23 7 23m-130-69-23 16m185-20 23-21" stroke="#68A77F" stroke-width="8"/>
+    <path d="M76 119 99 76l114 1 35 45-12 80q-78 32-153-1Z" fill="#176C55"/>
+    <path d="M104 116q-8-48 25-52l58 2q35 5 28 49l-29 36h-48Z" fill="#EEE9C8"/>
+    <path d="m121 87 7-3m20-10 7 1m23 4 7 3m9 15 5 4" stroke="#C8C399" stroke-width="4"/>
+    <path d="m76 119 81 35 91-32-12 80q-78 32-153-1Z" fill="#297F5E"/>
+    <path d="m76 119 37-6 44 41-30-8m121-24-35-15-56 47" fill="#7EB778"/>
+    <path d="m88 185 151-9" stroke="#D8C275" stroke-width="6"/>
+    <path d="m157 179-7 28m9-29 18 20m-17-20c-32-32-34-5 0 0 27-34 38-9 0 0" stroke="#D8C275" stroke-width="5"/>
+    <path d="m136 108v10m42-10v10m-29 10q9 10 18-1" stroke="#163E35" stroke-width="6"/>
+  </g>
+</svg>

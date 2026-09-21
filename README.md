@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="web/src/assets/dimsum.svg" width="200" alt="dimsum’s happy lotus-leaf rice parcel mascot">
+</p>
+
 # dimsum
 
 dimsum is a DNS ad blocker for your home or private network. Run it on a Linux
