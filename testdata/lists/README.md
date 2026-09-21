@@ -31,7 +31,7 @@ unavailable source **are not usable rules**. Nothing was published or installed.
 
 | Source | Bytes | Lines | Parsed rules | Rejected lines | Available |
 |---|---:|---:|---:|---:|---|
-| stevenblack-unified | 2311184 | 83050 | 76228 | 1 | No |
+| stevenblack-unified | 2311184 | 83050 | 76229 | 0 | Yes |
 | hagezi-light | 892377 | 39475 | 39461 | 0 | Yes |
 | hagezi-normal | 4601138 | 200541 | 200527 | 0 | Yes |
 | hagezi-pro | 5050452 | 228014 | 228000 | 0 | Yes |
@@ -40,17 +40,19 @@ unavailable source **are not usable rules**. Nothing was published or installed.
 | oisd-big | 5688788 | 246372 | 246357 | 3 | No |
 | adguard-dns | 4344280 | 181565 | 180604 | 952 | No |
 
-StevenBlack contains `philadelphia_cbslocal.us.intellitxt.com`, which the strict
-policy hostname normalizer rejects. TIF Mini contains an invalid IDNA A-label,
+StevenBlack contains `philadelphia_cbslocal.us.intellitxt.com`, a valid ASCII
+underscore DNS label now accepted by the shared policy normalizer. Re-auditing
+the same frozen bytes after this compatibility correction accepts every line.
+TIF Mini contains an invalid IDNA A-label,
 `xn--ildcard-0c2c.facture-rapide.fr`. OISD Big contains three invalid IDNA names
 (included in its fixture). AdGuard rejects 29 invalid names, 72 IP literals,
 196 unsupported exceptions, 17 modifier lines, and 638 other unsupported syntax
 lines (wildcards, unanchored/partial patterns, regex and resource syntax).
 Classification gives modifiers priority over other syntax on the same line.
 
-The proposed StevenBlack compatibility default is **withheld**, not replaced by
-an implicitly enabled alternative. All entries ship off; the four available
-entries can be selected explicitly. Availability records this audit only: every
+StevenBlack is the **enabled compatibility default**. All other entries ship off;
+HaGeZi Light/Normal/Pro and OISD Small can be selected explicitly.
+Availability records this audit only: every
 future version must pass the parser again before publication. Download failure,
 truncation detection beyond syntax/empty/size checks, deletion review, refresh,
 last-known-good retention, and activation belong to the update transaction.

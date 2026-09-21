@@ -53,10 +53,6 @@ func Entries() []Entry {
 	for i := range entries {
 		e := &entries[i]
 		switch e.ID {
-		case "stevenblack-unified":
-			e.DefaultEnabled = false
-			e.Available = false
-			e.UnavailableReason = "Audited feed contains an underscore hostname rejected by policy.NormalizeName; compatibility default withheld"
 		case "hagezi-tif-mini":
 			e.Available = false
 			e.UnavailableReason = "Audited feed contains invalid IDNA hostname xn--ildcard-0c2c.facture-rapide.fr"

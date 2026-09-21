@@ -63,7 +63,11 @@ func TestCatalog(t *testing.T) {
 			assert.NotEmpty(t, e.UnavailableReason)
 		}
 	}
-	assert.Equal(t, 0, enabled, "compatibility preset withheld after full-feed audit")
+	assert.Equal(t, 1, enabled, "StevenBlack compatibility preset passes the frozen full-feed audit")
+	assert.Equal(t, "stevenblack-unified", entries[0].ID)
+	assert.True(t, entries[0].DefaultEnabled)
+	assert.True(t, entries[0].Available)
+	assert.Empty(t, entries[0].UnavailableReason)
 	entries[0].ID = "changed"
 	assert.NotEqual(t, "changed", Entries()[0].ID)
 }
