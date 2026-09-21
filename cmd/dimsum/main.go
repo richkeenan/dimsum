@@ -51,10 +51,11 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 			return fail(err)
 		}
 		if err := encoder.Encode(struct {
-			Valid           bool   `json:"valid"`
-			Revision        string `json:"revision"`
-			ActiveAvailable bool   `json:"active_available"`
-		}{true, d.Revision(), false}); err != nil {
+			Valid           bool         `json:"valid"`
+			Revision        string       `json:"revision"`
+			ActiveAvailable bool         `json:"active_available"`
+			Cache           config.Cache `json:"cache"`
+		}{true, d.Revision(), false, d.Config().Cache}); err != nil {
 			return fail(err)
 		}
 		return 0

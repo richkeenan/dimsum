@@ -181,6 +181,12 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 			s.mu.Unlock()
 			return s.fail(fmt.Errorf("dns/admin/paths change requires explicit service restart"))
 		}
+		if !s.starting && (c.Cache.Bytes != previous.Cache.Bytes || c.Cache.Shards != previous.Cache.Shards) {
+			s.mu.Lock()
+			s.status.RestartRequired = true
+			s.mu.Unlock()
+			return s.fail(fmt.Errorf("cache.bytes/cache.shards change requires explicit service restart"))
+		}
 	}
 	// Compile every request-visible producer before staging the recovery unit.
 	local, err := localdns.Build(c.Zones, c.Records)

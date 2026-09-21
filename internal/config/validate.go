@@ -102,6 +102,15 @@ func Validate(c Config) error {
 	if c.Paths.DataDir == c.Paths.SecretsDir {
 		return fmt.Errorf("paths: data and secrets must be separate directories")
 	}
+	if c.Cache.Bytes < 512<<10 || c.Cache.Bytes > 1<<30 {
+		return fmt.Errorf("cache.bytes: must be 524288..1073741824 bytes")
+	}
+	if c.Cache.Shards < 1 || c.Cache.Shards > 16 {
+		return fmt.Errorf("cache.shards: must be 1..16")
+	}
+	if c.Cache.MaxNegativeTTLSeconds < 1 || c.Cache.MaxNegativeTTLSeconds > 86400 {
+		return fmt.Errorf("cache.max_negative_ttl_seconds: must be 1..86400 seconds")
+	}
 	switch c.Cache.StaleMode {
 	case "immediate", "failure-only", "off":
 	default:
