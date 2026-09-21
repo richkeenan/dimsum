@@ -37,23 +37,20 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		p.names.Observe(r.Peer.Addr())
 	}
 	var snapshot *config.Snapshot
-	var name policy.Name
+	name, err := policy.NameFromWire(q.Name.Canonical[:q.Name.Length])
+	if err != nil {
+		return 0, err
+	}
 	var settings policy.Settings
 	paused := false
 	if p.store != nil {
-		// One immutable generation for this request. Alias/local-response policy
-		// will use this same snapshot when that pipeline is added.
+		// One immutable generation for local data, pause, pre- and post-resolution policy.
 		snapshot = p.store.Snapshot()
 		if snapshot == nil {
 			return 0, errors.New("resolve: no active policy")
 		}
 		if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
 			return n, err
-		}
-		var err error
-		name, err = policy.NameFromWire(q.Name.Canonical[:q.Name.Length])
-		if err != nil {
-			return 0, err
 		}
 		settings = snapshot.Filtering()
 		paused = settings.Paused(time.Now())
@@ -64,6 +61,9 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		if decision.Result == policy.Block {
 			return buildBlock(out, &r.Message, settings, decision)
 		}
+	}
+	if policy.PrivateReverse(name) {
+		return policy.BuildBlocked(out, &r.Message, policy.Settings{Mode: "nxdomain"})
 	}
 	if q.Header.Flags&dnswire.FlagRD == 0 {
 		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 5, RecursionAvailable: true}, 1232)

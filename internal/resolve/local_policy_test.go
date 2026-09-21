@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -37,4 +38,32 @@ func TestManagedLocalBeforeRDAndDeny(t *testing.T) {
 	require.Len(t, got.Answer, 1)
 	assert.Equal(t, "192.168.1.2", got.Answer[0].(*dns.A).A.String())
 	assert.False(t, got.AuthenticatedData)
+	old := store.Snapshot().Generation()
+	text, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, []byte(strings.ReplaceAll(string(text), "192.168.1.2", "192.168.1.3")), 0600))
+	_, err = store.Reload(context.Background())
+	require.NoError(t, err)
+	assert.Greater(t, store.Snapshot().Generation(), old)
+	n, err = resolve.NewWithStore(nil, store).Resolve(context.Background(), &r, out)
+	require.NoError(t, err)
+	require.NoError(t, got.Unpack(out[:n]))
+	require.Len(t, got.Answer, 1)
+	assert.Equal(t, "192.168.1.3", got.Answer[0].(*dns.A).A.String())
+}
+
+func TestPrivateReverseIsDefaultEvenWithoutStore(t *testing.T) {
+	q := new(dns.Msg)
+	q.SetQuestion("1.1.168.192.in-addr.arpa.", 12)
+	b, e := q.Pack()
+	require.NoError(t, e)
+	r := transport.Request{Wire: b}
+	require.NoError(t, dnswire.ParseRequest(b, &r.Message))
+	out := make([]byte, 65535)
+	n, e := resolve.New(nil).Resolve(context.Background(), &r, out)
+	require.NoError(t, e)
+	var got dns.Msg
+	require.NoError(t, got.Unpack(out[:n]))
+	assert.Equal(t, 3, got.Rcode)
+	assert.Len(t, got.Ns, 1)
 }

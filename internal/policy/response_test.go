@@ -25,6 +25,7 @@ func TestRelevantAliases(t *testing.T) {
 		{name: "dname", rrs: []string{"example. 30 IN DNAME ads.example."}, blocked: "start.ads.example", bad: true},
 		{name: "dname target", rrs: []string{"example. 30 IN DNAME blocked.test."}, blocked: "start.blocked.test"},
 		{name: "https alias", rrs: []string{"start.example. 30 IN HTTPS 0 ads.example."}, typ: 65, blocked: "ads.example"},
+		{name: "svcb alias", rrs: []string{"start.example. 30 IN SVCB 0 ads.example."}, typ: 64, blocked: "ads.example"},
 		{name: "https service", rrs: []string{"start.example. 30 IN HTTPS 1 ads.example."}, typ: 65},
 		{name: "unrelated additional", extra: []string{"other.example. 30 IN CNAME ads.example."}},
 		{name: "unrelated answer", rrs: []string{"other.example. 30 IN CNAME ads.example."}},
@@ -89,6 +90,44 @@ func TestAliasDepth(t *testing.T) {
 	require.NoError(t, e)
 	_, e = p.InspectResponse(b, name, true)
 	assert.Error(t, e)
+	m.Answer = m.Answer[:16]
+	b, e = m.Pack()
+	require.NoError(t, e)
+	result, e := p.InspectResponse(b, name, true)
+	require.NoError(t, e)
+	assert.Equal(t, 16, result.Links)
+}
+
+func TestExplicitBlockModes(t *testing.T) {
+	for _, tc := range []struct {
+		mode          string
+		typ           uint16
+		code, answers int
+		value         string
+	}{
+		{"nxdomain", 1, 3, 0, ""}, {"nodata", 1, 0, 0, ""}, {"refused", 1, 5, 0, ""},
+		{"sinkhole", 1, 0, 1, "192.0.2.1"}, {"sinkhole", 28, 0, 1, "2001:db8::1"}, {"sinkhole", 65, 0, 0, ""},
+	} {
+		q := new(dns.Msg)
+		q.SetQuestion("blocked.test.", tc.typ)
+		wire, e := q.Pack()
+		require.NoError(t, e)
+		var request dnswire.Message
+		require.NoError(t, dnswire.ParseRequest(wire, &request))
+		out := make([]byte, 65535)
+		n, e := policy.BuildBlocked(out, &request, policy.Settings{Mode: tc.mode, TTL: 7, SinkholeIPv4: "192.0.2.1", SinkholeIPv6: "2001:db8::1"})
+		require.NoError(t, e)
+		var got dns.Msg
+		require.NoError(t, got.Unpack(out[:n]))
+		assert.Equal(t, tc.code, got.Rcode)
+		require.Len(t, got.Answer, tc.answers)
+		if tc.value != "" {
+			assert.Contains(t, got.Answer[0].String(), tc.value)
+		} else if tc.code != 5 {
+			require.Len(t, got.Ns, 1)
+			assert.EqualValues(t, 7, got.Ns[0].(*dns.SOA).Minttl)
+		}
+	}
 }
 func TestResponseActionsAndPause(t *testing.T) {
 	now := time.Now()

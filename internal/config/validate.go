@@ -41,9 +41,13 @@ func Validate(c Config) error {
 		endpoints = append(endpoints, c.Naming.Resolver)
 	}
 	for i, a := range endpoints {
+		field := fmt.Sprintf("dns.upstreams[%d]", i)
+		if i == len(c.DNS.Upstreams) {
+			field = "naming.resolver"
+		}
 		endpoint, err := netip.ParseAddrPort(a)
 		if err != nil || endpoint.Port() == 0 || endpoint.Addr().Unmap().IsUnspecified() || endpoint.Addr().Unmap().IsMulticast() {
-			return fmt.Errorf("dns.upstreams[%d]: expected unicast literal IP and nonzero port", i)
+			return fmt.Errorf("%s: expected unicast literal IP and nonzero port", field)
 		}
 		for _, listen := range c.DNS.Listen {
 			listener, _ := netip.ParseAddrPort(listen) // validated above
@@ -56,7 +60,7 @@ func Validate(c Config) error {
 				local = endpoint.Addr().IsLoopback()
 				addresses, err := net.InterfaceAddrs()
 				if err != nil {
-					return fmt.Errorf("dns.upstreams[%d]: check wildcard listener addresses: %w", i, err)
+					return fmt.Errorf("%s: check wildcard listener addresses: %w", field, err)
 				}
 				for _, address := range addresses {
 					if prefix, err := netip.ParsePrefix(address.String()); err == nil && prefix.Addr().Unmap() == endpoint.Addr().Unmap().WithZone("") {
@@ -66,7 +70,7 @@ func Validate(c Config) error {
 				}
 			}
 			if local {
-				return fmt.Errorf("dns.upstreams[%d]: endpoint points to DNS listener %s", i, listen)
+				return fmt.Errorf("%s: endpoint points to DNS listener %s", field, listen)
 			}
 		}
 	}

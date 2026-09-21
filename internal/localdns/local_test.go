@@ -61,6 +61,8 @@ func TestZones(t *testing.T) {
 	}
 }
 func TestRejectLocalConflictsAndLoops(t *testing.T) {
+	_, err := localdns.Build([]localdns.Zone{{Name: "home.arpa"}}, []localdns.Record{{Name: "home.arpa", Type: "CNAME", Value: "elsewhere.test"}})
+	assert.Error(t, err, "CNAME cannot coexist with zone apex SOA")
 	for _, records := range [][]localdns.Record{
 		{{Name: "a.home.arpa", Type: "CNAME", Value: "b.home.arpa"}, {Name: "b.home.arpa", Type: "CNAME", Value: "a.home.arpa"}},
 		{{Name: "a.home.arpa", Type: "CNAME", Value: "b.home.arpa"}, {Name: "a.home.arpa", Type: "A", Value: "192.168.1.2"}},

@@ -52,12 +52,19 @@ func discover(ctx context.Context, v *View, a netip.Addr) Name {
 	return n
 }
 func hostsName(path string, a netip.Addr) (string, error) {
+	info, e := os.Stat(path)
+	if e != nil {
+		return "", e
+	}
+	if !info.Mode().IsRegular() || info.Size() > 1<<20 {
+		return "", fmt.Errorf("hosts source must be a regular file at most 1 MiB")
+	}
 	f, e := os.Open(path)
 	if e != nil {
 		return "", e
 	}
 	defer f.Close()
-	info, e := f.Stat()
+	info, e = f.Stat()
 	if e != nil {
 		return "", e
 	}

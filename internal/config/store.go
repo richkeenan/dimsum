@@ -174,8 +174,12 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 			return s.fail(fmt.Errorf("dns/admin/paths change requires explicit service restart"))
 		}
 	}
-	// Local-data behavior is a task-9 consumer: never report unsupported records active.
+	// Compile every request-visible producer before staging the recovery unit.
 	local, err := localdns.Build(c.Zones, c.Records)
+	if err != nil {
+		return s.fail(err)
+	}
+	names, err := clients.NewView(c.Naming, c.Clients, local.Names())
 	if err != nil {
 		return s.fail(err)
 	}
@@ -293,10 +297,6 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	}
 	err = dir.Sync()
 	_ = dir.Close()
-	if err != nil {
-		return s.fail(err)
-	}
-	names, err := clients.NewView(c.Naming, c.Clients, local.Names())
 	if err != nil {
 		return s.fail(err)
 	}

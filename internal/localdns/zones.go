@@ -63,6 +63,9 @@ func Build(zones []Zone, records []Record) (*Zones, error) {
 				records = append(records, Record{Name: Reverse(a), Type: "PTR", Value: r.Name, TTL: r.TTL})
 			}
 		case "CNAME", "PTR":
+			if zone := z.zone(r.Name); r.Type == "CNAME" && zone != nil && zone.Name == r.Name {
+				return nil, fmt.Errorf("CNAME conflicts with zone apex SOA")
+			}
 			r.Value, e = normalized(r.Value)
 			if e != nil {
 				return nil, e

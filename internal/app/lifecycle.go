@@ -11,6 +11,7 @@ import (
 
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/resolve"
 	"github.com/richkeenan/dimsum/internal/transport"
 	"github.com/richkeenan/dimsum/internal/upstream"
@@ -66,7 +67,7 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	if err := config.Validate(c); err != nil {
 		return err
 	}
-	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0) {
+	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || c.Naming != (clients.Settings{})) {
 		return fmt.Errorf("service: policy configuration requires StartManaged")
 	}
 	endpoints := make([]netip.AddrPort, len(c.DNS.Upstreams))
