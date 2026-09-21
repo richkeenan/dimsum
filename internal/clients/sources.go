@@ -20,19 +20,20 @@ func discover(ctx context.Context, v *View, a netip.Addr) Name {
 	now := time.Now()
 	n := Name{Address: a, Source: "unknown", Updated: now, Expires: now.Add(time.Minute), Negative: true, Fresh: true}
 	if v.settings.HostsFile != "" {
+		n.Source = "hosts"
 		name, e := hostsName(v.settings.HostsFile, a)
 		if e != nil {
 			n.Error = e.Error()
 		}
 		if name != "" {
 			n.Name = name
-			n.Source = "hosts"
 			n.Negative = false
 			n.Expires = now.Add(5 * time.Minute)
 			return n
 		}
 	}
 	if v.settings.Resolver != "" {
+		n.Source = "router-ptr"
 		name, ttl, e := routerPTR(ctx, v.settings.Resolver, a)
 		if e != nil {
 			n.Error = e.Error()
@@ -40,7 +41,6 @@ func discover(ctx context.Context, v *View, a netip.Addr) Name {
 		}
 		if name != "" {
 			n.Name = name
-			n.Source = "router-ptr"
 			n.Negative = false
 			if ttl > 300 {
 				ttl = 300

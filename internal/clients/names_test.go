@@ -107,6 +107,7 @@ func TestRouterPTRIsAsyncAndNegativeCached(t *testing.T) {
 	missing := netip.MustParseAddr("fd00::3")
 	m.Observe(missing)
 	require.Eventually(t, func() bool { return m.Get(missing).Negative }, time.Second, time.Millisecond)
+	assert.Equal(t, "router-ptr", m.Get(missing).Source)
 	select {
 	case request := <-u.Requests():
 		var q dns.Msg
