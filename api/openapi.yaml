@@ -120,6 +120,11 @@ paths:
         - {name: client, in: query, description: Literal observed IPv4 or IPv6 address without zone, schema: {type: string}}
         - {name: outcome, in: query, schema: {$ref: '#/components/schemas/Outcome'}}
         - {name: qtype, in: query, description: 'DNS type mnemonic, decimal 1–65535, or TYPE<number>', schema: {type: string}}
+        - {name: boot_id, in: query, description: 'Exact process boot identity; required with rule_id or upstream_id', schema: {type: string, minLength: 1, maxLength: 128}}
+        - {name: generation, in: query, description: 'Canonical uint32 decimal configuration generation; required with rule_id or upstream_id', schema: {type: string, pattern: '^(0|[1-9][0-9]*)$'}}
+        - {name: rule_id, in: query, description: 'Canonical uint32 decimal rule number, scoped by boot_id and generation', schema: {type: string, pattern: '^(0|[1-9][0-9]*)$'}}
+        - {name: upstream_id, in: query, description: 'Canonical uint16 decimal upstream number, scoped by boot_id and generation because endpoints can change on reload', schema: {type: string, pattern: '^(0|[1-9][0-9]*)$'}}
+        - {name: source_id, in: query, description: 'Exact archived source identity, at most 512 UTF-8 bytes. Legacy or oversized identities are unavailable, never inferred from descriptions.', schema: {type: string, minLength: 1, maxLength: 512}}
       responses:
         '200':
           description: Retained query page
@@ -446,6 +451,7 @@ components:
         duration_us: {$ref: '#/components/schemas/Decimal'}
         generation: {$ref: '#/components/schemas/Decimal'}
         rule_id: {$ref: '#/components/schemas/Decimal'}
+        source_id: {type: string, description: 'Exact archived source identity; empty when unavailable (including legacy history and identities exceeding 512 bytes)'}
         upstream_id: {$ref: '#/components/schemas/Decimal'}
         flags: {type: integer, minimum: 0, maximum: 4294967295, description: 'Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block'}
     HistoryQueries:

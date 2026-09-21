@@ -215,7 +215,17 @@ export function queryParameters(
   cursor?: string,
 ): URLSearchParams {
   const p = new URLSearchParams({ limit: "100" });
-  for (const key of ["name", "client", "outcome", "qtype"])
+  for (const key of [
+    "name",
+    "client",
+    "outcome",
+    "qtype",
+    "boot_id",
+    "generation",
+    "rule_id",
+    "source_id",
+    "upstream_id",
+  ])
     if (filters[key]?.trim()) p.set(key, filters[key].trim());
   if (cursor) p.set("cursor", cursor);
   return p;

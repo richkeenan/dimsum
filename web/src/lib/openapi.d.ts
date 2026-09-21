@@ -349,6 +349,16 @@ export interface paths {
           outcome?: components["schemas"]["Outcome"];
           /** @description DNS type mnemonic, decimal 1–65535, or TYPE<number> */
           qtype?: string;
+          /** @description Exact process boot identity; required with rule_id or upstream_id */
+          boot_id?: string;
+          /** @description Canonical uint32 decimal configuration generation; required with rule_id or upstream_id */
+          generation?: string;
+          /** @description Canonical uint32 decimal rule number, scoped by boot_id and generation */
+          rule_id?: string;
+          /** @description Canonical uint16 decimal upstream number, scoped by boot_id and generation because endpoints can change on reload */
+          upstream_id?: string;
+          /** @description Exact archived source identity, at most 512 UTF-8 bytes. Legacy or oversized identities are unavailable, never inferred from descriptions. */
+          source_id?: string;
         };
         header?: never;
         path?: never;
@@ -1296,6 +1306,8 @@ export interface components {
       duration_us: components["schemas"]["Decimal"];
       generation: components["schemas"]["Decimal"];
       rule_id: components["schemas"]["Decimal"];
+      /** @description Exact archived source identity; empty when unavailable (including legacy history and identities exceeding 512 bytes) */
+      source_id?: string;
       upstream_id: components["schemas"]["Decimal"];
       /** @description Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block */
       flags: number;

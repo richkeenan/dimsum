@@ -36,7 +36,7 @@ func TestWriterReplayAndIndependentSnapshot(t *testing.T) {
 	ctx := context.Background()
 	events := []stats.QueryEvent{event(1), event(2)}
 	s := stats.Snapshot{Version: 4, Sequence: 4, Admitted: 4, Dropped: 2}
-	o := BatchOptions{Snapshot: &s, Rules: []RuleVersion{{1, 2, "block a"}}, Aliases: map[uint64][]byte{1: {1, 'b', 0}}}
+	o := BatchOptions{Snapshot: &s, Rules: []RuleVersion{{1, 2, "block a", ""}}, Aliases: map[uint64][]byte{1: {1, 'b', 0}}}
 	require.NoError(t, d.WriteBatch(ctx, "boot", events, o))
 	require.NoError(t, d.WriteBatch(ctx, "boot", events, o))
 	small := stats.Snapshot{Version: 1, Admitted: 1}
@@ -65,8 +65,8 @@ func TestWriterRollbackImmutableAndCommitRecovery(t *testing.T) {
 	d, err := Open(path)
 	require.NoError(t, err)
 	ctx := context.Background()
-	require.NoError(t, d.WriteBatch(ctx, "b", []stats.QueryEvent{event(1)}, BatchOptions{Rules: []RuleVersion{{1, 2, "original"}}}))
-	err = d.WriteBatch(ctx, "b", []stats.QueryEvent{event(2)}, BatchOptions{Rules: []RuleVersion{{1, 2, "changed"}}})
+	require.NoError(t, d.WriteBatch(ctx, "b", []stats.QueryEvent{event(1)}, BatchOptions{Rules: []RuleVersion{{1, 2, "original", ""}}}))
+	err = d.WriteBatch(ctx, "b", []stats.QueryEvent{event(2)}, BatchOptions{Rules: []RuleVersion{{1, 2, "changed", ""}}})
 	require.Error(t, err)
 	// Inject failure after detail insertion, at rollup write, to test atomicity.
 	_, err = d.write.Exec(`CREATE TRIGGER fail_rollup BEFORE INSERT ON rollups BEGIN SELECT RAISE(ABORT,'fixture'); END`)

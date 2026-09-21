@@ -17,8 +17,8 @@ func TestRuleHistoryBootIsolation(t *testing.T) {
 	ctx := context.Background()
 	a, b := event(1), event(1)
 	b.Timestamp += int64(10 * 24 * time.Hour / time.Microsecond)
-	require.NoError(t, d.WriteBatch(ctx, "old", []stats.QueryEvent{a}, BatchOptions{Rules: []RuleVersion{{1, 2, "old explanation"}}}))
-	require.NoError(t, d.WriteBatch(ctx, "new", []stats.QueryEvent{b}, BatchOptions{Rules: []RuleVersion{{1, 2, "new explanation"}}}))
+	require.NoError(t, d.WriteBatch(ctx, "old", []stats.QueryEvent{a}, BatchOptions{Rules: []RuleVersion{{1, 2, "old explanation", ""}}}))
+	require.NoError(t, d.WriteBatch(ctx, "new", []stats.QueryEvent{b}, BatchOptions{Rules: []RuleVersion{{1, 2, "new explanation", ""}}}))
 	p, err := d.Query(ctx, QueryOptions{Start: testStart, End: testStart.Add(11 * 24 * time.Hour)})
 	require.NoError(t, err)
 	require.Len(t, p.Rows, 2)
@@ -65,7 +65,7 @@ func TestMigrationV1AmbiguousRulesAndPendingSnapshot(t *testing.T) {
 	}
 	var version, sequence int
 	require.NoError(t, d.read.QueryRow("PRAGMA user_version").Scan(&version))
-	assert.Equal(t, 2, version)
+	assert.Equal(t, 3, version)
 	require.NoError(t, d.read.QueryRow("SELECT snapshot_sequence FROM writer_state WHERE boot_id='a'").Scan(&sequence))
 	assert.Equal(t, 2, sequence)
 	require.NoError(t, d.Close())

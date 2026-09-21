@@ -55,6 +55,19 @@ export default function Queries({
     setCursors([""]);
   }, [range]);
   const query = queryParameters(filters, cursors.at(-1));
+  function filterIdentity(
+    row: Row,
+    key: "rule_id" | "upstream_id" | "source_id",
+  ) {
+    const next = { ...filters, [key]: text(row[key]) };
+    if (key !== "source_id") {
+      next.boot_id = text(row.boot_id);
+      next.generation = text(row.generation);
+    }
+    setFilters(next);
+    setDraft(next);
+    setCursors([""]);
+  }
   const state = useResource<Page>(
     "queries?" + range + "&" + query,
     refresh + tick,
@@ -69,7 +82,17 @@ export default function Queries({
           setCursors([""]);
         }}
       >
-        {["name", "client", "outcome", "qtype"].map((key) => (
+        {[
+          "name",
+          "client",
+          "outcome",
+          "qtype",
+          "source_id",
+          "rule_id",
+          "upstream_id",
+          "boot_id",
+          "generation",
+        ].map((key) => (
           <label key={key}>
             {key === "qtype" ? "Type" : key === "name" ? "Exact name" : key}
             {key === "outcome" ? (
@@ -105,6 +128,10 @@ export default function Queries({
           Clear
         </Button>
       </form>
+      <p className="muted">
+        Rule and upstream IDs require boot ID and generation. Click an ID in a
+        row to capture its scope. Source IDs match exact archived identities.
+      </p>
       <div className="toolbar">
         <span role="status">
           {selected ? "Paused while inspecting" : connection}
@@ -168,13 +195,50 @@ export default function Queries({
                   </span>
                 ),
               },
-              { key: "rule_id", label: "Rule ID" },
+              {
+                key: "rule_id",
+                label: "Rule ID",
+                render: (r) => (
+                  <button
+                    className="text-button"
+                    onClick={() => filterIdentity(r, "rule_id")}
+                  >
+                    {text(r.rule_id)}
+                  </button>
+                ),
+              },
+              {
+                key: "source_id",
+                label: "Source ID",
+                render: (r) =>
+                  r.source_id ? (
+                    <button
+                      className="text-button"
+                      onClick={() => filterIdentity(r, "source_id")}
+                    >
+                      {text(r.source_id)}
+                    </button>
+                  ) : (
+                    "Unavailable"
+                  ),
+              },
               {
                 key: "duration_us",
                 label: "Time (ms)",
                 render: (r) => microsecondsToMS(r.duration_us),
               },
-              { key: "upstream_id", label: "Upstream ID" },
+              {
+                key: "upstream_id",
+                label: "Upstream ID",
+                render: (r) => (
+                  <button
+                    className="text-button"
+                    onClick={() => filterIdentity(r, "upstream_id")}
+                  >
+                    {text(r.upstream_id)}
+                  </button>
+                ),
+              },
               { key: "generation", label: "Generation" },
             ]}
           />

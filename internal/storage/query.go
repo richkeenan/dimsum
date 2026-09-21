@@ -16,6 +16,7 @@ type Cursor struct {
 	Ceiling   int64
 }
 type QueryOptions struct {
+	HistoryFilters
 	Start, End time.Time // Half-open UTC instants; maximum 366 days.
 	Limit      int       // Default 100, maximum 500.
 	Cursor     *Cursor
@@ -30,6 +31,7 @@ type Row struct {
 	Event           stats.QueryEvent
 	Alias           []byte
 	RuleDescription string
+	SourceID        string
 }
 type Page struct {
 	Rows     []Row
@@ -49,6 +51,9 @@ func validateWindow(start, end time.Time) error {
 // pages. Cursors are only valid with the original filters and window.
 func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 	p := Page{Rows: []Row{}}
+	if err := o.HistoryFilters.Validate(); err != nil {
+		return p, err
+	}
 	if err := validateWindow(o.Start, o.End); err != nil {
 		return p, err
 	}
@@ -79,9 +84,12 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 			return p, errors.New("invalid cursor")
 		}
 	}
-	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,'') FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
+	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,''),COALESCE(r.source_id,'') FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
 	query += " AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')"
 	args := []any{o.Start.UnixMicro(), o.End.UnixMicro(), ceiling}
+	clause, filterArgs := o.HistoryFilters.sql()
+	query += clause
+	args = append(args, filterArgs...)
 	if len(o.Domain) > 0 {
 		query += " AND e.domain_id=(SELECT id FROM domains WHERE name=?)"
 		args = append(args, o.Domain)
@@ -112,7 +120,7 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 		var r Row
 		var client, name []byte
 		e := &r.Event
-		if err = rows.Scan(&r.ID, &r.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &r.Alias, &r.RuleDescription); err != nil {
+		if err = rows.Scan(&r.ID, &r.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &r.Alias, &r.RuleDescription, &r.SourceID); err != nil {
 			rows.Close()
 			return p, err
 		}

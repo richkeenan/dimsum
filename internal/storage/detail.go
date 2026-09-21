@@ -20,10 +20,10 @@ func (d *DB) QueryByID(ctx context.Context, id int64) (Row, error) {
 	defer cancel()
 	var client, name []byte
 	e := &row.Event
-	err := d.read.QueryRowContext(ctx, `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,'')
+	err := d.read.QueryRowContext(ctx, `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,''),COALESCE(r.source_id,'')
  FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id
  LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id
- WHERE e.id=? AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')`, id).Scan(&row.ID, &row.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &row.Alias, &row.RuleDescription)
+ WHERE e.id=? AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')`, id).Scan(&row.ID, &row.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &row.Alias, &row.RuleDescription, &row.SourceID)
 	if err != nil {
 		return row, err
 	}

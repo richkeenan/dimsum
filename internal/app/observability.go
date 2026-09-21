@@ -22,6 +22,8 @@ type ruleNote struct {
 	generation, id uint32
 	size           int
 	text           [4096]byte
+	source         [storage.MaxSourceIDBytes]byte
+	sourceLen      int
 }
 type aliasNote struct {
 	sequence uint64
@@ -173,6 +175,11 @@ func (o *observability) noteRule(generation, id uint32, result transport.Result)
 	n.generation = generation
 	n.id = id
 	n.size = 0
+	// Never truncate an exact identity into a different, valid source ID.
+	n.sourceLen = 0
+	if len(result.Rule.SourceID) <= len(n.source) {
+		n.sourceLen = copy(n.source[:], result.Rule.SourceID)
+	}
 	write := func(key, value string) {
 		for _, part := range []string{key, ": ", value, "\n"} {
 			n.size += copy(n.text[n.size:], part)
@@ -208,7 +215,7 @@ func (o *observability) enrich(events []stats.QueryEvent) (storage.BatchOptions,
 		seen[key] = true
 		n := &o.rules[ruleSlot(e.Generation, e.RuleID)]
 		if n.generation == e.Generation && n.id == e.RuleID {
-			out.Rules = append(out.Rules, storage.RuleVersion{Generation: e.Generation, RuleID: e.RuleID, Description: string(n.text[:n.size])})
+			out.Rules = append(out.Rules, storage.RuleVersion{Generation: e.Generation, RuleID: e.RuleID, Description: string(n.text[:n.size]), SourceID: string(n.source[:n.sourceLen])})
 		}
 	}
 	return out, nil

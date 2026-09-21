@@ -17,6 +17,7 @@ const MaxBatch = 512
 type RuleVersion struct {
 	Generation, RuleID uint32
 	Description        string
+	SourceID           string // Exact archived identity; empty means unavailable.
 }
 
 // BatchOptions supplies an optional independent cumulative snapshot and immutable
@@ -53,7 +54,7 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		}
 	}
 	for _, r := range o.Rules {
-		if len(r.Description) > 4096 {
+		if len(r.Description) > 4096 || len(r.SourceID) > MaxSourceIDBytes {
 			return errors.New("rule description too large")
 		}
 	}
@@ -77,14 +78,14 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		return err
 	}
 	for _, r := range o.Rules {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions VALUES(?,?,?,?) ON CONFLICT DO NOTHING", boot, r.Generation, r.RuleID, r.Description); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions(boot_id,generation,rule_id,description,source_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", boot, r.Generation, r.RuleID, r.Description, r.SourceID); err != nil {
 			return err
 		}
-		var text string
-		if err = tx.QueryRowContext(ctx, "SELECT description FROM rule_versions WHERE boot_id=? AND generation=? AND rule_id=?", boot, r.Generation, r.RuleID).Scan(&text); err != nil {
+		var text, source string
+		if err = tx.QueryRowContext(ctx, "SELECT description,source_id FROM rule_versions WHERE boot_id=? AND generation=? AND rule_id=?", boot, r.Generation, r.RuleID).Scan(&text, &source); err != nil {
 			return err
 		}
-		if text != r.Description {
+		if text != r.Description || source != r.SourceID {
 			return errors.New("immutable rule version conflict")
 		}
 	}

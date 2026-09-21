@@ -68,6 +68,7 @@ type historyQuery struct {
 	DurationUS       string    `json:"duration_us"`
 	Generation       string    `json:"generation"`
 	RuleID           string    `json:"rule_id"`
+	SourceID         string    `json:"source_id"`
 	UpstreamID       string    `json:"upstream_id"`
 	Flags            uint32    `json:"flags"`
 }
@@ -289,7 +290,8 @@ func queryFingerprint(o storage.QueryOptions) string {
 		Domain, Client []byte
 		Outcome        *stats.Outcome
 		QType          *uint16
-	}{o.Start.Format(time.RFC3339Nano), o.End.Format(time.RFC3339Nano), o.Domain, o.Client, o.Outcome, o.QType}
+		Filters        storage.HistoryFilters
+	}{o.Start.Format(time.RFC3339Nano), o.End.Format(time.RFC3339Nano), o.Domain, o.Client, o.Outcome, o.QType, o.HistoryFilters}
 	b, _ := json.Marshal(value)
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
@@ -380,7 +382,7 @@ func presentationWire(value string) ([]byte, error) {
 }
 func (h *historyProvider) queryOptions(q url.Values) (storage.QueryOptions, error) {
 	var o storage.QueryOptions
-	if e := checkParams(q, "limit", "cursor", "name", "client", "outcome", "qtype"); e != nil {
+	if e := checkParams(q, "limit", "cursor", "name", "client", "outcome", "qtype", "boot_id", "generation", "rule_id", "source_id", "upstream_id"); e != nil {
 		return o, e
 	}
 	params := make(url.Values, len(q))
@@ -445,6 +447,44 @@ func (h *historyProvider) queryOptions(q url.Values) (storage.QueryOptions, erro
 		}
 		o.QType = &n
 	}
+	for _, key := range []string{"boot_id", "source_id", "generation", "rule_id", "upstream_id"} {
+		values, ok := params[key]
+		if !ok {
+			continue
+		}
+		value := values[0]
+		if value == "" {
+			return o, invalid(key + " must not be empty")
+		}
+		switch key {
+		case "boot_id":
+			o.BootID = value
+		case "source_id":
+			o.SourceID = value
+		default:
+			bits := 32
+			if key == "upstream_id" {
+				bits = 16
+			}
+			n, err := strconv.ParseUint(value, 10, bits)
+			if err != nil || strconv.FormatUint(n, 10) != value {
+				return o, invalid(key + " must be a canonical unsigned decimal")
+			}
+			v := uint32(n)
+			switch key {
+			case "generation":
+				o.Generation = &v
+			case "rule_id":
+				o.RuleID = &v
+			case "upstream_id":
+				u := uint16(n)
+				o.UpstreamID = &u
+			}
+		}
+	}
+	if err := o.HistoryFilters.Validate(); err != nil {
+		return o, invalid(err.Error())
+	}
 	if cursor != nil {
 		if cursor.Filter != queryFingerprint(o) {
 			return o, invalid("cursor does not match filters or range")
@@ -472,7 +512,7 @@ func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	if qtype == "" {
 		qtype = "TYPE" + strconv.Itoa(int(e.QType))
 	}
-	return historyQuery{ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
+	return historyQuery{ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
 }
 func (h *historyProvider) Queries(ctx context.Context, q url.Values) (any, error) {
 	if e := h.available(); e != nil {
