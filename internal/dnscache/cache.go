@@ -31,6 +31,8 @@ type Cache struct {
 // On a miss dst is unchanged. No arena slice or reference escapes a lookup.
 type CacheResult struct {
 	Hit, Negative bool
+	Stale         bool
+	StaleAge      uint64
 	Length        int
 }
 type ShardStats struct{ Entries, OccupiedBytes, ArenaBytes, Slots, Evictions int }
@@ -171,6 +173,20 @@ func (c *Cache) Get(k Key, request *dnswire.Message, dst []byte, now time.Time) 
 }
 
 func (c *Cache) get(k Key, request *dnswire.Message, dst []byte, now time.Time, hash uint64) CacheResult {
+	return c.lookup(k, request, dst, now, hash, 0, 0)
+}
+
+// Lookup also copies eligible stale positive answers. maxStale is measured in
+// seconds since original expiry, never since a hit. Zero disables stale use.
+// Each expired RR is returned with staleTTL; negative entries never go stale.
+func (c *Cache) Lookup(k Key, request *dnswire.Message, dst []byte, now time.Time, maxStale, staleTTL uint32) CacheResult {
+	if !k.valid() {
+		return CacheResult{}
+	}
+	return c.lookup(k, request, dst, now, c.hash(&k), maxStale, staleTTL)
+}
+
+func (c *Cache) lookup(k Key, request *dnswire.Message, dst []byte, now time.Time, hash uint64, maxStale, staleTTL uint32) CacheResult {
 	if !k.valid() {
 		return CacheResult{}
 	}
@@ -195,7 +211,12 @@ func (c *Cache) get(k Key, request *dnswire.Message, dst []byte, now time.Time, 
 		if !valid {
 			return CacheResult{}
 		}
-		if elapsed >= uint64(x.lifetime) {
+		stale := elapsed >= uint64(x.lifetime)
+		staleAge := uint64(0)
+		if stale {
+			staleAge = elapsed - uint64(x.lifetime)
+		}
+		if stale && (x.flags&negative != 0 || staleAge >= uint64(maxStale)) {
 			s.remove(i)
 			return CacheResult{}
 		}
@@ -217,10 +238,13 @@ func (c *Cache) get(k Key, request *dnswire.Message, dst []byte, now time.Time, 
 			if elapsed < uint64(ttl) {
 				left = ttl - uint32(elapsed)
 			}
+			if stale {
+				left = staleTTL
+			}
 			binary.BigEndian.PutUint32(dst[off:], left)
 		}
 		x.flags |= referenced
-		return CacheResult{Hit: true, Negative: x.flags&negative != 0, Length: int(x.messageLen)}
+		return CacheResult{Hit: true, Negative: x.flags&negative != 0, Stale: stale, StaleAge: staleAge, Length: int(x.messageLen)}
 	}
 	return CacheResult{}
 }
