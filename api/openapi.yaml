@@ -18,6 +18,22 @@ info:
 security:
   - session: []
 paths:
+  /api/v1/config/backups/{id}:
+    get:
+      summary: Download the most recent completed configuration backup
+      description: Owner-authenticated archive including necessary credentials. Expires at the next backup or restart.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Configuration archive
+          content:
+            application/x-tar:
+              schema: {type: string, format: binary}
+        default: {$ref: '#/components/responses/Error'}
   /session:
     post:
       security: []

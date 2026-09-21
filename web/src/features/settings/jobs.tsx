@@ -16,6 +16,7 @@ export default function Jobs() {
   const [tick, setTick] = useState(0);
   const state = useResource<{ items: Job[] }>("jobs", tick);
   const [kind, setKind] = useState("backup");
+  const [endpoint, setEndpoint] = useState("");
   const [archive, setArchive] = useState<{
     name: string;
     data: string;
@@ -62,7 +63,9 @@ export default function Jobs() {
       const input =
         kind === "restore"
           ? { revision: archive!.revision, archive: archive!.data }
-          : {};
+          : kind === "upstream-probe"
+            ? { endpoint: endpoint.trim() }
+            : {};
       const job = await api.send<Job>("jobs", "POST", { kind, input });
       setStarted(job.id);
       setTick((t) => t + 1);
@@ -75,7 +78,7 @@ export default function Jobs() {
   return (
     <>
       <section className="panel inset">
-        <h2>Configuration backup and restore</h2>
+        <h2>Backup, restore and diagnostics</h2>
         <p>
           Archives contain authoritative configuration and required secrets.
           Query history and downloaded lists are excluded. Downloads remain
@@ -102,8 +105,24 @@ export default function Jobs() {
               <option value="backup">Create backup</option>
               <option value="restore">Restore archive</option>
               <option value="refresh">Refresh lists</option>
+              <option value="upstream-probe">Probe configured upstream</option>
+              <option value="support-bundle">
+                Create redacted support bundle
+              </option>
             </select>
           </label>
+          {kind === "upstream-probe" && (
+            <label>
+              Configured upstream (IP:port)
+              <Input
+                value={endpoint}
+                onChange={(e) => setEndpoint(e.target.value)}
+                required
+                placeholder="1.1.1.1:53"
+                disabled={busy}
+              />
+            </label>
+          )}
           {kind === "restore" && (
             <label>
               Configuration archive (.tar, up to 2 MiB)

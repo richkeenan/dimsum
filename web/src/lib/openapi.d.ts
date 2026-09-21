@@ -1187,9 +1187,15 @@ export interface paths {
         content: {
           "application/json": {
             /** @enum {string} */
-            kind: "refresh" | "backup" | "restore";
+            kind:
+              | "refresh"
+              | "backup"
+              | "restore"
+              | "upstream-probe"
+              | "support-bundle";
+            /** @description For upstream-probe use UpstreamProbeInput; for support-bundle use SupportBundleInput. Diagnostic input is capped at 4 KiB. Validation failures are reported in the asynchronous job status. */
             input?: unknown;
-          };
+          } & (unknown & unknown);
         };
       };
       responses: {
@@ -1251,6 +1257,81 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    UpstreamProbeInput: {
+      /** @description Literal IP:port currently configured in the active primary or fallback pool; arbitrary destinations are rejected */
+      endpoint: string;
+      /** @default 1000 */
+      timeout_ms: number;
+    };
+    /**
+     * @description One isolated root NS check using the validated DNS exchange engine. UDP
+     *     may retry over TCP on truncation, at most two attempts within one deadline.
+     *     Live configuration, cache, and upstream circuit state are unchanged. All
+     *     actual attempts count once as non-client health probes; no client traffic
+     *     or history event is recorded. Response errors/timeouts are completed
+     *     diagnostic findings; parent cancellation fails the job.
+     */
+    UpstreamProbeResult: {
+      endpoint: string;
+      generation: components["schemas"]["Decimal"];
+      /** @constant */
+      name: ".";
+      /** @constant */
+      qtype: "NS";
+      /** @enum {string} */
+      state: "healthy" | "responding_error" | "no_valid_response" | "cancelled";
+      /** @description A validated DNS response was observed */
+      responding: boolean;
+      /** @description This isolated check returned NOERROR; not a live circuit-state claim */
+      healthy: boolean;
+      rcode?: number;
+      /**
+       * @description Omitted when validated response transport is unavailable
+       * @enum {string}
+       */
+      transport?: "udp" | "tcp";
+      attempts: components["schemas"]["Decimal"];
+      diagnostic_probes: components["schemas"]["Decimal"];
+      duration_us: components["schemas"]["Decimal"];
+      timeout_ms: number;
+      error?: string;
+      /** Format: date-time */
+      checked_at: string;
+    };
+    /** @description History is omitted by default. Explicit opt-in also requires an explicit positive UTC from/to range of at most 24 hours. Range and limit are rejected without opt-in. */
+    SupportBundleInput: {
+      /** @default false */
+      include_query_history: boolean;
+      /** Format: date-time */
+      from?: string;
+      /** Format: date-time */
+      to?: string;
+      /** @default 50 */
+      limit: number;
+    };
+    /** @description JSON job result capped at 256 KiB; oversized bundles fail explicitly. No secret file contents or archive. URL userinfo, query values, and fragments are redacted, including diagnostic error messages. */
+    SupportBundleResult: {
+      /** @constant */
+      format: "dimsum-support-v1";
+      /** Format: date-time */
+      generated_at: string;
+      build: {
+        go_version: string;
+        os: string;
+        architecture: string;
+        /** @description Embedded Go module version or unknown; development builds can report '(devel)' */
+        version: string;
+        revision?: string;
+        modified?: string;
+      };
+      /** @description Redacted settings inspection including saved/active status */
+      configuration: Record<string, never>;
+      diagnostics: Record<string, never>;
+      /** @constant */
+      contains_secrets: false;
+      contains_query_history: boolean;
+      query_history: components["schemas"]["HistoryQueries"] | null;
+    };
     /** @description Unsigned integer encoded as a decimal string, including values beyond JavaScript exact integers. */
     Decimal: string;
     HistoryRange: {
@@ -1441,6 +1522,7 @@ export interface components {
       state: "running" | "succeeded" | "failed";
       /** Format: date-time */
       created: string;
+      /** @description Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult. Other job kinds retain their documented result shapes. */
       result?: unknown;
       error?: string;
     };
