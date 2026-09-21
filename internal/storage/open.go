@@ -20,6 +20,9 @@ import (
 //go:embed migrations/001_initial.sql
 var initialSchema string
 
+//go:embed migrations/002_boot_coverage.sql
+var bootCoverageSchema string
+
 type DB struct {
 	write     *sql.DB
 	read      *sql.DB
@@ -34,13 +37,16 @@ type Status struct {
 	LastError   string
 	LostDetails uint64
 	LastSuccess time.Time
+	Backlogged  bool
 }
 
 func (d *DB) Status() Status { d.statusMu.Lock(); defer d.statusMu.Unlock(); return d.status }
 
 // Open opens a file-backed store. Each connection disables mmap and has an 8 MiB
 // maximum page cache (24 MiB across one writer and two reader connections).
-// It performs schema work only, never a history scan or bulk heap restoration.
+// Normal startup performs schema validation only, without bulk heap restoration.
+// A v1 upgrade additionally attributes retained legacy rules inside SQLite, in a
+// bounded migration transaction; a failed migration leaves the prior version.
 func Open(path string) (*DB, error) {
 	if path == "" || path == ":memory:" {
 		return nil, errors.New("storage requires a file path")
@@ -88,7 +94,7 @@ func Open(path string) (*DB, error) {
 	if err = w.QueryRowContext(ctx, "PRAGMA user_version").Scan(&schema); err != nil {
 		return fail(err)
 	}
-	if schema > 1 {
+	if schema > 2 {
 		return fail(fmt.Errorf("unsupported storage schema %d", schema))
 	}
 	if schema == 0 {
@@ -104,14 +110,39 @@ func Open(path string) (*DB, error) {
 			return fail(e)
 		}
 	}
+	if schema < 2 {
+		tx, e := w.BeginTx(ctx, nil)
+		if e != nil {
+			return fail(e)
+		}
+		if _, e = tx.ExecContext(ctx, bootCoverageSchema); e != nil {
+			tx.Rollback()
+			return fail(fmt.Errorf("invalid storage schema migration: %w", e))
+		}
+		var pending bool
+		if e = tx.QueryRowContext(ctx, retentionBacklogSQL).Scan(&pending); e != nil {
+			tx.Rollback()
+			return fail(e)
+		}
+		if _, e = tx.ExecContext(ctx, "UPDATE storage_meta SET value=? WHERE key='retention_pending'", pending); e != nil {
+			tx.Rollback()
+			return fail(e)
+		}
+		if e = tx.Commit(); e != nil {
+			return fail(e)
+		}
+	}
 	// Validate the versioned schema without scanning retained history. A claimed
 	// version with missing/incompatible tables must fail startup, not the first DNS
 	// consumer flush.
-	check, err := w.PrepareContext(ctx, `SELECT e.sequence,e.alias,d.name,c.address,r.description,u.h7,k.count,s.snapshot_watermark,s.lost_details,m.value FROM query_events e,domains d,clients c,rule_versions r,rollups u,rankings_hour k,writer_state s,storage_meta m WHERE 0`)
+	check, err := w.PrepareContext(ctx, `SELECT e.sequence,e.alias,d.name,c.address,r.boot_id,r.description,u.h7,k.count,s.snapshot_watermark,s.snapshot_sequence,s.coverage_start,s.coverage_end,s.lost_details,m.value FROM query_events e,domains d,clients c,rule_versions r,rollups u,rankings_hour k,writer_state s,storage_meta m WHERE 0`)
 	if err != nil {
 		return fail(fmt.Errorf("invalid storage schema: %w", err))
 	}
 	check.Close()
+	if err = w.QueryRowContext(ctx, "SELECT value FROM storage_meta WHERE key='retention_pending'").Scan(&d.status.Backlogged); err != nil {
+		return fail(err)
+	}
 	q.Add("_pragma", "query_only(1)")
 	u.RawQuery = q.Encode()
 	d.read, err = sql.Open("sqlite", u.String())

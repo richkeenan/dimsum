@@ -57,7 +57,7 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			return errors.New("rule description too large")
 		}
 	}
-	if o.Snapshot != nil && (o.Snapshot.Version > math.MaxInt64 || o.Snapshot.Sequence > math.MaxInt64) {
+	if o.Snapshot != nil && (o.Snapshot.Version > math.MaxInt64 || o.Snapshot.Sequence > math.MaxInt64 || o.Snapshot.ObservedEnd < o.Snapshot.ObservedStart) {
 		return errors.New("snapshot watermark overflow")
 	}
 	d.mu.Lock()
@@ -77,11 +77,11 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		return err
 	}
 	for _, r := range o.Rules {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions VALUES(?,?,?) ON CONFLICT DO NOTHING", r.Generation, r.RuleID, r.Description); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions VALUES(?,?,?,?) ON CONFLICT DO NOTHING", boot, r.Generation, r.RuleID, r.Description); err != nil {
 			return err
 		}
 		var text string
-		if err = tx.QueryRowContext(ctx, "SELECT description FROM rule_versions WHERE generation=? AND rule_id=?", r.Generation, r.RuleID).Scan(&text); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT description FROM rule_versions WHERE boot_id=? AND generation=? AND rule_id=?", boot, r.Generation, r.RuleID).Scan(&text); err != nil {
 			return err
 		}
 		if text != r.Description {
@@ -103,9 +103,11 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		return err
 	}
 	defer rank.Close()
-	var detailCutoff int64
-	if err = tx.QueryRowContext(ctx, "SELECT value FROM storage_meta WHERE key='detail_cutoff'").Scan(&detailCutoff); err != nil {
-		return err
+	var cutoffs [4]int64
+	for i, key := range []string{"detail_cutoff", "minute_cutoff", "hour_cutoff", "day_cutoff"} {
+		if err = tx.QueryRowContext(ctx, "SELECT value FROM storage_meta WHERE key=?", key).Scan(&cutoffs[i]); err != nil {
+			return err
+		}
 	}
 	for _, e := range events {
 		if e.Sequence <= watermark {
@@ -117,34 +119,42 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			}
 		}
 		watermark = e.Sequence
-		// Retained windows must not be repopulated by delayed historical batches.
-		if e.Timestamp < detailCutoff {
-			continue
+		if e.Timestamp == math.MaxInt64 {
+			return errors.New("event timestamp overflow")
 		}
-		domain, er := dimension(ctx, tx, "domains", "name", e.QName[:e.QNameLength])
-		if er != nil {
-			return er
-		}
-		client, er := dimension(ctx, tx, "clients", "address", e.Client[:])
-		if er != nil {
-			return er
-		}
-		if _, err = insert.ExecContext(ctx, boot, e.Sequence, e.Timestamp, e.Duration, domain, client, e.QType, e.QClass, e.Outcome, e.RCode, e.UpstreamID, e.Generation, e.RuleID, e.Flags, o.Aliases[e.Sequence]); err != nil {
-			return err
+		// Event timestamps alone do not certify continuous observation. In
+		// particular a delayed event must not bridge the gap to this boot's start.
+		// Each tier has its own retention boundary; expired detail must not
+		// discard a still-retained hourly or daily observation.
+		if e.Timestamp >= cutoffs[0] {
+			domain, er := dimension(ctx, tx, "domains", "name", e.QName[:e.QNameLength])
+			if er != nil {
+				return er
+			}
+			client, er := dimension(ctx, tx, "clients", "address", e.Client[:])
+			if er != nil {
+				return er
+			}
+			if _, err = insert.ExecContext(ctx, boot, e.Sequence, e.Timestamp, e.Duration, domain, client, e.QType, e.QClass, e.Outcome, e.RCode, e.UpstreamID, e.Generation, e.RuleID, e.Flags, o.Aliases[e.Sequence]); err != nil {
+				return err
+			}
 		}
 		var hist [8]int
 		hist[stats.HistogramIndex(e.Duration)] = 1
-		for _, width := range []time.Duration{time.Minute, time.Hour, 24 * time.Hour} {
+		for i, width := range []time.Duration{time.Minute, time.Hour, 24 * time.Hour} {
+			if stats.UTCBucket(e.Timestamp, width)+width.Microseconds() <= cutoffs[i+1] {
+				continue
+			}
 			if _, err = roll.ExecContext(ctx, int64(width/time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, 1, e.Duration, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7]); err != nil {
 				return err
 			}
 		}
-		if e.Outcome != stats.AdmissionRejected {
+		if e.Outcome != stats.AdmissionRejected && stats.UTCBucket(e.Timestamp, time.Hour)+time.Hour.Microseconds() > cutoffs[2] {
 			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 0, e.Client[:]); err != nil {
 				return err
 			}
 		}
-		if e.Outcome == stats.PolicyBlock {
+		if e.Outcome == stats.PolicyBlock && stats.UTCBucket(e.Timestamp, time.Hour)+time.Hour.Microseconds() > cutoffs[2] {
 			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 1, e.QName[:e.QNameLength]); err != nil {
 				return err
 			}
@@ -158,8 +168,13 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		if er != nil {
 			return er
 		}
-		if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET snapshot_watermark=?,snapshot=?,incomplete=MAX(incomplete,?) WHERE boot_id=? AND snapshot_watermark<?", o.Snapshot.Version, blob, o.Snapshot.Dropped > 0, boot, o.Snapshot.Version); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET snapshot_watermark=?,snapshot_sequence=?,snapshot=?,incomplete=MAX(incomplete,?) WHERE boot_id=? AND snapshot_watermark<=?", o.Snapshot.Version, o.Snapshot.Sequence, blob, o.Snapshot.Dropped > 0, boot, o.Snapshot.Version); err != nil {
 			return err
+		}
+		if o.Snapshot.ObservedEnd > o.Snapshot.ObservedStart {
+			if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET coverage_start=MIN(COALESCE(coverage_start,?),?),coverage_end=MAX(COALESCE(coverage_end,?),?) WHERE boot_id=? AND snapshot_watermark=?", o.Snapshot.ObservedStart, o.Snapshot.ObservedStart, o.Snapshot.ObservedEnd, o.Snapshot.ObservedEnd, boot, o.Snapshot.Version); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET lost_details=MAX(lost_details,?) WHERE boot_id=?", o.LostDetails, boot); err != nil {
@@ -200,6 +215,9 @@ func (d *DB) Run(ctx context.Context, c *stats.Collector, boot string, enrich ..
 	defer ticker.Stop()
 	maintenance := time.NewTicker(time.Minute)
 	defer maintenance.Stop()
+	catchup := time.NewTicker(20 * time.Millisecond)
+	defer catchup.Stop()
+	maintenanceDue := true
 	batch := make([]stats.QueryEvent, 0, MaxBatch)
 	var lost uint64
 	flush := func(flushCtx context.Context) error {
@@ -237,15 +255,37 @@ func (d *DB) Run(ctx context.Context, c *stats.Collector, boot string, enrich ..
 		case <-ticker.C:
 			_ = flush(ctx)
 		case <-maintenance.C:
-			if err := d.Retain(ctx, time.Now(), d.Retention()); err != nil {
+			maintenanceDue = true
+		case <-catchup.C:
+			if !maintenanceDue {
+				continue
+			}
+			// Explicitly yield to queued ingestion between maintenance batches.
+			for n := len(c.Events()); n > 0 && len(batch) < MaxBatch; n-- {
+				select {
+				case e := <-c.Events():
+					batch = append(batch, e)
+				default:
+				}
+			}
+			if len(batch) > 0 {
+				_ = flush(ctx)
+			}
+			budget, cancelBudget := context.WithTimeout(ctx, 100*time.Millisecond)
+			err := d.Retain(budget, time.Now(), d.Retention())
+			cancelBudget()
+			if err != nil {
 				d.statusMu.Lock()
 				d.status.LastError = fmt.Sprintf("retention: %v", err)
 				d.statusMu.Unlock()
 			}
-			if _, err := d.Checkpoint(ctx); err != nil {
-				d.statusMu.Lock()
-				d.status.LastError = fmt.Sprintf("checkpoint: %v", err)
-				d.statusMu.Unlock()
+			maintenanceDue = err != nil || d.Status().Backlogged
+			if !maintenanceDue {
+				if _, err := d.Checkpoint(ctx); err != nil {
+					d.statusMu.Lock()
+					d.status.LastError = fmt.Sprintf("checkpoint: %v", err)
+					d.statusMu.Unlock()
+				}
 			}
 		case <-ctx.Done():
 			final, cancel := context.WithTimeout(context.Background(), 3*time.Second)

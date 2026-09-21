@@ -16,8 +16,8 @@ func DefaultRetention() Retention {
 // without restarting the consumer. Expanding retention cannot restore old rows.
 func (d *DB) SetRetention(r Retention) error {
 	for _, v := range []time.Duration{r.Detail, r.Minute, r.Hour, r.Day} {
-		if v <= 0 || v > 366*24*time.Hour {
-			return errors.New("retention must be between zero and 366 days")
+		if v <= 0 || v > 3650*24*time.Hour {
+			return errors.New("retention must be positive and at most 3650 days")
 		}
 	}
 	d.statusMu.Lock()
@@ -31,10 +31,17 @@ func (d *DB) Retention() Retention { d.statusMu.Lock(); defer d.statusMu.Unlock(
 // Retain performs one short transaction, deleting at most 512 rows per table or
 // resolution and 512 orphan dimensions. Call repeatedly to catch up. Cutoffs mark
 // data unavailable as soon as expiry is requested; physical cleanup is incremental.
-func (d *DB) Retain(ctx context.Context, now time.Time, r Retention) error {
+func (d *DB) Retain(ctx context.Context, now time.Time, r Retention) (retErr error) {
+	defer func() {
+		if retErr != nil {
+			d.statusMu.Lock()
+			d.status.Backlogged = true
+			d.statusMu.Unlock()
+		}
+	}()
 	for _, v := range []time.Duration{r.Detail, r.Minute, r.Hour, r.Day} {
-		if v <= 0 || v > 366*24*time.Hour {
-			return errors.New("retention must be between zero and 366 days")
+		if v <= 0 || v > 3650*24*time.Hour {
+			return errors.New("retention must be positive and at most 3650 days")
 		}
 	}
 	d.mu.Lock()
@@ -76,11 +83,36 @@ func (d *DB) Retain(ctx context.Context, now time.Time, r Retention) error {
 	}
 	// Supply explanations with event batches; unreferenced preregistration may
 	// be removed by maintenance. Referenced historical versions remain immutable.
-	if _, err = tx.ExecContext(ctx, "DELETE FROM rule_versions WHERE rowid IN (SELECT rowid FROM rule_versions r WHERE NOT EXISTS(SELECT 1 FROM query_events e WHERE e.generation=r.generation AND e.rule_id=r.rule_id) LIMIT 512)"); err != nil {
+	if _, err = tx.ExecContext(ctx, "DELETE FROM rule_versions WHERE rowid IN (SELECT rowid FROM rule_versions r WHERE NOT EXISTS(SELECT 1 FROM query_events e WHERE e.boot_id=r.boot_id AND e.generation=r.generation AND e.rule_id=r.rule_id) LIMIT 512)"); err != nil {
 		return err
 	}
-	return tx.Commit()
+	var pending bool
+	if err = tx.QueryRowContext(ctx, retentionBacklogSQL).Scan(&pending); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE storage_meta SET value=? WHERE key='retention_pending'", pending); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	d.statusMu.Lock()
+	d.status.Backlogged = pending
+	d.statusMu.Unlock()
+	return nil
 }
+
+// Indexed existence checks report remaining work, rather than treating a full
+// deletion batch as proof of either completion or backlog.
+const retentionBacklogSQL = `SELECT
+ EXISTS(SELECT 1 FROM query_events WHERE timestamp<(SELECT value FROM storage_meta WHERE key='detail_cutoff'))
+ OR EXISTS(SELECT 1 FROM rollups WHERE resolution=60 AND bucket<=(SELECT value-60000000 FROM storage_meta WHERE key='minute_cutoff'))
+ OR EXISTS(SELECT 1 FROM rollups WHERE resolution=3600 AND bucket<=(SELECT value-3600000000 FROM storage_meta WHERE key='hour_cutoff'))
+ OR EXISTS(SELECT 1 FROM rollups WHERE resolution=86400 AND bucket<=(SELECT value-86400000000 FROM storage_meta WHERE key='day_cutoff'))
+ OR EXISTS(SELECT 1 FROM rankings_hour WHERE bucket<=(SELECT value-3600000000 FROM storage_meta WHERE key='hour_cutoff'))
+ OR EXISTS(SELECT 1 FROM domains d WHERE NOT EXISTS(SELECT 1 FROM query_events e WHERE e.domain_id=d.id))
+ OR EXISTS(SELECT 1 FROM clients c WHERE NOT EXISTS(SELECT 1 FROM query_events e WHERE e.client_id=c.id))
+ OR EXISTS(SELECT 1 FROM rule_versions r WHERE NOT EXISTS(SELECT 1 FROM query_events e WHERE e.boot_id=r.boot_id AND e.generation=r.generation AND e.rule_id=r.rule_id))`
 
 type Checkpoint struct {
 	Busy, WALPages, CheckpointedPages   int

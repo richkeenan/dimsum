@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
@@ -62,9 +63,14 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	view, err := d.read.BeginTx(ctx, nil)
+	if err != nil {
+		return p, err
+	}
+	defer view.Rollback()
 	var ceiling int64
 	if o.Cursor == nil {
-		if err := d.read.QueryRowContext(ctx, "SELECT COALESCE(MAX(id),0) FROM query_events").Scan(&ceiling); err != nil {
+		if err := view.QueryRowContext(ctx, "SELECT COALESCE(MAX(id),0) FROM query_events").Scan(&ceiling); err != nil {
 			return p, err
 		}
 	} else {
@@ -73,7 +79,7 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 			return p, errors.New("invalid cursor")
 		}
 	}
-	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,'') FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
+	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,'') FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
 	query += " AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')"
 	args := []any{o.Start.UnixMicro(), o.End.UnixMicro(), ceiling}
 	if len(o.Domain) > 0 {
@@ -98,7 +104,7 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 	}
 	query += " ORDER BY e.timestamp DESC,e.id DESC LIMIT ?"
 	args = append(args, o.Limit+1)
-	rows, err := d.read.QueryContext(ctx, query, args...)
+	rows, err := view.QueryContext(ctx, query, args...)
 	if err != nil {
 		return p, err
 	}
@@ -125,16 +131,43 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 		last := p.Rows[len(p.Rows)-1]
 		p.Next = &Cursor{last.Event.Timestamp, last.ID, ceiling}
 	}
-	p.Complete, err = d.complete(ctx, o.Start, "detail_cutoff")
+	p.Complete, err = complete(ctx, view, o.Start, o.End, "detail_cutoff")
 	return p, err
 }
 
 // Completeness is deliberately conservative: any recorded process/detail loss
 // makes retained event-derived views incomplete, never an apparently exact chart.
-func (d *DB) complete(ctx context.Context, start time.Time, cutoff string) (bool, error) {
+func complete(ctx context.Context, tx *sql.Tx, start, end time.Time, cutoff string) (bool, error) {
+	if end.After(time.Now()) {
+		return false, nil
+	}
 	var complete bool
-	err := d.read.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM writer_state WHERE incomplete<>0 OR lost_details<>0) AND ?>=(SELECT value FROM storage_meta WHERE key=?)`, start.UnixMicro(), cutoff).Scan(&complete)
-	return complete, err
+	err := tx.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM writer_state WHERE incomplete<>0 OR lost_details<>0 OR snapshot_sequence>event_watermark) AND ?>=(SELECT value FROM storage_meta WHERE key=?)`, start.UnixMicro(), cutoff).Scan(&complete)
+	if err != nil || !complete {
+		return false, err
+	}
+	rows, err := tx.QueryContext(ctx, "SELECT coverage_start,coverage_end FROM writer_state WHERE coverage_end>? AND coverage_start<? ORDER BY coverage_start", start.UnixMicro(), end.UnixMicro())
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	covered := start.UnixMicro()
+	for rows.Next() {
+		var s, e int64
+		if err = rows.Scan(&s, &e); err != nil {
+			return false, err
+		}
+		if s > covered {
+			return false, nil
+		}
+		if e > covered {
+			covered = e
+		}
+		if covered >= end.UnixMicro() {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 type Summary struct {
@@ -153,6 +186,11 @@ func (d *DB) Summary(ctx context.Context, start, end time.Time) (Summary, error)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	source := "SELECT outcome,1 AS n,duration FROM query_events WHERE timestamp>=? AND timestamp<? AND timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')"
+	view, err := d.read.BeginTx(ctx, nil)
+	if err != nil {
+		return s, err
+	}
+	defer view.Rollback()
 	cutoff := "detail_cutoff"
 	args := []any{stats.AdmissionRejected, stats.PolicyBlock, stats.FreshCache, stats.StaleCache, stats.AdmissionRejected, stats.AdmissionRejected, start.UnixMicro(), end.UnixMicro()}
 	for _, v := range []struct {
@@ -166,11 +204,11 @@ func (d *DB) Summary(ctx context.Context, start, end time.Time) (Summary, error)
 			break
 		}
 	}
-	err := d.read.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN outcome<>? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome<>? THEN duration ELSE 0 END),0) FROM (`+source+`)`, args...).Scan(&s.Admitted, &s.Blocked, &s.FreshCache, &s.StaleCache, &s.Rejected, &s.Duration)
+	err = view.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN outcome<>? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome<>? THEN duration ELSE 0 END),0) FROM (`+source+`)`, args...).Scan(&s.Admitted, &s.Blocked, &s.FreshCache, &s.StaleCache, &s.Rejected, &s.Duration)
 	if err != nil {
 		return s, err
 	}
-	s.Complete, err = d.complete(ctx, start, cutoff)
+	s.Complete, err = complete(ctx, view, start, end, cutoff)
 	return s, err
 }
 
@@ -202,6 +240,11 @@ func (d *DB) Rankings(ctx context.Context, start, end time.Time) (stats.Rankings
 	defer cancel()
 	s, e := start.UnixMicro(), end.UnixMicro()
 	hourly := stats.UTCBucket(s, time.Hour) == s && stats.UTCBucket(e, time.Hour) == e
+	view, err := d.read.BeginTx(ctx, nil)
+	if err != nil {
+		return r, err
+	}
+	defer view.Rollback()
 	for kind := 0; kind < 2; kind++ {
 		var q string
 		var args []any
@@ -215,7 +258,7 @@ func (d *DB) Rankings(ctx context.Context, start, end time.Time) (stats.Rankings
 			q = "SELECT d.name,COUNT(*) n FROM query_events e JOIN domains d ON d.id=e.domain_id WHERE timestamp>=? AND timestamp<? AND outcome=? AND timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff') GROUP BY d.name ORDER BY n DESC,d.name LIMIT 10"
 			args = []any{s, e, stats.PolicyBlock}
 		}
-		rows, err := d.read.QueryContext(ctx, q, args...)
+		rows, err := view.QueryContext(ctx, q, args...)
 		if err != nil {
 			return r, err
 		}
@@ -243,8 +286,7 @@ func (d *DB) Rankings(ctx context.Context, start, end time.Time) (stats.Rankings
 	if hourly {
 		cutoff = "hour_cutoff"
 	}
-	var err error
-	r.Complete, err = d.complete(ctx, start, cutoff)
+	r.Complete, err = complete(ctx, view, start, end, cutoff)
 	return r, err
 }
 
@@ -287,7 +329,12 @@ func (d *DB) Timeseries(ctx context.Context, start, end time.Time, width time.Du
 	for t := s; t < e; t += width.Microseconds() {
 		r.Points = append(r.Points, Point{Timestamp: t})
 	}
-	rows, err := d.read.QueryContext(ctx, "SELECT bucket,outcome,count,duration,h0,h1,h2,h3,h4,h5,h6,h7 FROM rollups WHERE resolution=? AND bucket>=? AND bucket<? AND bucket+resolution*1000000>(SELECT value FROM storage_meta WHERE key=?) ORDER BY bucket", int64(width/time.Second), s, e, cutoff)
+	view, err := d.read.BeginTx(ctx, nil)
+	if err != nil {
+		return r, err
+	}
+	defer view.Rollback()
+	rows, err := view.QueryContext(ctx, "SELECT bucket,outcome,count,duration,h0,h1,h2,h3,h4,h5,h6,h7 FROM rollups WHERE resolution=? AND bucket>=? AND bucket<? AND bucket+resolution*1000000>(SELECT value FROM storage_meta WHERE key=?) ORDER BY bucket", int64(width/time.Second), s, e, cutoff)
 	if err != nil {
 		return r, err
 	}
@@ -316,6 +363,6 @@ func (d *DB) Timeseries(ctx context.Context, start, end time.Time, width time.Du
 	if err != nil {
 		return r, err
 	}
-	r.Complete, err = d.complete(ctx, start, cutoff)
+	r.Complete, err = complete(ctx, view, start, end, cutoff)
 	return r, err
 }

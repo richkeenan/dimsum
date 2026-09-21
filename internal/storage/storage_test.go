@@ -123,7 +123,7 @@ func TestQueryKeysetFiltersCancellationAndRanking(t *testing.T) {
 	assert.Equal(t, uint64(6), r.Clients[0].Count)
 	require.Len(t, r.BlockedDomains, 1)
 	assert.Equal(t, uint64(5), r.BlockedDomains[0].Count)
-	assert.True(t, r.Complete)
+	assert.False(t, r.Complete) // Events alone do not observe the rest of the hour.
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
 	_, err = d.Query(canceled, o)
@@ -154,7 +154,7 @@ func TestRetentionAndNoResurrection(t *testing.T) {
 	s, err := d.Timeseries(ctx, testStart, testStart.Add(time.Hour), time.Hour)
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), s.Points[0].Outcomes[stats.PolicyBlock])
-	assert.True(t, s.Complete)
+	assert.False(t, s.Complete) // Retention preserves counts, not unobserved coverage.
 	m, err := d.Timeseries(ctx, testStart, testStart.Add(time.Minute), time.Minute)
 	require.NoError(t, err)
 	assert.Zero(t, m.Points[0].Outcomes[stats.PolicyBlock])
