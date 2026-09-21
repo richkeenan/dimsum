@@ -71,6 +71,47 @@ func multiline(n *yaml.Node) bool {
 	return false
 }
 
+// yaml.Node positions stop at values, not at their following comment lines.
+// Without a source span for comments, inserting before a trailing item/footer
+// comment would give it to the new entry. Reject that ambiguous boundary. A
+// dedented following section's head comments remain outside the sequence.
+func appendBoundary(source []byte, n *yaml.Node, pos int) error {
+	var footComment func(*yaml.Node) bool
+	footComment = func(node *yaml.Node) bool {
+		if node.FootComment != "" {
+			return true
+		}
+		for _, child := range node.Content {
+			if footComment(child) {
+				return true
+			}
+		}
+		return false
+	}
+	if n.FootComment != "" || len(n.Content) > 0 && footComment(n.Content[len(n.Content)-1]) {
+		return fmt.Errorf("append: trailing comment requires explicit text edit")
+	}
+	for pos < len(source) {
+		end := bytes.IndexByte(source[pos:], '\n')
+		if end < 0 {
+			end = len(source) - pos
+		}
+		line := source[pos : pos+end]
+		text := bytes.TrimSpace(line)
+		if len(text) > 0 {
+			if text[0] != '#' {
+				break
+			}
+			indent := len(line) - len(bytes.TrimLeft(line, " \t"))
+			if indent >= n.Column-1 {
+				return fmt.Errorf("append: trailing comment requires explicit text edit")
+			}
+		}
+		pos += end + 1
+	}
+	return nil
+}
+
 // Append inserts only newly encoded text; existing collections are never
 // serialized. Block collections are supported; ambiguous shapes fail explicitly.
 func (d *Document) Append(path []string, value any) (*Document, error) {
@@ -124,6 +165,9 @@ func (d *Document) Append(path []string, value any) (*Document, error) {
 		return nil, fmt.Errorf("append: requires block sequence")
 	}
 	pos := lineStart(d.source, lastLine(n)+1)
+	if err := appendBoundary(d.source, n, pos); err != nil {
+		return nil, err
+	}
 	text := indentItem(b, n.Column-1)
 	out := append([]byte(nil), d.source[:pos]...)
 	if pos > 0 && out[pos-1] != '\n' {

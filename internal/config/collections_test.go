@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/richkeenan/dimsum/internal/lists"
@@ -8,6 +10,56 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAppendTrailingCommentsPreserveOwnership(t *testing.T) {
+	entry := "rules:\n  - id: first\n    kind: exact\n    action: deny\n    pattern: old.test\n    enabled: true\n"
+	value := CustomRule{ID: "second", Kind: policy.Exact, Action: "deny", Pattern: "new.test", Enabled: true}
+	for _, comment := range []string{"    # trailing item comment\n", "  # sequence footer\n", "\n    # separated trailing comment\n"} {
+		t.Run(strings.TrimSpace(comment), func(t *testing.T) {
+			source := []byte(storeFixture + entry + comment + "\n# Client section\nclients: []\n")
+			path, _ := fixtureStore(t)
+			require.NoError(t, os.WriteFile(path, source, 0600))
+			saved, err := os.ReadFile(path)
+			require.NoError(t, err)
+			d, err := Parse(saved)
+			require.NoError(t, err)
+			candidate, err := d.Append([]string{"rules"}, value)
+			require.ErrorContains(t, err, "comment")
+			assert.Nil(t, candidate)
+			assert.Equal(t, source, d.Bytes(), "rejected edits preserve exact bytes")
+			saved, err = os.ReadFile(path)
+			require.NoError(t, err)
+			assert.Equal(t, source, saved)
+		})
+	}
+	t.Run("next section head comment", func(t *testing.T) {
+		suffix := "\n# Client section\nclients: []\n"
+		source := []byte(storeFixture + entry + suffix)
+		path, _ := fixtureStore(t)
+		require.NoError(t, os.WriteFile(path, source, 0600))
+		saved, err := os.ReadFile(path)
+		require.NoError(t, err)
+		d, err := Parse(saved)
+		require.NoError(t, err)
+		candidate, err := d.Append([]string{"rules"}, value)
+		require.NoError(t, err)
+		inserted := "  - id: second\n    kind: exact\n    action: deny\n    pattern: new.test\n    enabled: true\n"
+		assert.Equal(t, storeFixture+entry+inserted+suffix, string(candidate.Bytes()))
+		require.NoError(t, Publish(path, d.Revision(), candidate))
+		saved, err = os.ReadFile(path)
+		require.NoError(t, err)
+		assert.Equal(t, storeFixture+entry+inserted+suffix, string(saved))
+		assert.Equal(t, source, d.Bytes(), "original document stays immutable")
+		root := candidate.root.Content[0]
+		for i := 0; i < len(root.Content); i += 2 {
+			if root.Content[i].Value == "clients" {
+				assert.Equal(t, "# Client section", root.Content[i].HeadComment)
+				return
+			}
+		}
+		require.FailNow(t, "clients section missing")
+	})
+}
 
 const storeFixture = `# owner header
 version: 1
