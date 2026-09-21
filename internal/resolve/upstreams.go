@@ -79,6 +79,7 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 // Close is called after transport workers have stopped; active leases still
 // release normally if an owner closes earlier.
 func (p *Pipeline) Close() error {
+	p.cache.flights.close()
 	m := &p.upstreams
 	m.mu.Lock()
 	defer m.mu.Unlock()

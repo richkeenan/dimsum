@@ -29,6 +29,7 @@ func TestCacheDefaultsAndBounds(t *testing.T) {
 		{"shards", 1, 16},
 		{"max_negative_ttl_seconds", 1, 86400},
 		{"stale_ttl_seconds", 1, 300},
+		{"max_stale_seconds", 0, 4294967295},
 	} {
 		for _, value := range []int{-1, 0, tc.min - 1, tc.min, tc.max, tc.max + 1} {
 			t.Run(fmt.Sprintf("%s/%d", tc.field, value), func(t *testing.T) {

@@ -119,8 +119,8 @@ func Validate(c Config) error {
 	default:
 		return fmt.Errorf("cache.stale_mode: expected immediate, failure-only, or off")
 	}
-	if c.Cache.MaxStaleSeconds < 0 {
-		return fmt.Errorf("cache.max_stale_seconds: must be nonnegative")
+	if c.Cache.MaxStaleSeconds < 0 || uint64(c.Cache.MaxStaleSeconds) > uint64(^uint32(0)) {
+		return fmt.Errorf("cache.max_stale_seconds: must be 0..4294967295 seconds")
 	}
 	return validatePolicy(c)
 }
