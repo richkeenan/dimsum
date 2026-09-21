@@ -10,13 +10,7 @@ import {
   type Mutation,
 } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import {
-  Completeness,
-  DataTable,
-  Details,
-  ErrorNotice,
-  Resource,
-} from "@/components/data";
+import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,28 +26,38 @@ type Field = {
   type?: "number" | "boolean";
   options?: string[];
   optional?: boolean;
+  help?: string;
+  placeholder?: string;
 };
 const fields: Record<string, Field[]> = {
   lists: [
-    { key: "id", label: "Source ID" },
-    { key: "url", label: "Source URL" },
+    {
+      key: "url",
+      label: "List URL",
+      placeholder: "https://example.com/blocklist.txt",
+      help: "A direct HTTPS link to a downloadable domain blocklist.",
+    },
     {
       key: "dialect",
       label: "Format",
-      options: ["domains", "hosts", "adblock"],
+      options: ["domains", "hosts", "dns-adblock"],
+      help: "Domains: one domain per line. Hosts: IP and domain pairs. DNS adblock: domain-only blocking syntax such as ||example.com^. Browser filter rules are not supported.",
     },
     { key: "domain_kind", label: "Domain scope", options: ["exact", "suffix"] },
     { key: "enabled", label: "Enabled", type: "boolean" },
   ],
   rules: [
-    { key: "id", label: "Rule ID" },
     {
       key: "kind",
       label: "Match type",
       options: ["exact", "suffix", "wildcard", "regex"],
     },
     { key: "action", label: "Action", options: ["deny", "allow"] },
-    { key: "pattern", label: "Pattern" },
+    {
+      key: "pattern",
+      label: "Domain or pattern",
+      placeholder: "ads.example.com",
+    },
     { key: "enabled", label: "Enabled", type: "boolean" },
   ],
   records: [
@@ -61,11 +65,20 @@ const fields: Record<string, Field[]> = {
     {
       key: "type",
       label: "Record type",
-      options: ["A", "AAAA", "CNAME", "PTR", "TXT"],
+      options: ["A", "AAAA", "CNAME", "PTR"],
     },
-    { key: "value", label: "Record value" },
-    { key: "ttl", label: "TTL (seconds)", type: "number" },
-    { key: "auto_ptr", label: "Automatic reverse record", type: "boolean" },
+    {
+      key: "value",
+      label: "Address or target",
+      help: "A: IPv4 address. AAAA: IPv6 address. CNAME and PTR: target hostname.",
+    },
+    { key: "ttl", label: "Cache lifetime (seconds)", type: "number" },
+    {
+      key: "auto_ptr",
+      label: "Create a reverse lookup too",
+      type: "boolean",
+      help: "For A and AAAA records, also resolve the IP address back to this name.",
+    },
   ],
   upstreams: [{ key: "address", label: "Address and port" }],
   clients: [
@@ -74,33 +87,100 @@ const fields: Record<string, Field[]> = {
   ],
 };
 const columns: Record<string, string[]> = {
-  lists: [
-    "id",
-    "enabled",
-    "url",
-    "dialect",
-    "active_enabled",
-    "usable",
-    "rules",
-    "sha256",
-    "error",
-  ],
-  rules: ["id", "kind", "action", "pattern", "enabled"],
+  lists: ["label", "enabled", "rules"],
+  rules: ["pattern", "action", "kind", "enabled"],
   records: ["name", "type", "value", "ttl"],
   upstreams: ["address"],
   clients: ["name", "address"],
 };
 const descriptions: Record<string, string> = {
   lists:
-    "A failed refresh retains the previous active list. Saved changes may still be compiling.",
+    "Block unwanted domains with a trusted list or add your own subscription.",
   rules:
-    "Rules use explicit match types. Exact names never silently include subdomains.",
-  records: "Authoritative local records, aliases, and reverse records.",
+    "Always block or allow a domain. Choose whether the rule also covers subdomains.",
+  records:
+    "Give devices and services on your network an easy-to-remember name.",
   upstreams:
-    "Primary UDP/TCP resolvers. Fallback addresses and timeout policy are available in Settings. This API does not yet provide an upstream probe.",
+    "DNS servers used when an answer is not available locally. Test a server with Probe.",
   clients:
-    "Addresses are DNS-observed identities. Router proxying can combine devices; IPv6 privacy addresses can split one device.",
+    "Name devices to make their activity easier to recognise. Some routers share one address across several devices.",
 };
+const optionLabels: Record<string, string> = {
+  deny: "Block",
+  allow: "Allow",
+  exact: "Exact domain only",
+  suffix: "Domain and subdomains",
+  wildcard: "Wildcard pattern",
+  regex: "Regular expression",
+  domains: "Domain names",
+  hosts: "Hosts file",
+  "dns-adblock": "DNS adblock",
+};
+export function editorDefaults(kind: string): Row {
+  const defaults = Object.fromEntries(
+    fields[kind].map((f) => [
+      f.key,
+      f.type === "boolean" ? true : (f.options?.[0] ?? ""),
+    ]),
+  );
+  if (kind === "lists" || kind === "rules")
+    defaults.id = `${kind.slice(0, -1)}-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  if (kind === "records")
+    Object.assign(defaults, { ttl: 300, auto_ptr: false });
+  return defaults;
+}
+function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
+  const catalog = useResource<Row>("catalog");
+  const [selected, setSelected] = useState<Row>();
+  return (
+    <Resource state={catalog}>
+      <label>
+        Start with a list
+        <select
+          defaultValue=""
+          onChange={(e) => {
+            const item = rows(catalog.data).find(
+              (r) => r.id === e.target.value,
+            );
+            setSelected(item);
+            if (item) choose(item);
+          }}
+        >
+          <option value="">Custom URL</option>
+          {rows(catalog.data).map((item) => (
+            <option
+              key={text(item.id)}
+              value={text(item.id)}
+              disabled={item.available !== true}
+            >
+              {text(item.label)}
+              {item.available !== true
+                ? ` — ${text(item.unavailable_reason)}`
+                : ""}
+            </option>
+          ))}
+        </select>
+        <small>
+          {selected?.description
+            ? text(selected.description)
+            : "Choose a preset to fill in its URL and format, or enter your own below."}
+        </small>
+      </label>
+    </Resource>
+  );
+}
+function ListName({ row }: { row: Row }) {
+  const catalog = useResource<Row>("catalog");
+  const preset = rows(catalog.data).find((item) => item.url === row.url);
+  let label = text(row.url);
+  try {
+    const url = new URL(String(row.url));
+    label = `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`;
+  } catch {
+    /* Keep the returned URL readable even if it cannot be parsed. */
+  }
+  return <span>{preset ? text(preset.label) : label}</span>;
+}
 export default function Configuration({
   kind,
   range,
@@ -120,24 +200,39 @@ export default function Configuration({
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Row>();
+  const revision = normalizeSettings(state.data).revision;
+  const ready = !!revision && !state.loading && !state.error;
+  const configuredClients = collectionRows(state.data);
+  const observedClients = rows(state.data?.observed);
+  const devices = [
+    ...observedClients.map((observed) => ({
+      ...observed,
+      ...configuredClients.find(
+        (client) => client.address === observed.address,
+      ),
+    })),
+    ...configuredClients.filter(
+      (client) =>
+        !observedClients.some(
+          (observed) => observed.address === client.address,
+        ),
+    ),
+  ];
   function open(row?: Row) {
+    if (!ready) return;
+    const defaults = editorDefaults(kind);
     setOriginal(row?.__index === undefined ? undefined : row);
-    setEditRevision(normalizeSettings(state.data).revision);
+    setEditRevision(revision);
     setEditing(
       row
-        ? Object.fromEntries(
-            fields[kind].map((f) => [
-              f.key,
-              row[f.key] ??
-                (f.type === "boolean" ? true : (f.options?.[0] ?? "")),
-            ]),
-          )
-        : Object.fromEntries(
-            fields[kind].map((f) => [
-              f.key,
-              f.type === "boolean" ? true : (f.options?.[0] ?? ""),
-            ]),
-          ),
+        ? {
+            ...defaults,
+            ...(row.id ? { id: row.id } : {}),
+            ...Object.fromEntries(
+              fields[kind].map((f) => [f.key, row[f.key] ?? defaults[f.key]]),
+            ),
+          }
+        : defaults,
     );
     setError(undefined);
   }
@@ -199,20 +294,21 @@ export default function Configuration({
         <Resource state={state}>
           <section className="panel">
             <div className="panel-heading">
-              <h2>Observed clients</h2>
-              <span>Selected range · at most 200 identities</span>
+              <h2>Devices</h2>
+              <Button disabled={!ready} onClick={() => open()}>
+                Name an address
+              </Button>
             </div>
-            {state.data?.observed_available === true ? (
+            {state.data?.observed_available === true || devices.length > 0 ? (
               <>
-                <Completeness meta={state.data.observed as Row} />
-                {(state.data.observed as Row)?.truncated === true && (
+                {(state.data?.observed as Row)?.truncated === true && (
                   <p className="notice">
                     The observed client list is truncated. Narrow the time range
                     to inspect more identities.
                   </p>
                 )}
                 <DataTable
-                  items={rows(state.data.observed)}
+                  items={devices}
                   columns={[
                     {
                       key: "name",
@@ -220,27 +316,30 @@ export default function Configuration({
                       render: (r) => (
                         <span>
                           {text(r.name || r.address)}
-                          <small>{text(r.address)}</small>
+                          {r.name && r.name !== r.address ? (
+                            <small>{text(r.address)}</small>
+                          ) : null}
                         </span>
                       ),
                     },
-                    { key: "name_source", label: "Name source" },
                     {
-                      key: "name_fresh",
-                      label: "Name freshness",
+                      key: "last_seen",
+                      label: "Last seen",
                       render: (r) =>
-                        r.name_fresh === true ? "Current" : "Stale / unknown",
+                        r.last_seen
+                          ? new Date(String(r.last_seen)).toLocaleString()
+                          : "—",
                     },
-                    { key: "last_seen", label: "Last seen" },
                     { key: "count", label: "Queries" },
                     { key: "blocked", label: "Blocked" },
                     {
                       key: "actions",
-                      label: "Name override",
+                      label: "Actions",
                       render: (r) => (
                         <Button
                           size="sm"
                           variant="outline"
+                          disabled={!ready}
                           onClick={() =>
                             open(
                               collectionRows(state.data).find(
@@ -265,90 +364,160 @@ export default function Configuration({
       {error && !editing && (
         <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />
       )}
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>
-            {kind === "clients"
-              ? "Configured friendly names"
-              : "Configured " + kind}
-          </h2>
-          <div className="actions">
-            {kind === "lists" && (
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => operation("jobs", { kind: "refresh" })}
-              >
-                Refresh lists
-              </Button>
-            )}
-            <Button onClick={() => open()}>
+      {kind !== "clients" && (
+        <section className="panel">
+          <div className="panel-heading">
+            <h2>
               {kind === "clients"
-                ? "Name an address"
-                : "Add " +
-                  (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
-            </Button>
+                ? "Configured friendly names"
+                : "Configured " + kind}
+            </h2>
+            <div className="actions">
+              {kind === "lists" && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => operation("jobs", { kind: "refresh" })}
+                >
+                  Refresh lists
+                </Button>
+              )}
+              <Button disabled={!ready} onClick={() => open()}>
+                {kind === "clients"
+                  ? "Name an address"
+                  : "Add " +
+                    (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
+              </Button>
+            </div>
           </div>
-        </div>
-        <Resource state={state} retry={() => setTick((t) => t + 1)}>
-          <DataTable
-            items={collectionRows(state.data).map((r) => {
-              if (kind !== "lists") return r;
-              const source = rows(state.data?.status, "sources").find(
-                (s) => s.id === r.id,
-              );
-              return {
-                ...r,
-                active_enabled: source?.enabled,
-                usable: source?.usable,
-                rules: source?.rules,
-                sha256: source?.sha256,
-                error: source?.error,
-              };
-            })}
-            columns={[
-              ...columns[kind].map((key) => ({
-                key,
-                label: key.replaceAll("_", " "),
-                render: (r: Row) =>
-                  key === "enabled"
-                    ? r.enabled === true
-                      ? "Enabled"
-                      : r.enabled === false
-                        ? "Disabled"
-                        : "Unknown"
-                    : text(r[key]),
-              })),
-              {
-                key: "actions",
-                label: "Actions",
-                render: (r) => (
-                  <div className="actions">
-                    <Button size="sm" variant="outline" onClick={() => open(r)}>
-                      Edit
-                    </Button>
-                  </div>
-                ),
-              },
-            ]}
-            empty={"No " + kind + " returned by the service."}
-          />
-          {kind === "lists" &&
-            rows(state.data).some((r) => r.homepage || r.license) && (
-              <div className="inset">
-                {rows(state.data).map((r) => (
-                  <p key={text(r.id)}>
-                    {text(r.id)} · {text(r.license)} · {text(r.homepage)}
-                  </p>
-                ))}
-              </div>
-            )}
-        </Resource>
-      </section>
+          <Resource state={state} retry={() => setTick((t) => t + 1)}>
+            <DataTable
+              items={collectionRows(state.data).map((r) => {
+                if (kind !== "lists") return r;
+                const source = rows(state.data?.status, "sources").find(
+                  (s) => s.id === r.id,
+                );
+                return {
+                  ...r,
+                  active_enabled: source?.enabled,
+                  usable: source?.usable,
+                  rules: source?.rules,
+                  sha256: source?.sha256,
+                  error: source?.error,
+                };
+              })}
+              columns={[
+                ...columns[kind].map((key) => ({
+                  key,
+                  label:
+                    (
+                      {
+                        label: "List",
+                        enabled: "Status",
+                        rules: "Domains",
+                        pattern: "Domain or pattern",
+                        kind: "Matches",
+                        action: "Action",
+                        ttl: "Lifetime (s)",
+                        name: "Name",
+                        address: "Address",
+                        type: "Type",
+                        value: "Target",
+                      } as Record<string, string>
+                    )[key] ?? key,
+                  render: (r: Row) =>
+                    key === "label" ? (
+                      <ListName row={r} />
+                    ) : key === "enabled" ? (
+                      r.enabled === true ? (
+                        r.error ? (
+                          "Refresh failed"
+                        ) : kind === "lists" && r.usable === false ? (
+                          "Waiting for refresh"
+                        ) : (
+                          "Enabled"
+                        )
+                      ) : r.enabled === false ? (
+                        "Disabled"
+                      ) : (
+                        "Unknown"
+                      )
+                    ) : (
+                      (optionLabels[String(r[key])] ?? text(r[key]))
+                    ),
+                })),
+                {
+                  key: "actions",
+                  label: "Actions",
+                  render: (r) => (
+                    <div className="actions">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!ready}
+                        onClick={() => open(r)}
+                      >
+                        Edit
+                      </Button>
+                      {kind === "upstreams" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            operation("jobs", {
+                              kind: "upstream-probe",
+                              input: { endpoint: r.address },
+                            })
+                          }
+                        >
+                          Probe
+                        </Button>
+                      )}
+                      {kind === "lists" && (
+                        <details>
+                          <summary>Details</summary>
+                          <Details
+                            value={{
+                              URL: r.url,
+                              format: r.dialect,
+                              error: r.error,
+                              ID: r.id,
+                              checksum: r.sha256,
+                            }}
+                          />
+                        </details>
+                      )}
+                    </div>
+                  ),
+                },
+              ]}
+              empty={"No " + kind + " returned by the service."}
+            />
+            {kind === "lists" &&
+              rows(state.data).some((r) => r.homepage || r.license) && (
+                <div className="inset">
+                  {rows(state.data).map((r) => (
+                    <p key={text(r.id)}>
+                      {text(r.id)} · {text(r.license)} · {text(r.homepage)}
+                    </p>
+                  ))}
+                </div>
+              )}
+          </Resource>
+        </section>
+      )}
       {notice && (
         <section className="panel inset" role="status">
-          <h3>Operation result</h3>
-          <Details value={notice} />
+          <p>
+            {notice.kind
+              ? "Operation started. View progress in Backups & jobs."
+              : "Changes saved."}
+          </p>
+          <details>
+            <summary>Technical details</summary>
+            <Details value={notice} />
+          </details>
         </section>
       )}
       {kind === "rules" && <RuleTester />}
@@ -363,10 +532,7 @@ export default function Configuration({
             {original ? "Edit" : "Add"}{" "}
             {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
           </DialogTitle>
-          <DialogDescription>
-            Save against revision {editRevision || "unavailable"}. The service
-            validates before activation.
-          </DialogDescription>
+          <DialogDescription>{descriptions[kind]}</DialogDescription>
           {editing && (
             <form
               onSubmit={(e) => {
@@ -375,6 +541,19 @@ export default function Configuration({
               }}
             >
               <div className="form-grid">
+                {kind === "lists" && !original && (
+                  <CatalogPicker
+                    choose={(item) =>
+                      setEditing({
+                        ...editing,
+                        url: item.url,
+                        dialect: item.dialect,
+                        domain_kind: item.domain_kind,
+                        enabled: item.default_enabled ?? true,
+                      })
+                    }
+                  />
+                )}
                 {fields[kind].map((f) => (
                   <label key={f.key}>
                     {f.label}
@@ -401,12 +580,16 @@ export default function Configuration({
                         }
                       >
                         {f.options.map((o) => (
-                          <option key={o}>{o}</option>
+                          <option key={o} value={o}>
+                            {optionLabels[o] ?? o}
+                          </option>
                         ))}
                       </select>
                     ) : (
                       <Input
                         required={!f.optional}
+                        placeholder={f.placeholder}
+                        min={f.type === "number" ? 0 : undefined}
                         type={f.type === "number" ? "number" : "text"}
                         value={String(editing[f.key] ?? "")}
                         onChange={(e) =>
@@ -420,6 +603,7 @@ export default function Configuration({
                         }
                       />
                     )}
+                    {f.help && <small>{f.help}</small>}
                   </label>
                 ))}
               </div>
@@ -513,7 +697,26 @@ function RuleTester() {
         <Button disabled={busy}>{busy ? "Testing…" : "Test rule"}</Button>
       </form>
       {error && <ErrorNotice error={error} />}{" "}
-      {result && <Details value={result} />}
+      {result && (
+        <div className="notice" role="status">
+          <strong>
+            {(
+              {
+                block: "Blocked",
+                allow: "Allowed by a rule",
+                forward: "Allowed — sent to an upstream server",
+                paused: "Allowed — blocking is paused",
+                local: "Answered by local DNS",
+              } as Record<string, string>
+            )[String((result.decision as Row)?.result)] ?? "Test completed"}
+          </strong>
+          <p>{text(result.normalized || result.name)}</p>
+          <details>
+            <summary>Match details</summary>
+            <Details value={result} />
+          </details>
+        </div>
+      )}
     </section>
   );
 }

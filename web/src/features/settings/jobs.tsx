@@ -8,14 +8,14 @@ import {
   type Settings,
 } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { DataTable, ErrorNotice, Resource } from "@/components/data";
+import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export default function Jobs() {
   const [tick, setTick] = useState(0);
   const state = useResource<{ items: Job[] }>("jobs", tick);
-  const [kind, setKind] = useState("backup");
+  const [kind, setKind] = useState("upstream-probe");
   const [endpoint, setEndpoint] = useState("");
   const [archive, setArchive] = useState<{
     name: string;
@@ -53,20 +53,23 @@ export default function Jobs() {
       setBusy(false);
     }
   }
-  async function start() {
+  async function start(operation = kind) {
     setError(undefined);
     setBusy(true);
     setStarted(undefined);
     try {
-      if (kind === "restore" && !archive)
+      if (operation === "restore" && !archive)
         throw new Error("Select a configuration archive first.");
       const input =
-        kind === "restore"
+        operation === "restore"
           ? { revision: archive!.revision, archive: archive!.data }
-          : kind === "upstream-probe"
+          : operation === "upstream-probe"
             ? { endpoint: endpoint.trim() }
             : {};
-      const job = await api.send<Job>("jobs", "POST", { kind, input });
+      const job = await api.send<Job>("jobs", "POST", {
+        kind: operation,
+        input,
+      });
       setStarted(job.id);
       setTick((t) => t + 1);
     } catch (e) {
@@ -78,12 +81,61 @@ export default function Jobs() {
   return (
     <>
       <section className="panel inset">
-        <h2>Backup, restore and diagnostics</h2>
+        <h2>Back up your configuration</h2>
         <p>
           Archives contain authoritative configuration and required secrets.
           Query history and downloaded lists are excluded. Downloads remain
           available until the next backup or service restart.
         </p>
+        <Button disabled={busy} onClick={() => start("backup")}>
+          {busy ? "Working…" : "Create backup"}
+        </Button>
+        {downloadable && (
+          <p>
+            <a
+              className="text-button"
+              href={backupURL(jobs.find((j) => j.id === downloadable)?.result)}
+              download="dimsum-config.tar"
+            >
+              Download latest backup
+            </a>
+          </p>
+        )}
+      </section>
+      <section className="panel inset">
+        <h2>Restore a backup</h2>
+        <p>
+          Replace the saved configuration with a dimsum archive. The archive is
+          checked before it is applied.
+        </p>
+        <form
+          className="inline-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void start("restore");
+          }}
+        >
+          <label>
+            Configuration archive (.tar, up to 2 MiB)
+            <Input
+              type="file"
+              accept=".tar,application/x-tar"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                void selectFile(file);
+              }}
+            />
+          </label>
+          <Button disabled={busy || !archive}>
+            {busy ? "Working…" : "Validate and restore"}
+          </Button>
+        </form>
+        {archive && <p>{archive.name} is ready to restore.</p>}
+      </section>
+      <details className="panel inset">
+        <summary>Diagnostics and maintenance</summary>
         <form
           className="inline-form"
           onSubmit={(e) => {
@@ -102,8 +154,6 @@ export default function Jobs() {
               }}
               disabled={busy}
             >
-              <option value="backup">Create backup</option>
-              <option value="restore">Restore archive</option>
               <option value="refresh">Refresh lists</option>
               <option value="upstream-probe">Probe configured upstream</option>
               <option value="support-bundle">
@@ -123,55 +173,38 @@ export default function Jobs() {
               />
             </label>
           )}
-          {kind === "restore" && (
-            <label>
-              Configuration archive (.tar, up to 2 MiB)
-              <Input
-                type="file"
-                accept=".tar,application/x-tar"
-                disabled={busy}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  e.target.value = "";
-                  void selectFile(file);
-                }}
-              />
-            </label>
-          )}
-          <Button disabled={busy || (kind === "restore" && !archive)}>
+          <Button disabled={busy}>
             {busy
               ? "Working…"
-              : kind === "restore"
-                ? "Validate and restore"
-                : "Start job"}
+              : kind === "upstream-probe"
+                ? "Test upstream"
+                : kind === "refresh"
+                  ? "Refresh lists"
+                  : "Create support bundle"}
           </Button>
         </form>
-        {kind === "restore" && archive && (
-          <div className="revision">
-            <span>{archive.name}</span>
-            <span>
-              Restore against saved revision <code>{archive.revision}</code>
-            </span>
-          </div>
-        )}
-        {error && <ErrorNotice error={error} />}
-        {started && (
-          <p role="status">
-            Job {started}: {latest?.state ?? "accepted"}
-          </p>
-        )}
-        {latest?.state === "failed" && (
-          <div className="notice danger" role="alert">
-            {latest.error ?? "Job failed. Review the job result."}
-            {latest.kind === "restore" && (
-              <p>
-                Reselect the archive to read the current saved revision before
-                retrying.
-              </p>
-            )}
-          </div>
-        )}
-      </section>
+      </details>
+      {error && <ErrorNotice error={error} />}
+      {started && (
+        <p role="status">
+          {latest?.state === "succeeded"
+            ? "Operation completed."
+            : latest?.state === "failed"
+              ? "Operation failed."
+              : "Operation in progress…"}
+        </p>
+      )}
+      {latest?.state === "failed" && (
+        <div className="notice danger" role="alert">
+          {latest.error ?? "Job failed. Review the job result."}
+          {latest.kind === "restore" && (
+            <p>
+              Reselect the archive to read the current saved revision before
+              retrying.
+            </p>
+          )}
+        </div>
+      )}
       <section className="panel">
         <div className="panel-heading">
           <h2>Background jobs</h2>
@@ -183,11 +216,29 @@ export default function Jobs() {
           <DataTable
             items={jobs}
             columns={[
-              { key: "id", label: "ID" },
-              { key: "kind", label: "Operation" },
+              {
+                key: "kind",
+                label: "Operation",
+                render: (r) =>
+                  (
+                    ({
+                      backup: "Backup",
+                      restore: "Restore",
+                      refresh: "List refresh",
+                      "upstream-probe": "Upstream test",
+                      "support-bundle": "Support bundle",
+                    }) as Record<string, string>
+                  )[String(r.kind)] ?? text(r.kind),
+              },
               { key: "state", label: "State" },
-              { key: "created", label: "Created" },
-              { key: "error", label: "Error" },
+              {
+                key: "created",
+                label: "Started",
+                render: (r) =>
+                  r.created
+                    ? new Date(String(r.created)).toLocaleString()
+                    : "—",
+              },
               {
                 key: "result",
                 label: "Result",
@@ -205,7 +256,12 @@ export default function Jobs() {
                       Download backup
                     </a>
                   ) : (
-                    text(r.result)
+                    <details>
+                      <summary>{r.error ? "View error" : "Details"}</summary>
+                      <Details
+                        value={{ id: r.id, error: r.error, result: r.result }}
+                      />
+                    </details>
                   );
                 },
               },
