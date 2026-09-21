@@ -280,8 +280,23 @@ paths:
               type: object
               required: [kind]
               properties:
-                kind: {type: string, enum: [refresh, backup, restore]}
-                input: {}
+                kind: {type: string, enum: [refresh, backup, restore, upstream-probe, support-bundle]}
+                input:
+                  description: 'For upstream-probe use UpstreamProbeInput; for support-bundle use SupportBundleInput. Diagnostic input is capped at 4 KiB. Validation failures are reported in the asynchronous job status.'
+              allOf:
+                - if:
+                    properties:
+                      kind: {const: upstream-probe}
+                  then:
+                    required: [input]
+                    properties:
+                      input: {$ref: '#/components/schemas/UpstreamProbeInput'}
+                - if:
+                    properties:
+                      kind: {const: support-bundle}
+                  then:
+                    properties:
+                      input: {$ref: '#/components/schemas/SupportBundleInput'}
       responses:
         '202':
           description: Accepted; one running job maximum
@@ -317,6 +332,73 @@ components:
   securitySchemes:
     session: {type: apiKey, in: cookie, name: dimsum_session}
   schemas:
+    UpstreamProbeInput:
+      type: object
+      additionalProperties: false
+      required: [endpoint]
+      properties:
+        endpoint: {type: string, description: Literal IP:port currently configured in the active primary or fallback pool; arbitrary destinations are rejected}
+        timeout_ms: {type: integer, minimum: 50, maximum: 3000, default: 1000}
+    UpstreamProbeResult:
+      type: object
+      required: [endpoint, generation, name, qtype, state, responding, healthy, attempts, diagnostic_probes, duration_us, timeout_ms, checked_at]
+      description: |
+        One isolated root NS check using the validated DNS exchange engine. UDP
+        may retry over TCP on truncation, at most two attempts within one deadline.
+        Live configuration, cache, and upstream circuit state are unchanged. All
+        actual attempts count once as non-client health probes; no client traffic
+        or history event is recorded. Response errors/timeouts are completed
+        diagnostic findings; parent cancellation fails the job.
+      properties:
+        endpoint: {type: string}
+        generation: {$ref: '#/components/schemas/Decimal'}
+        name: {type: string, const: '.'}
+        qtype: {type: string, const: NS}
+        state: {type: string, enum: [healthy, responding_error, no_valid_response, cancelled]}
+        responding: {type: boolean, description: A validated DNS response was observed, not merely a reachable host}
+        healthy: {type: boolean, description: This isolated check returned NOERROR; not a live circuit-state claim}
+        rcode: {type: integer, minimum: 0, maximum: 65535}
+        transport: {type: string, enum: [udp, tcp], description: Omitted when validated response transport is unavailable}
+        attempts: {$ref: '#/components/schemas/Decimal'}
+        diagnostic_probes: {$ref: '#/components/schemas/Decimal'}
+        duration_us: {$ref: '#/components/schemas/Decimal'}
+        timeout_ms: {type: integer, minimum: 50, maximum: 3000}
+        error: {type: string}
+        checked_at: {type: string, format: date-time}
+    SupportBundleInput:
+      type: object
+      additionalProperties: false
+      description: History is omitted by default. Explicit opt-in also requires an explicit positive UTC from/to range of at most 24 hours. Range and limit are rejected without opt-in.
+      properties:
+        include_query_history: {type: boolean, default: false}
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        limit: {type: integer, minimum: 1, maximum: 200, default: 50}
+    SupportBundleResult:
+      type: object
+      required: [format, generated_at, build, configuration, diagnostics, contains_secrets, contains_query_history, query_history]
+      description: JSON job result capped at 256 KiB; oversized bundles fail explicitly. No secret file contents or archive. URL userinfo, query values, and fragments are redacted, including diagnostic error messages.
+      properties:
+        format: {type: string, const: dimsum-support-v1}
+        generated_at: {type: string, format: date-time}
+        build:
+          type: object
+          required: [go_version, os, architecture, version]
+          properties:
+            go_version: {type: string}
+            os: {type: string}
+            architecture: {type: string}
+            version: {type: string, description: Embedded Go module version or unknown; development builds can report '(devel)'}
+            revision: {type: string}
+            modified: {type: string}
+        configuration: {type: object, description: Redacted settings inspection including saved/active status}
+        diagnostics: {type: object}
+        contains_secrets: {type: boolean, const: false}
+        contains_query_history: {type: boolean}
+        query_history:
+          oneOf:
+            - {$ref: '#/components/schemas/HistoryQueries'}
+            - {type: 'null'}
     Decimal:
       type: string
       pattern: '^(0|[1-9][0-9]*)$'
@@ -530,7 +612,8 @@ components:
         kind: {type: string}
         state: {type: string, enum: [running, succeeded, failed]}
         created: {type: string, format: date-time}
-        result: {}
+        result:
+          description: 'Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult. Other job kinds retain their documented result shapes.'
         error: {type: string}
     Error:
       type: object
