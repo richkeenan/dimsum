@@ -31,6 +31,25 @@ func TestCompilerRejectsInvalidOptIns(t *testing.T) {
 	}
 }
 
+func TestToolSchemasDeclareObjectRoots(t *testing.T) {
+	document, err := api.JSON()
+	require.NoError(t, err)
+	ops, err := compile(document)
+	require.NoError(t, err)
+	for _, op := range ops {
+		for name, value := range map[string]any{"inputSchema": op.tool.InputSchema, "outputSchema": op.tool.OutputSchema} {
+			if value == nil {
+				continue
+			}
+			encoded, err := json.Marshal(value)
+			require.NoError(t, err)
+			var schema map[string]any
+			require.NoError(t, json.Unmarshal(encoded, &schema))
+			assert.Equal(t, "object", schema["type"], "%s.%s must satisfy the MCP wire contract", op.tool.Name, name)
+		}
+	}
+}
+
 func TestResponseCaptureBoundsAcrossWrites(t *testing.T) {
 	w := &boundedResponse{header: make(http.Header)}
 	chunk := make([]byte, 1024)

@@ -359,10 +359,17 @@ func compileOperation(root, item map[string]any, path, method, name, description
 		}
 	}
 	if len(outputs) == 1 {
-		op.tool.OutputSchema = outputs[0]
+		output := object(outputs[0])
+		if output == nil || (output["type"] != nil && output["type"] != "object") {
+			return op, errors.New("MCP output schemas must describe objects")
+		}
+		// MCP requires an explicit object root even when OpenAPI describes the
+		// object using anyOf/allOf. Preserve those constraints for result validation.
+		output["type"] = "object"
+		op.tool.OutputSchema = output
 	}
 	if len(outputs) > 1 {
-		op.tool.OutputSchema = map[string]any{"anyOf": outputs}
+		op.tool.OutputSchema = map[string]any{"type": "object", "anyOf": outputs}
 	}
 	return op, nil
 }

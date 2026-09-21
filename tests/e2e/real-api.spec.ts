@@ -1,5 +1,6 @@
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { test, expect } from "../../web/e2e";
+import { checkMCP } from "../../web/scripts/mcp-client-check.mjs";
 test.skip(
   !process.env.DIMSUM_E2E_CONFIG,
   "Run through the isolated Go webassets browser harness",
@@ -28,6 +29,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(tokenField).toBeVisible();
   const agentToken = await tokenField.inputValue();
   expect(agentToken.length).toBeGreaterThan(32);
+  const compatibility = await checkMCP(new URL("/mcp", page.url()).href, agentToken);
+  expect(compatibility.tools).toBeGreaterThan(0);
   const agentHeaders = {
     Authorization: `Bearer ${agentToken}`,
     Accept: "application/json, text/event-stream",
