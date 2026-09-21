@@ -45,6 +45,8 @@ type ExchangeResult struct {
 	Route       RouteKey
 	EndpointID  uint32
 	Fallback    bool
+	Probes      int
+	Background  bool // set by resolver observation, never inferred from client traffic
 }
 
 // ValidateOptions checks defaults and limits without allocating transport state.
@@ -133,14 +135,18 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 	buf := make([]byte, 65535)
 	last := error(ErrResponse)
 	attempts := 0
-	defer func() { result.Attempts = attempts }()
+	probes := 0
+	defer func() { result.Attempts = attempts; result.Probes = probes }()
 	for _, index := range c.order() {
 		if attempts >= c.options.MaxAttempts || ctx.Err() != nil {
 			break
 		}
-		eligible, epoch := c.claim(index)
+		eligible, epoch, probe := c.claimDetailed(index)
 		if !eligible {
 			continue
+		}
+		if probe {
+			probes++
 		}
 		endpoint := c.endpoint(index)
 		started := time.Now()

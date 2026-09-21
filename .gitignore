@@ -1,2 +1,10 @@
 .worktrees/
 .superpowers/
+/web/node_modules/
+/web/.vite/
+/web/test-results/
+/web/playwright-report/
+/dist/
+/build/
+/artifacts/
+*.test

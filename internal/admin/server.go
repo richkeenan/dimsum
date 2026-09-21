@@ -7,13 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/config"
@@ -27,6 +30,7 @@ type Options struct {
 	SessionTTL     time.Duration
 	RequestTimeout time.Duration
 	Now            func() time.Time
+	DownloadBackup func(context.Context, string) (io.ReadCloser, int64, error)
 }
 type Server struct {
 	service   *control.Service
@@ -65,7 +69,11 @@ func (s *Server) handler(local bool) http.Handler {
 		w.Header().Set("X-Request-ID", r.Context().Value(requestKey{}).(string))
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		bodyLimit := int64(1 << 20)
+		if r.URL.Path == "/api/v1/jobs" {
+			bodyLimit = 4 << 20
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, bodyLimit)
 		if !local {
 			valid := false
 			for _, host := range s.options.AllowedHosts {
@@ -150,6 +158,23 @@ func (s *Server) handler(local bool) http.Handler {
 			}
 			return
 		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/config/backups/") && r.Method == "GET" {
+			if s.options.DownloadBackup == nil {
+				s.fail(w, r, 503, "unavailable", "backup download unavailable")
+				return
+			}
+			reader, size, err := s.options.DownloadBackup(r.Context(), strings.TrimPrefix(r.URL.Path, "/api/v1/config/backups/"))
+			if err != nil {
+				s.fail(w, r, 404, "not_found", "backup artifact expired or unavailable")
+				return
+			}
+			defer reader.Close()
+			w.Header().Set("Content-Type", "application/x-tar")
+			w.Header().Set("Content-Disposition", `attachment; filename="dimsum-config.tar"`)
+			w.Header().Set("Content-Length", fmt.Sprint(size))
+			_, _ = io.Copy(w, reader)
+			return
+		}
 		s.route(w, r)
 	})
 }
@@ -181,6 +206,10 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, v any, e error) 
 	}
 	code, status := "invalid_configuration", 422
 	switch {
+	case errors.Is(e, control.BadRequest):
+		code, status = "bad_request", 400
+	case errors.Is(e, control.NotFound):
+		code, status = "not_found", 404
 	case errors.Is(e, config.ErrConflict):
 		code, status = "revision_conflict", 409
 	case errors.Is(e, control.ErrUnavailable):
@@ -193,7 +222,8 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, v any, e error) 
 	s.fail(w, r, status, code, e.Error())
 }
 
-// ListenUnix refuses existing paths and requires an owner-only parent directory.
+// ListenUnix recovers stale sockets under an exclusive process lock and requires
+// an owner-only parent directory. Live listeners and non-sockets are preserved.
 // Callers own listener shutdown; Close removes the socket created by net.ListenUnix.
 func (s *Server) ListenUnix(path string) (net.Listener, error) {
 	parent, e := os.Lstat(filepath.Dir(path))
@@ -203,8 +233,37 @@ func (s *Server) ListenUnix(path string) (net.Listener, error) {
 	if !parent.IsDir() || parent.Mode().Perm()&0077 != 0 {
 		return nil, fmt.Errorf("control socket parent must be owner-only (0700)")
 	}
-	if _, e = os.Lstat(path); !os.IsNotExist(e) {
-		return nil, fmt.Errorf("control socket path already exists or cannot be inspected")
+	fd, e := syscall.Open(path+".lock", syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	if e != nil {
+		return nil, e
+	}
+	lock := os.NewFile(uintptr(fd), path+".lock")
+	success := false
+	defer func() {
+		if !success {
+			lock.Close()
+		}
+	}()
+	if e = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); e != nil {
+		return nil, fmt.Errorf("control socket already owned: %w", e)
+	}
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSocket == 0 {
+			return nil, fmt.Errorf("control socket path is not a socket")
+		}
+		connection, err := net.DialTimeout("unix", path, 100*time.Millisecond)
+		if err == nil {
+			connection.Close()
+			return nil, fmt.Errorf("control socket already listening")
+		}
+		if !errors.Is(err, syscall.ECONNREFUSED) {
+			return nil, fmt.Errorf("cannot establish stale socket: %w", err)
+		}
+		if e = os.Remove(path); e != nil {
+			return nil, e
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, err
 	}
 	l, e := net.Listen("unix", path)
 	if e != nil {
@@ -214,7 +273,20 @@ func (s *Server) ListenUnix(path string) (net.Listener, error) {
 		l.Close()
 		return nil, e
 	}
-	return l, nil
+	success = true
+	return &lockedListener{Listener: l, lock: lock}, nil
+}
+
+type lockedListener struct {
+	net.Listener
+	lock *os.File
+	once sync.Once
+}
+
+func (l *lockedListener) Close() error {
+	err := l.Listener.Close()
+	l.once.Do(func() { l.lock.Close() })
+	return err
 }
 func (s *Server) ServeUnix(ctx context.Context, path string) error {
 	l, e := s.ListenUnix(path)

@@ -81,6 +81,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		if decision.Result == policy.Block {
 			r.Result.Outcome = transport.PolicyBlock
 			r.Result.RuleNumber = number
+			r.Result.Rule, _ = snapshot.Policy().RuleAt(number)
 			return buildBlock(out, &r.Message, settings, decision)
 		}
 	}
@@ -165,6 +166,8 @@ func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *con
 			r.Result.Outcome = transport.PolicyBlock
 			r.Result.ResponsePolicy = true
 			r.Result.RuleNumber = decision.RuleNumber
+			r.Result.Rule, _ = snapshot.Policy().RuleAt(decision.RuleNumber)
+			r.Result.AliasLength = uint8(decision.BlockedAlias.CopyWire(r.Result.Alias[:]))
 			return buildBlock(out, &r.Message, settings, decision.Decision)
 		}
 	}

@@ -9,14 +9,36 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/richkeenan/dimsum/internal/app"
+	"github.com/richkeenan/dimsum/internal/cli"
 	"github.com/richkeenan/dimsum/internal/config"
 )
 
+var version = "dev"
+var commit = "unknown"
+var date = "unknown"
+
 func run(ctx context.Context, args []string, out, stderr io.Writer) int {
-	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml [-state path/to/derived-state]\n\nserve forwards DNS using explicit dns.upstreams and watches policy/list edits.\n-state defaults to CONFIG.state; retain this directory for offline recovery.\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
+	if len(args) > 0 && args[0] == "control" {
+		return cli.Run(ctx, args, out, stderr)
+	}
+	if len(args) > 0 && args[0] == "bootstrap" {
+		return bootstrap(args[1:], out, stderr)
+	}
+	if len(args) > 0 && args[0] == "migrate-pihole" {
+		return migratePiHole(args[1:], out, stderr)
+	}
+	if len(args) == 1 && args[0] == "version" {
+		if err := json.NewEncoder(out).Encode(map[string]string{"version": version, "commit": commit, "build_time": date, "go_version": runtime.Version()}); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
+	}
+	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml [-state path/to/derived-state]\n       dimsum control --socket PATH help\n       dimsum bootstrap -config PATH -password-file PATH\n       dimsum version\n\nserve forwards DNS and serves administration; watches configuration edits.\n-state defaults to CONFIG.state; retain this directory for offline recovery.\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprint(out, usage)
 		return 0
@@ -78,8 +100,9 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		Ready      bool                    `json:"ready"`
 		DNS        []string                `json:"dns"`
 		Admin      string                  `json:"admin"`
+		Control    string                  `json:"control"`
 		Activation config.ActivationResult `json:"activation"`
-	}{"dns_serving", s.Ready(), a.DNS, a.Admin, store.Inspect()}); err != nil {
+	}{"dns_serving", s.Ready(), a.DNS, a.Admin, a.Control, store.Inspect()}); err != nil {
 		return fail(err)
 	}
 	<-s.Done()

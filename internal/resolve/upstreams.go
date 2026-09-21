@@ -24,11 +24,28 @@ type upstreams struct {
 	closed     bool
 }
 
+type backgroundExchangeKey struct{}
+
+func (p *Pipeline) UpstreamHealth() []upstream.Health {
+	p.upstreams.mu.Lock()
+	defer p.upstreams.mu.Unlock()
+	if p.upstreams.current != nil {
+		return p.upstreams.current.client.Health()
+	}
+	if p.upstream != nil {
+		return p.upstream.Health()
+	}
+	return nil
+}
+
 // exchange uses the same snapshot as policy/local resolution. Retired clients
 // survive only while requests hold leases; their idle sockets are then closed.
 func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, route upstream.RouteKey, wire, out []byte) (result upstream.ExchangeResult, err error) {
 	if p.observeExchange != nil {
-		defer func() { p.observeExchange(result, err) }()
+		defer func() {
+			result.Background, _ = ctx.Value(backgroundExchangeKey{}).(bool)
+			p.observeExchange(result, err)
+		}()
 	}
 	if snapshot == nil {
 		return p.upstream.ExchangeRoute(ctx, route, wire, out)

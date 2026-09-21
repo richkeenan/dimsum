@@ -41,18 +41,23 @@ func (c *Client) Health() []Health {
 	return result
 }
 func (c *Client) claim(i int) (bool, uint64) {
+	ok, epoch, _ := c.claimDetailed(i)
+	return ok, epoch
+}
+
+func (c *Client) claimDetailed(i int) (bool, uint64, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := &c.health[i]
 	if h.RetryAt.IsZero() {
-		return true, h.epoch
+		return true, h.epoch, false
 	}
 	if h.probe || time.Now().Before(h.RetryAt) {
-		return false, 0
+		return false, 0, false
 	}
 	h.probe = true
 	h.epoch++
-	return true, h.epoch
+	return true, h.epoch, true
 }
 func (c *Client) record(i int, epoch uint64, elapsed time.Duration, err error, code uint16, canceled bool) {
 	c.mu.Lock()

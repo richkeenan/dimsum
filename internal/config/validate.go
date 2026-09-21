@@ -130,6 +130,9 @@ func Validate(c Config) error {
 			return fmt.Errorf("statistics.%s: must be 1..3650 days", field)
 		}
 	}
+	if err := validateAdmin(c.Admin); err != nil {
+		return err
+	}
 	return validatePolicy(c)
 }
 

@@ -1,6 +1,9 @@
 package transport
 
-import "time"
+import (
+	"github.com/richkeenan/dimsum/internal/policy"
+	"time"
+)
 
 // Outcome is mutually exclusive; attributes such as coalescing do not create
 // additional client requests. Invalid packets are not admitted client queries.
@@ -26,6 +29,11 @@ type Result struct {
 	Arrival                                        time.Time
 	Elapsed                                        time.Duration
 	RCode                                          uint16
+	// Rule is borrowed from the captured immutable generation for this callback
+	// only. Detailed consumers must copy bounded fields before returning.
+	Rule        policy.Rule
+	Alias       [255]byte
+	AliasLength uint8
 }
 
 // Observer runs synchronously after fitting the final transport reply. It must

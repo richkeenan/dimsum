@@ -20,33 +20,38 @@ import (
 // Service is a single-start owner of sockets. StartForwarding attaches DNS;
 // Start only binds sockets for custom handlers. Administration is still a listener.
 type Service struct {
-	mu        sync.Mutex
-	started   bool
-	stopping  bool
-	stop      chan struct{}
-	done      chan struct{}
-	listeners Listeners
-	addresses Addresses
-	ready     bool
-	err       error
-	names     *clients.Manager
+	mu            sync.Mutex
+	started       bool
+	stopping      bool
+	stop          chan struct{}
+	done          chan struct{}
+	listeners     Listeners
+	addresses     Addresses
+	ready         bool
+	err           error
+	names         *clients.Manager
+	pipeline      *resolve.Pipeline
+	transport     *transport.Server
+	observability *observability
 }
 type Addresses struct {
-	DNS   []string
-	Admin string
+	DNS     []string
+	Admin   string
+	Control string
 }
 
 // Callers may serve on these sockets but Service retains close ownership.
 type Listeners struct {
-	TCP   []net.Listener
-	UDP   []net.PacketConn
-	Admin net.Listener
+	TCP     []net.Listener
+	UDP     []net.PacketConn
+	Admin   net.Listener
+	Control net.Listener
 }
 
 var ErrStarted = errors.New("service already started")
 
 func (s *Service) Start(ctx context.Context, c config.Config) error {
-	return s.start(ctx, c, nil, nil, nil, nil)
+	return s.start(ctx, c, nil, nil, nil, nil, nil)
 }
 
 // StartForwarding binds all sockets transactionally and attaches the DNS pipeline.
@@ -86,19 +91,50 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 		names = clients.New(func() *clients.View { return store.Snapshot().Names() })
 	}
 	pipeline := resolve.NewWithNames(u, store, names)
-	server, err := transport.New(transport.Options{}, pipeline)
+	var observations *observability
+	options := transport.Options{}
+	if store != nil {
+		var err error
+		observations, err = newObservability(store)
+		if err != nil {
+			pipeline.Close()
+			return err
+		}
+		observations.retention(c.Statistics)
+		observations.start()
+		options.Observe = observations.observe
+		pipeline.SetExchangeObserver(observations.exchange)
+	}
+	server, err := transport.New(options, pipeline)
 	if err != nil {
 		pipeline.Close()
+		if observations != nil {
+			observations.close()
+		}
 		return err
 	}
-	err = s.start(ctx, c, server, store, names, func() { pipeline.Close() })
+	err = s.start(ctx, c, server, store, names, func() {
+		pipeline.Close()
+		if observations != nil {
+			observations.close()
+		}
+	}, observations)
 	if err != nil {
 		pipeline.Close()
+		if observations != nil {
+			observations.close()
+		}
+	} else {
+		s.mu.Lock()
+		s.pipeline = pipeline
+		s.transport = server
+		s.observability = observations
+		s.mu.Unlock()
 	}
 	return err
 }
 
-func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store, names *clients.Manager, cleanup func()) error {
+func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store, names *clients.Manager, cleanup func(), observations *observability) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
@@ -112,10 +148,14 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	}
 	var sockets Listeners
 	var addresses Addresses
+	var managed *managedRuntime
 	success := false
 	defer func() {
 		if !success {
 			closeListeners(sockets)
+			if managed != nil {
+				managed.control.Close()
+			}
 		}
 	}()
 	lc := net.ListenConfig{}
@@ -148,6 +188,12 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		if err := store.BindDNSListeners(addresses.DNS); err != nil {
 			return err
 		}
+		managed, err = newManagedRuntime(s, store, observations, addresses.Admin)
+		if err != nil {
+			return err
+		}
+		sockets.Control = managed.local
+		addresses.Control = managed.socket
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -185,6 +231,12 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		workers.Add(1)
 		go func() { defer workers.Done(); names.Run(runCtx) }()
 	}
+	if managed != nil {
+		serve(func() error { return serveHTTP(runCtx, sockets.Admin, managed.handler) })
+		serve(func() error { return serveHTTP(runCtx, sockets.Control, managed.admin.LocalHandler()) })
+		workers.Add(1)
+		go func() { defer workers.Done(); managed.watch(runCtx) }()
+	}
 	if server != nil {
 		for _, listener := range sockets.TCP {
 			serve(func() error { return server.ServeTCP(runCtx, listener) })
@@ -208,6 +260,9 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		s.mu.Unlock()
 		cancel()
 		closeListeners(sockets)
+		if managed != nil {
+			managed.control.Close()
+		}
 		workers.Wait()
 		if cleanup != nil {
 			cleanup()
@@ -231,6 +286,31 @@ func (s *Service) ClientName(address netip.Addr) clients.Name {
 }
 func (s *Service) Err() error { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 
+func (s *Service) DNSStats() (transport.Stats, resolve.CacheStats) {
+	s.mu.Lock()
+	p, server := s.pipeline, s.transport
+	s.mu.Unlock()
+	var transportStats transport.Stats
+	var cacheStats resolve.CacheStats
+	if server != nil {
+		transportStats = server.Stats()
+	}
+	if p != nil {
+		cacheStats = p.CacheStats()
+	}
+	return transportStats, cacheStats
+}
+
+func (s *Service) UpstreamHealth() []upstream.Health {
+	s.mu.Lock()
+	p := s.pipeline
+	s.mu.Unlock()
+	if p == nil {
+		return nil
+	}
+	return p.UpstreamHealth()
+}
+
 func closeListeners(l Listeners) {
 	for _, v := range l.TCP {
 		v.Close()
@@ -240,6 +320,9 @@ func closeListeners(l Listeners) {
 	}
 	if l.Admin != nil {
 		l.Admin.Close()
+	}
+	if l.Control != nil {
+		l.Control.Close()
 	}
 }
 func (s *Service) StartFile(ctx context.Context, path string) error {

@@ -119,6 +119,12 @@ func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrP
 			if n >= 12 && n <= len(out) {
 				r.Result.RCode = r.Result.RCode&^15 | uint16(out[3]&15)
 				r.Result.Truncated = out[2]&2 != 0
+				if r.Message.EDNS.Present {
+					var response dnswire.Message
+					if dnswire.ScanMessage(out[:n], &response) == nil {
+						r.Result.RCode = response.RCode
+					}
+				}
 			}
 			s.opts.Observe(&r, r.Result)
 		}()

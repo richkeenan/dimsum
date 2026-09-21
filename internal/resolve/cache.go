@@ -60,6 +60,9 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.C
 	wire := append([]byte(nil), r.Wire...)
 	var metadata upstream.ExchangeResult
 	f, joined, err := p.cache.flights.joinStatus(k, refresh, func(workCtx context.Context) ([]byte, error) {
+		if refresh {
+			workCtx = context.WithValue(workCtx, backgroundExchangeKey{}, true)
+		}
 		out := make([]byte, 65535)
 		result, err := p.exchange(workCtx, s, upstream.DefaultRoute, wire, out)
 		metadata = result

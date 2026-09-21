@@ -31,7 +31,8 @@ Mutation operations:
   events                     SSE stream; reconnect requires a fresh summary fetch
   request METHOD PATH [JSON] complete HTTP parity, including future operations
 
-Use --query with GET commands for server-side filtering. JSON is a literal argument.
+Use --query with GET commands for server-side filtering. JSON may be literal,
+@FILE, or @- to read standard input (4 MiB maximum).
 Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
 Exit: 0 success, 2 usage, 3 connection/I/O, 4 rejected request, 5 conflict, 6 unavailable.
 `
@@ -115,6 +116,24 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 			return bad()
 		}
 		path += "?" + query
+	}
+	if strings.HasPrefix(body, "@") {
+		var reader io.Reader = os.Stdin
+		if body != "@-" {
+			f, err := os.Open(strings.TrimPrefix(body, "@"))
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return 3
+			}
+			defer f.Close()
+			reader = f
+		}
+		data, err := io.ReadAll(io.LimitReader(reader, (4<<20)+1))
+		if err != nil || len(data) > 4<<20 {
+			fmt.Fprintln(stderr, "cannot read JSON body within 4 MiB limit")
+			return 3
+		}
+		body = string(data)
 	}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)

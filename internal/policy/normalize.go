@@ -108,6 +108,17 @@ func NameFromWire(b []byte) (Name, error) {
 	return Name{}, fmt.Errorf("policy: malformed uncompressed name")
 }
 
+// CopyWire copies a canonical uncompressed name including the root terminator.
+// It returns zero if the destination is too short.
+func (n Name) CopyWire(dst []byte) int {
+	if len(dst) < len(n.wire)+1 {
+		return 0
+	}
+	nn := copy(dst, n.wire)
+	dst[nn] = 0
+	return nn + 1
+}
+
 // Display returns the lowercase presentation without a terminal dot (root is
 // empty). Only letters, digits, hyphen and underscore are emitted literally;
 // all other label octets use unambiguous three-digit decimal escapes. Dots

@@ -38,8 +38,11 @@ type DNS struct {
 	UpstreamPolicy UpstreamSettings `yaml:"upstream_policy,omitempty"`
 }
 type Admin struct {
-	Listen           string `yaml:"listen"`
-	SecretGeneration string `yaml:"secret_generation,omitempty"`
+	ControlSocket    string   `yaml:"control_socket,omitempty"`
+	AllowedHosts     []string `yaml:"allowed_hosts,omitempty"`
+	SecureCookies    bool     `yaml:"secure_cookies,omitempty"`
+	Listen           string   `yaml:"listen"`
+	SecretGeneration string   `yaml:"secret_generation,omitempty"`
 }
 type Paths struct {
 	DataDir    string `yaml:"data_dir"`
@@ -138,6 +141,7 @@ func checkNodes(n *yaml.Node) error {
 
 func (d *Document) Config() Config {
 	c := d.value
+	c.Admin.AllowedHosts = append([]string(nil), c.Admin.AllowedHosts...)
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)
 	c.DNS.Upstreams = append([]string(nil), c.DNS.Upstreams...)
 	c.DNS.Fallback = append([]string(nil), c.DNS.Fallback...)
