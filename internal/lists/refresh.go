@@ -69,6 +69,10 @@ func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offli
 	}
 	parsed, err := Parse(bytes.NewReader(body), source, DefaultLimits())
 	if err != nil {
+		if len(parsed.Diagnostics) > 0 {
+			first := parsed.Diagnostics[0]
+			err = fmt.Errorf("%w; line %d: %s (%s)", err, first.Line, first.Text, first.Code)
+		}
 		return fallback(err)
 	}
 	if old != nil && parsed.Accepted <= previous.Accepted/2 && !s.AllowLargeDeletion {

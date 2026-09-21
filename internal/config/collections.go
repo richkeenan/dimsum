@@ -59,6 +59,18 @@ func lastLine(n *yaml.Node) int {
 	return line
 }
 
+func multiline(n *yaml.Node) bool {
+	if n.Style&(yaml.LiteralStyle|yaml.FoldedStyle) != 0 || strings.Contains(n.Value, "\n") {
+		return true
+	}
+	for _, c := range n.Content {
+		if multiline(c) {
+			return true
+		}
+	}
+	return false
+}
+
 // Append inserts only newly encoded text; existing collections are never
 // serialized. Block collections are supported; ambiguous shapes fail explicitly.
 func (d *Document) Append(path []string, value any) (*Document, error) {
@@ -87,7 +99,28 @@ func (d *Document) Append(path []string, value any) (*Document, error) {
 		out := append(d.Bytes(), []byte("\n"+path[0]+":\n"+indentItem(b, 2))...)
 		return Parse(out)
 	}
-	if n.Kind != yaml.SequenceNode || n.Style&yaml.FlowStyle != 0 {
+	if n.Kind == yaml.SequenceNode && len(n.Content) == 0 && n.Style&yaml.FlowStyle != 0 {
+		// Preserve the header and any inline comment, replace only the empty
+		// token, then insert new block content on the following line.
+		start := lineStart(d.source, n.Line)
+		end := lineStart(d.source, n.Line+1)
+		line := string(d.source[start:end])
+		token := strings.Index(line, "[]")
+		if token < 0 {
+			return nil, fmt.Errorf("append: unsupported empty sequence")
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " ")) + 2
+		out := append([]byte(nil), d.source[:start]...)
+		header := line[:token] + line[token+2:]
+		out = append(out, header...)
+		if !strings.HasSuffix(header, "\n") {
+			out = append(out, '\n')
+		}
+		out = append(out, indentItem(b, indent)...)
+		out = append(out, d.source[end:]...)
+		return Parse(out)
+	}
+	if n.Kind != yaml.SequenceNode || n.Style&yaml.FlowStyle != 0 || multiline(n) {
 		return nil, fmt.Errorf("append: requires block sequence")
 	}
 	pos := lineStart(d.source, lastLine(n)+1)
@@ -132,6 +165,9 @@ func (d *Document) Remove(path []string) (*Document, error) {
 	n, e := d.node(path)
 	if e != nil {
 		return nil, e
+	}
+	if multiline(n) {
+		return nil, fmt.Errorf("remove: multiline item requires explicit text edit")
 	}
 	var comments func(*yaml.Node) bool
 	comments = func(n *yaml.Node) bool {

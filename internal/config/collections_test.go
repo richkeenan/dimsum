@@ -42,4 +42,7 @@ func TestCollectionEditsPreserveUnrelatedBytes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, d.Config().Rules)
 	assert.Contains(t, string(d.Bytes()), storeFixture)
+	d, err = d.Append([]string{"rules"}, CustomRule{ID: "again", Kind: policy.Exact, Action: "deny", Pattern: "other.test", Enabled: true})
+	require.NoError(t, err)
+	assert.Len(t, d.Config().Rules, 1)
 }

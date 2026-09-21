@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"strings"
 
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -43,6 +44,9 @@ func (c Config) PolicyRules() []policy.Rule {
 	return out
 }
 func validatePolicy(c Config) error {
+	if len(c.Lists) > 64 || len(c.Rules) > 100000 {
+		return fmt.Errorf("policy: at most 64 sources and 100000 custom rules")
+	}
 	seen := map[string]bool{}
 	for i, s := range c.Lists {
 		if s.ID == "" || s.ID == "custom" || seen[s.ID] {
@@ -59,6 +63,9 @@ func validatePolicy(c Config) error {
 		if s.DomainKind != policy.Exact && s.DomainKind != policy.Suffix {
 			return fmt.Errorf("lists[%d].domain_kind: expected exact or suffix", i)
 		}
+		if s.Dialect == lists.Hosts && s.DomainKind != policy.Exact {
+			return fmt.Errorf("lists[%d].domain_kind: hosts require exact", i)
+		}
 	}
 	seen = map[string]bool{}
 	for i, r := range c.Rules {
@@ -69,9 +76,19 @@ func validatePolicy(c Config) error {
 		if r.Action != "allow" && r.Action != "deny" {
 			return fmt.Errorf("rules[%d].action: expected allow or deny", i)
 		}
-		if _, e := policy.Compile(0, []policy.Rule{{ID: r.ID, Kind: r.Kind, Class: policy.CustomDeny, Pattern: r.Pattern}}, policy.DefaultLimits()); e != nil {
-			return fmt.Errorf("rules[%d]: %w", i, e)
+		if !r.Enabled {
+			if _, e := policy.Compile(0, []policy.Rule{{ID: r.ID, Kind: r.Kind, Class: policy.CustomDeny, Pattern: r.Pattern}}, policy.DefaultLimits()); e != nil {
+				return fmt.Errorf("rules[%d]: %w", i, e)
+			}
 		}
+	}
+	if _, e := policy.Compile(0, c.PolicyRules(), policy.DefaultLimits()); e != nil {
+		for i, r := range c.Rules {
+			if strings.Contains(e.Error(), fmt.Sprintf("rule %q", "custom:"+r.ID)) {
+				return fmt.Errorf("rules[%d]: %w", i, e)
+			}
+		}
+		return fmt.Errorf("rules: %w", e)
 	}
 	for i, r := range c.Records {
 		if _, e := policy.NormalizeName(r.Name); e != nil {
@@ -94,10 +111,10 @@ func validatePolicy(c Config) error {
 	seen = map[string]bool{}
 	for i, c := range c.Clients {
 		a, e := netip.ParseAddr(c.Address)
-		if e != nil || c.Name == "" || seen[a.String()] {
+		if e != nil || strings.TrimSpace(c.Name) == "" || seen[a.Unmap().String()] {
 			return fmt.Errorf("clients[%d]: expected unique IP and nonempty name", i)
 		}
-		seen[a.String()] = true
+		seen[a.Unmap().String()] = true
 	}
 	return nil
 }

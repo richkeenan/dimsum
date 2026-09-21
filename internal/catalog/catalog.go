@@ -3,6 +3,7 @@
 package catalog
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/lists"
@@ -24,6 +25,16 @@ func (e Entry) Source() lists.Source {
 		kind = policy.Exact
 	}
 	return lists.Source{ID: e.ID, Dialect: e.Dialect, DomainKind: kind}
+}
+
+// Subscription makes an explicit authoritative selection from catalog metadata.
+// Catalog defaults never implicitly enable network access at daemon startup.
+func (e Entry) Subscription(enabled bool) (lists.Subscription, error) {
+	if enabled && !e.Available {
+		return lists.Subscription{}, fmt.Errorf("catalog %s: %s", e.ID, e.UnavailableReason)
+	}
+	s := e.Source()
+	return lists.Subscription{ID: s.ID, URL: e.URL, Dialect: s.Dialect, DomainKind: s.DomainKind, Enabled: enabled}, nil
 }
 
 // Entries returns independent metadata values. Family is advisory: owners may

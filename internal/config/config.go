@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/richkeenan/dimsum/internal/lists"
 
@@ -60,6 +61,9 @@ func Default() Config {
 }
 
 func Parse(source []byte) (*Document, error) {
+	if len(source) > maxConfigBytes {
+		return nil, fmt.Errorf("configuration exceeds 1 MiB")
+	}
 	d := &Document{source: bytes.Clone(source)}
 	d.value.Cache = Default().Cache
 	dec := yaml.NewDecoder(bytes.NewReader(source))
@@ -78,7 +82,16 @@ func Parse(source []byte) (*Document, error) {
 		return nil, err
 	}
 	if err := Validate(d.value); err != nil {
-		return nil, err
+		field := strings.SplitN(err.Error(), ":", 2)[0]
+		field = strings.ReplaceAll(strings.ReplaceAll(field, "[", "."), "]", "")
+		path := strings.Split(field, ".")
+		for len(path) > 0 {
+			if n, e := d.node(path); e == nil {
+				return nil, fmt.Errorf("configuration line %d column %d: %w", n.Line, n.Column, err)
+			}
+			path = path[:len(path)-1]
+		}
+		return nil, fmt.Errorf("configuration line 1: %w", err)
 	}
 	return d, nil
 }
