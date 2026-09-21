@@ -21,7 +21,7 @@ ARG TARGETARCH
 ARG SOURCE_COMMIT=unrecorded
 ARG SOURCE_DATE_EPOCH=unrecorded
 ENV CGO_ENABLED=0
-RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -buildvcs=false -ldflags="-s -w -buildid=" -o /out/dimsum ./cmd/dimsum
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -buildvcs=false -ldflags="-s -w -buildid= -X main.version=local -X main.commit=$SOURCE_COMMIT -X main.date=$SOURCE_DATE_EPOCH" -o /out/dimsum ./cmd/dimsum
 RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH python3 scripts/artifact-metadata.py /out/metadata
 
 FROM debian:bookworm-slim
