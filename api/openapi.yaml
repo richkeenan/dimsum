@@ -673,6 +673,7 @@ components:
         client_name: {type: string, description: Current cached friendly name; empty when unknown, not a historical identity claim}
         client_name_source: {type: string}
         client_name_fresh: {type: boolean}
+        client_device: {$ref: '#/components/schemas/DeviceEnrichment'}
         name: {type: string, description: Lowercase byte-safe DNS presentation with decimal escapes; root is empty}
         qtype: {type: string, description: DNS type mnemonic or TYPE<number>}
         qtype_code: {type: integer, minimum: 0, maximum: 65535}
@@ -720,6 +721,7 @@ components:
             type: object
             required: [address, name, count]
             properties:
+              device: {$ref: '#/components/schemas/DeviceEnrichment'}
               address: {type: string}
               name: {type: string}
               count: {$ref: '#/components/schemas/Decimal'}
@@ -787,6 +789,7 @@ components:
             type: object
             required: [address, name, name_source, name_fresh, count, blocked, last_seen]
             properties:
+              device: {$ref: '#/components/schemas/DeviceEnrichment'}
               address: {type: string}
               name: {type: string}
               name_source: {type: string}
@@ -798,6 +801,32 @@ components:
         truncated: {type: boolean, description: More than limit observed addresses; distinct from missing observation coverage}
         range: {$ref: '#/components/schemas/HistoryRange'}
         updated_at: {type: string, format: date-time}
+    DeviceEvidence:
+      type: object
+      required: [source, updated, expires]
+      properties:
+        source: {type: string}
+        hostname: {type: string, maxLength: 1024}
+        service_type: {type: string, maxLength: 1024}
+        label: {type: string, maxLength: 256}
+        model: {type: string, maxLength: 256}
+        manufacturer: {type: string, maxLength: 256}
+        device_type: {type: string, maxLength: 256}
+        updated: {type: string, format: date-time}
+        expires: {type: string, format: date-time}
+    DeviceEnrichment:
+      type: object
+      description: Current derived device presentation; explicit client names always take priority over discovered names. Not an authenticated physical identity.
+      required: [category, reason, inferred, fresh, evidence]
+      properties:
+        category: {type: string, enum: [unknown, phone, tablet, laptop, desktop, tv, speaker, printer, camera, lighting, appliance, server]}
+        reason: {type: string}
+        inferred: {type: boolean}
+        fresh: {type: boolean}
+        hostname: {type: string}
+        model: {type: string}
+        manufacturer: {type: string}
+        evidence: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/DeviceEvidence'}}
     ClientsResponse:
       type: object
       required: [status, observed_available]
@@ -838,7 +867,11 @@ components:
             required: [path, value]
             properties:
               path: {type: array, items: {type: string}}
-              value: {type: [string, integer, boolean]}
+              value:
+                description: String arrays are accepted only for naming.mdns.interfaces; other paths require scalars.
+                oneOf:
+                  - {type: [string, integer, boolean]}
+                  - {type: array, maxItems: 8, items: {type: string, minLength: 1, maxLength: 64}}
         item: {}
         index: {type: integer, minimum: 0}
     Job:

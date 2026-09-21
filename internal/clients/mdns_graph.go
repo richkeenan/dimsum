@@ -17,7 +17,8 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 	}
 	hosts := map[string]mdnsRecord{}
 	iface := 0
-	for _, r := range c.records {
+	c.index()
+	for _, r := range c.addresses[address] {
 		if r.address == address && now.Before(r.expires) {
 			if iface != 0 && iface != r.key.iface {
 				return result
@@ -29,24 +30,29 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 	if len(hosts) == 0 {
 		return result
 	}
+	if len(hosts) > 16 {
+		return result
+	}
 	evidence := []Evidence{}
 	for host, a := range hosts {
-		for _, p := range c.records {
-			if p.key.iface != iface || !now.Before(p.expires) || p.key.kind != 12 {
-				continue
-			}
-			if p.key.owner == localdns.Reverse(address) && p.target == host {
+		for _, p := range c.owners[recordGroup{iface, localdns.Reverse(address), 12}] {
+			if p.target == host && now.Before(p.expires) {
 				evidence = append(evidence, Evidence{Source: "mdns", Hostname: host, Updated: p.learned, Expires: minTime(a.expires, p.expires)})
 			}
-			if !strings.HasSuffix(p.key.owner, "._tcp.local") && !strings.HasSuffix(p.key.owner, "._udp.local") {
+		}
+		for _, srv := range c.targets[recordGroup{iface, host, 33}] {
+			if !now.Before(srv.expires) {
 				continue
 			}
-			for _, srv := range c.records {
-				if srv.key.iface != iface || srv.key.kind != 33 || srv.key.owner != p.target || srv.target != host || !now.Before(srv.expires) {
+			for _, p := range c.targets[recordGroup{iface, srv.key.owner, 12}] {
+				if !now.Before(p.expires) {
+					continue
+				}
+				if !strings.HasSuffix(p.key.owner, "._tcp.local") && !strings.HasSuffix(p.key.owner, "._udp.local") {
 					continue
 				}
 				e := Evidence{Source: "dns-sd", Hostname: host, ServiceType: strings.TrimSuffix(p.key.owner, ".local"), Label: p.label, Updated: srv.learned, Expires: minTime(a.expires, minTime(p.expires, srv.expires))}
-				for _, txt := range c.records {
+				for _, txt := range c.owners[recordGroup{iface, srv.key.owner, 16}] {
 					if txt.key.iface == iface && txt.key.owner == srv.key.owner && txt.key.kind == 16 && now.Before(txt.expires) {
 						// Conflicting TXT records do not supply classification metadata.
 						if e.Model != "" || e.Manufacturer != "" || e.DeviceType != "" {

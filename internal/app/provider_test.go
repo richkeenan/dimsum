@@ -83,7 +83,7 @@ func TestHistoryProviderRealSQLitePresentationAndConsistentDefaults(t *testing.T
 	rankings := v.(historyRankings)
 	assert.Equal(t, summary.Range, rankings.Range)
 	require.Len(t, rankings.Clients, 1)
-	assert.Equal(t, rankedClient{"192.0.2.10", "Office", "4"}, rankings.Clients[0])
+	assert.Equal(t, rankedClient{Address: "192.0.2.10", Name: "Office", Count: "4"}, rankings.Clients[0])
 	assert.Equal(t, []rankedDomain{{"ads.example", "1"}}, rankings.Domains)
 	v, e = h.Timeseries(t.Context(), url.Values{})
 	require.NoError(t, e)

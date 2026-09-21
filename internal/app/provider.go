@@ -51,26 +51,27 @@ type historySummary struct {
 	UpdatedAt  time.Time    `json:"updated_at"`
 }
 type historyQuery struct {
-	ID               string    `json:"id"`
-	BootID           string    `json:"boot_id"`
-	Sequence         string    `json:"sequence"`
-	Time             time.Time `json:"time"`
-	Client           string    `json:"client"`
-	ClientName       string    `json:"client_name"`
-	ClientNameSource string    `json:"client_name_source"`
-	ClientNameFresh  bool      `json:"client_name_fresh"`
-	Name             string    `json:"name"`
-	QType            string    `json:"qtype"`
-	QTypeCode        uint16    `json:"qtype_code"`
-	QClass           uint16    `json:"qclass"`
-	Outcome          string    `json:"outcome"`
-	RCode            uint16    `json:"rcode"`
-	DurationUS       string    `json:"duration_us"`
-	Generation       string    `json:"generation"`
-	RuleID           string    `json:"rule_id"`
-	SourceID         string    `json:"source_id"`
-	UpstreamID       string    `json:"upstream_id"`
-	Flags            uint32    `json:"flags"`
+	ClientDevice     *clients.Enrichment `json:"client_device,omitempty"`
+	ID               string              `json:"id"`
+	BootID           string              `json:"boot_id"`
+	Sequence         string              `json:"sequence"`
+	Time             time.Time           `json:"time"`
+	Client           string              `json:"client"`
+	ClientName       string              `json:"client_name"`
+	ClientNameSource string              `json:"client_name_source"`
+	ClientNameFresh  bool                `json:"client_name_fresh"`
+	Name             string              `json:"name"`
+	QType            string              `json:"qtype"`
+	QTypeCode        uint16              `json:"qtype_code"`
+	QClass           uint16              `json:"qclass"`
+	Outcome          string              `json:"outcome"`
+	RCode            uint16              `json:"rcode"`
+	DurationUS       string              `json:"duration_us"`
+	Generation       string              `json:"generation"`
+	RuleID           string              `json:"rule_id"`
+	SourceID         string              `json:"source_id"`
+	UpstreamID       string              `json:"upstream_id"`
+	Flags            uint32              `json:"flags"`
 }
 type historyQueries struct {
 	Items      []historyQuery `json:"items"`
@@ -92,9 +93,10 @@ type historyDetail struct {
 	UpdatedAt                 time.Time `json:"updated_at"`
 }
 type rankedClient struct {
-	Address string `json:"address"`
-	Name    string `json:"name"`
-	Count   string `json:"count"`
+	Device  *clients.Enrichment `json:"device,omitempty"`
+	Address string              `json:"address"`
+	Name    string              `json:"name"`
+	Count   string              `json:"count"`
 }
 type rankedDomain struct {
 	Name  string `json:"name"`
@@ -123,13 +125,14 @@ type historySeries struct {
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
 type observedClient struct {
-	Address    string    `json:"address"`
-	Name       string    `json:"name"`
-	NameSource string    `json:"name_source"`
-	NameFresh  bool      `json:"name_fresh"`
-	Count      string    `json:"count"`
-	Blocked    string    `json:"blocked"`
-	LastSeen   time.Time `json:"last_seen"`
+	Device     *clients.Enrichment `json:"device,omitempty"`
+	Address    string              `json:"address"`
+	Name       string              `json:"name"`
+	NameSource string              `json:"name_source"`
+	NameFresh  bool                `json:"name_fresh"`
+	Count      string              `json:"count"`
+	Blocked    string              `json:"blocked"`
+	LastSeen   time.Time           `json:"last_seen"`
 }
 type historyClients struct {
 	Items     []observedClient `json:"items"`
@@ -512,7 +515,7 @@ func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	if qtype == "" {
 		qtype = "TYPE" + strconv.Itoa(int(e.QType))
 	}
-	return historyQuery{ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
+	return historyQuery{ClientDevice: name.Device, ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
 }
 func (h *historyProvider) Queries(ctx context.Context, q url.Values) (any, error) {
 	if e := h.available(); e != nil {
@@ -601,7 +604,8 @@ func (h *historyProvider) Rankings(ctx context.Context, q url.Values) (any, erro
 			return nil, historyError(errors.New("invalid retained client identity"))
 		}
 		address := netip.AddrFrom16([16]byte(b)).Unmap()
-		result.Clients = append(result.Clients, rankedClient{address.String(), h.named(address).Name, decimal(row.Count)})
+		name := h.named(address)
+		result.Clients = append(result.Clients, rankedClient{Device: name.Device, Address: address.String(), Name: name.Name, Count: decimal(row.Count)})
 	}
 	for _, row := range rankings.BlockedDomains {
 		n, e := policy.NameFromWire([]byte(row.Key))
@@ -735,7 +739,7 @@ func (h *historyProvider) Clients(ctx context.Context, q url.Values) (any, error
 	for _, row := range page.Items {
 		address := netip.AddrFrom16(row.Address).Unmap()
 		name := h.named(address)
-		result.Items = append(result.Items, observedClient{address.String(), name.Name, name.Source, name.Fresh, decimal(row.Count), decimal(row.Blocked), row.LastSeen})
+		result.Items = append(result.Items, observedClient{Device: name.Device, Address: address.String(), Name: name.Name, NameSource: name.Source, NameFresh: name.Fresh, Count: decimal(row.Count), Blocked: decimal(row.Blocked), LastSeen: row.LastSeen})
 	}
 	return result, nil
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -30,7 +31,57 @@ type mdnsRecord struct {
 	learned, expires time.Time
 	flush            bool
 }
-type mdnsCache struct{ records map[recordKey]mdnsRecord }
+type mdnsCache struct {
+	records   map[recordKey]mdnsRecord
+	addresses map[netip.Addr][]mdnsRecord
+	owners    map[recordGroup][]mdnsRecord
+	targets   map[recordGroup][]mdnsRecord
+}
+type recordGroup struct {
+	iface int
+	name  string
+	kind  uint16
+}
+
+func (c *mdnsCache) index() {
+	if c.addresses != nil {
+		return
+	}
+	c.addresses = map[netip.Addr][]mdnsRecord{}
+	c.owners = map[recordGroup][]mdnsRecord{}
+	c.targets = map[recordGroup][]mdnsRecord{}
+	records := make([]mdnsRecord, 0, len(c.records))
+	for _, r := range c.records {
+		records = append(records, r)
+	}
+	slices.SortFunc(records, func(a, b mdnsRecord) int {
+		if a.key.iface != b.key.iface {
+			return a.key.iface - b.key.iface
+		}
+		if a.key.owner != b.key.owner {
+			return strings.Compare(a.key.owner, b.key.owner)
+		}
+		if a.key.kind != b.key.kind {
+			return int(a.key.kind) - int(b.key.kind)
+		}
+		return strings.Compare(a.key.data, b.key.data)
+	})
+	for _, r := range records {
+		if r.address.IsValid() {
+			c.addresses[r.address] = append(c.addresses[r.address], r)
+		}
+		k := recordGroup{r.key.iface, r.key.owner, r.key.kind}
+		if len(c.owners[k]) < 32 {
+			c.owners[k] = append(c.owners[k], r)
+		}
+		if r.target != "" {
+			k.name = r.target
+			if len(c.targets[k]) < 32 {
+				c.targets[k] = append(c.targets[k], r)
+			}
+		}
+	}
+}
 
 func newMDNSCache() *mdnsCache { return &mdnsCache{records: make(map[recordKey]mdnsRecord)} }
 func dnsName(n dnswire.Name) string {
@@ -129,6 +180,7 @@ func (c *mdnsCache) ingest(ifindex int, p []byte, now time.Time) error {
 		return err
 	}
 	c.expire(now)
+	c.addresses = nil
 	for _, r := range batch {
 		if !r.expires.After(now) {
 			if old, ok := c.records[r.key]; ok {
@@ -169,6 +221,7 @@ func (c *mdnsCache) expire(now time.Time) {
 	for k, r := range c.records {
 		if !now.Before(r.expires) {
 			delete(c.records, k)
+			c.addresses = nil
 		}
 	}
 }

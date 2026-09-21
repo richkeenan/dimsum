@@ -1678,6 +1678,7 @@ export interface components {
       client_name: string;
       client_name_source: string;
       client_name_fresh: boolean;
+      client_device?: components["schemas"]["DeviceEnrichment"];
       /** @description Lowercase byte-safe DNS presentation with decimal escapes; root is empty */
       name: string;
       /** @description DNS type mnemonic or TYPE<number> */
@@ -1724,6 +1725,7 @@ export interface components {
     };
     HistoryRankings: {
       clients: {
+        device?: components["schemas"]["DeviceEnrichment"];
         address: string;
         name: string;
         count: components["schemas"]["Decimal"];
@@ -1772,6 +1774,7 @@ export interface components {
     };
     ObservedClients: {
       items: {
+        device?: components["schemas"]["DeviceEnrichment"];
         address: string;
         name: string;
         name_source: string;
@@ -1787,6 +1790,43 @@ export interface components {
       range: components["schemas"]["HistoryRange"];
       /** Format: date-time */
       updated_at: string;
+    };
+    DeviceEvidence: {
+      source: string;
+      hostname?: string;
+      service_type?: string;
+      label?: string;
+      model?: string;
+      manufacturer?: string;
+      device_type?: string;
+      /** Format: date-time */
+      updated: string;
+      /** Format: date-time */
+      expires: string;
+    };
+    /** @description Current derived device presentation; explicit client names always take priority over discovered names. Not an authenticated physical identity. */
+    DeviceEnrichment: {
+      /** @enum {string} */
+      category:
+        | "unknown"
+        | "phone"
+        | "tablet"
+        | "laptop"
+        | "desktop"
+        | "tv"
+        | "speaker"
+        | "printer"
+        | "camera"
+        | "lighting"
+        | "appliance"
+        | "server";
+      reason: string;
+      inferred: boolean;
+      fresh: boolean;
+      hostname?: string;
+      model?: string;
+      manufacturer?: string;
+      evidence: components["schemas"]["DeviceEvidence"][];
     };
     ClientsResponse: {
       status: components["schemas"]["Activation"];
@@ -1812,7 +1852,8 @@ export interface components {
       revision: string;
       edits?: {
         path: string[];
-        value: string | number | boolean;
+        /** @description String arrays are accepted only for naming.mdns.interfaces; other paths require scalars. */
+        value: (string | number | boolean) | string[];
       }[];
       item?: unknown;
       index?: number;

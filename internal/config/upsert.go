@@ -15,6 +15,13 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 	current := d
 	seen := make(map[string]bool)
 	for _, edit := range edits {
+		if discoveryInterfacesPath(edit.Path) {
+			value, err := discoveryInterfacesValue(edit.Value)
+			if err != nil {
+				return nil, err
+			}
+			edit.Value = value
+		}
 		if len(edit.Path) == 0 {
 			return nil, fmt.Errorf("edit: empty path")
 		}
@@ -31,7 +38,11 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 		var source []byte
 		var err error
 		if _, nodeErr := current.node(edit.Path); nodeErr == nil {
-			source, err = current.editSource([]Edit{edit})
+			if discoveryInterfacesPath(edit.Path) {
+				source, err = current.editDiscoveryInterfaces(edit)
+			} else {
+				source, err = current.editSource([]Edit{edit})
+			}
 		} else {
 			source, err = current.insertScalar(edit)
 		}
@@ -65,6 +76,10 @@ func (d *Document) insertScalar(edit Edit) ([]byte, error) {
 		}
 		switch edit.Value.(type) {
 		case string, int, int64, bool:
+		case []string:
+			if !discoveryInterfacesPath(edit.Path) {
+				return nil, fmt.Errorf("edit: only discovery interfaces accept sequences")
+			}
 		default:
 			return nil, fmt.Errorf("edit: unsupported scalar %T", edit.Value)
 		}

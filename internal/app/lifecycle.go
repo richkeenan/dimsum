@@ -72,7 +72,7 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	if err := config.Validate(c); err != nil {
 		return err
 	}
-	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || c.Naming != (clients.Settings{})) {
+	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || !c.Naming.IsZero()) {
 		return fmt.Errorf("service: policy configuration requires StartManaged")
 	}
 	if err := upstream.ValidateOptions(c.DNS.UpstreamOptions()); err != nil {
@@ -285,6 +285,15 @@ func (s *Service) ClientName(address netip.Addr) clients.Name {
 	return m.Get(address)
 }
 func (s *Service) Err() error { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
+func (s *Service) NamingDiagnostics() clients.DiscoveryDiagnostics {
+	s.mu.Lock()
+	m := s.names
+	s.mu.Unlock()
+	if m == nil {
+		return clients.DiscoveryDiagnostics{}
+	}
+	return m.Diagnostics()
+}
 
 func (s *Service) DNSStats() (transport.Stats, resolve.CacheStats) {
 	s.mu.Lock()

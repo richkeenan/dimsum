@@ -5,15 +5,22 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 )
 
 type Settings struct {
-	Resolver  string `yaml:"resolver,omitempty"`
-	HostsFile string `yaml:"hosts_file,omitempty"`
+	Resolver  string       `yaml:"resolver,omitempty"`
+	HostsFile string       `yaml:"hosts_file,omitempty"`
+	MDNS      MDNSSettings `yaml:"mdns,omitempty"`
 }
+
+func (s Settings) IsZero() bool {
+	return s.Resolver == "" && s.HostsFile == "" && !s.MDNS.Enabled && len(s.MDNS.Interfaces) == 0
+}
+
 type Override struct {
 	Address string `yaml:"address"`
 	Name    string `yaml:"name"`
@@ -24,6 +31,10 @@ type View struct {
 }
 
 func NewView(settings Settings, overrides []Override, local map[netip.Addr]string) (*View, error) {
+	if err := settings.MDNS.validate(); err != nil {
+		return nil, err
+	}
+	settings.MDNS.Interfaces = slices.Clone(settings.MDNS.Interfaces)
 	if settings.Resolver != "" {
 		a, e := netip.ParseAddrPort(settings.Resolver)
 		if e != nil || a.Port() == 0 || !localAddress(a.Addr()) {
@@ -71,19 +82,33 @@ type job struct {
 // Manager has one bounded worker and at most 4096 cached identities. Observe and
 // Get never perform file/network IO. Run is called once by the service lifecycle.
 type Manager struct {
-	current func() *View
-	mu      sync.Mutex
-	cache   map[netip.Addr]entry
-	pending map[job]bool
-	queue   chan job
+	mdnsObserve chan netip.Addr
+	mdnsNames   map[netip.Addr]entry
+	diagnostics DiscoveryDiagnostics
+	openMDNS    func(context.Context, MDNSSettings) (mdnsTransport, []string)
+	current     func() *View
+	mu          sync.Mutex
+	cache       map[netip.Addr]entry
+	pending     map[job]bool
+	queue       chan job
 }
 
 func New(current func() *View) *Manager {
-	return &Manager{current: current, cache: map[netip.Addr]entry{}, pending: map[job]bool{}, queue: make(chan job, 128)}
+	return &Manager{current: current, cache: map[netip.Addr]entry{}, pending: map[job]bool{}, queue: make(chan job, 128), mdnsObserve: make(chan netip.Addr, 128), mdnsNames: make(map[netip.Addr]entry), openMDNS: openMDNSTransport}
 }
-func (m *Manager) Get(address netip.Addr) Name { return m.get(address.Unmap(), m.current()) }
-func (m *Manager) get(a netip.Addr, v *View) Name {
-	n := Name{Address: a, Source: "unknown"}
+func (m *Manager) Get(address netip.Addr) Name {
+	a, v := address.Unmap(), m.current()
+	n := m.get(a, v)
+	m.mu.Lock()
+	found := m.mdnsNames[a]
+	m.mu.Unlock()
+	if found.view == v {
+		return mergeDiscovered(n, found.name, time.Now())
+	}
+	return mergeDiscovered(n, Name{}, time.Now())
+}
+func (m *Manager) get(a netip.Addr, v *View) (n Name) {
+	n = Name{Address: a, Source: "unknown"}
 	if v == nil {
 		return n
 	}
@@ -113,6 +138,12 @@ func (m *Manager) Observe(address netip.Addr) {
 	if !localAddress(a) {
 		return
 	}
+	if v := m.current(); v != nil && v.settings.MDNS.Enabled {
+		select {
+		case m.mdnsObserve <- a:
+		default:
+		}
+	}
 	v := m.current()
 	if v == nil || m.get(a, v).Fresh {
 		return
@@ -130,6 +161,9 @@ func (m *Manager) Observe(address netip.Addr) {
 	}
 }
 func (m *Manager) Run(ctx context.Context) {
+	done := make(chan struct{})
+	go func() { defer close(done); m.runMDNS(ctx) }()
+	defer func() { <-done }()
 	for {
 		select {
 		case <-ctx.Done():
