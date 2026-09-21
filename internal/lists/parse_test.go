@@ -15,6 +15,26 @@ import (
 
 type brokenReader struct{}
 
+func TestUnderscoreParserCompileInvariant(t *testing.T) {
+	for _, tc := range []struct {
+		d    Dialect
+		text string
+	}{
+		{Hosts, "0.0.0.0 philadelphia_cbslocal.us.intellitxt.com"},
+		{Domains, "_sip._tcp.bücher.example"},
+		{Adblock, "||ads_track.example^\n@@||safe_track.example^"},
+	} {
+		r, err := Parse(strings.NewReader(tc.text), Source{"s", tc.d, policy.Suffix}, DefaultLimits())
+		require.NoError(t, err)
+		require.NotEmpty(t, r.Rules)
+		m, err := policy.Compile(1, r.Rules, policy.DefaultLimits())
+		require.NoError(t, err)
+		n, err := policy.NormalizeName(r.Rules[0].Pattern)
+		require.NoError(t, err)
+		assert.Equal(t, policy.Block, m.Match(n).Result)
+	}
+}
+
 func (brokenReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
 func TestBoundariesAndReadErrors(t *testing.T) {
@@ -134,7 +154,7 @@ func TestSourceMembership(t *testing.T) {
 	assert.Equal(t, []string{"two"}, m.Evaluate(policy.Query{Name: name, Explain: true}).SourceIDs)
 }
 func FuzzParse(f *testing.F) {
-	for _, s := range []string{"||example.com^", "@@||a.example^$important", "0.0.0.0 a.example b.example", "\ufeff# comment\r\n", "a.example"} {
+	for _, s := range []string{"||example.com^", "@@||a.example^$important", "0.0.0.0 a.example b.example", "\ufeff# comment\r\n", "a.example", "0.0.0.0 philadelphia_cbslocal.us.intellitxt.com", "_sip._tcp.bücher.example", "@@||safe_track.example^"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, text string) {

@@ -144,7 +144,7 @@ func TestConfigurationNormalization(t *testing.T) {
 		m := compile(t, rule("idn", policy.Exact, policy.CustomDeny, tc.input))
 		assert.Equal(t, policy.Block, m.Match(name(t, tc.want)).Result)
 	}
-	for _, s := range []string{"", ".", "example..", "a..test", "_srv.test", "a b.test", "-a.test", "a-.test", "xn--.test", strings.Repeat("a", 64) + ".test", strings.Repeat("a.", 128)} {
+	for _, s := range []string{"", ".", "example..", "a..test", "a b.test", "-a.test", "a-.test", "xn--.test", strings.Repeat("a", 64) + ".test", strings.Repeat("a.", 128)} {
 		_, err := policy.NormalizeName(s)
 		assert.Error(t, err, s)
 	}

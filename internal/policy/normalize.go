@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/net/idna"
 )
@@ -15,19 +16,43 @@ type Name struct{ wire string }
 var hostnameProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
 	idna.StrictDomainName(true), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
 
-// NormalizeName validates a configuration hostname, maps IDNA nontransitionally,
-// and removes exactly one terminal root dot after IDNA separator mapping.
+// NormalizeName validates a configuration DNS name. ASCII underscore labels use
+// the DNS-safe letters/digits/hyphen/underscore alphabet; other labels retain
+// strict nontransitional IDNA validation (including all xn-- A-labels).
+// Mixed Unicode/underscore labels are rejected. One terminal root dot is removed.
 func NormalizeName(s string) (Name, error) {
-	ascii, err := hostnameProfile.ToASCII(s)
-	if err != nil {
-		return Name{}, fmt.Errorf("policy: invalid hostname %q: %w", s, err)
+	if !utf8.ValidString(s) {
+		return Name{}, fmt.Errorf("policy: invalid UTF-8 name")
 	}
-	ascii = strings.TrimSuffix(ascii, ".")
-	if ascii == "" {
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\u3002', '\uff0e', '\uff61':
+			return '.'
+		}
+		return r
+	}, s)
+	s = strings.TrimSuffix(s, ".")
+	if s == "" {
 		return Name{}, fmt.Errorf("policy: empty configuration hostname")
 	}
 	var wire []byte
-	for _, label := range strings.Split(ascii, ".") {
+	for _, label := range strings.Split(s, ".") {
+		if strings.Contains(label, "_") && !strings.HasPrefix(strings.ToLower(label), "xn--") {
+			if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+				return Name{}, fmt.Errorf("policy: invalid underscore label hyphen")
+			}
+			for _, c := range label {
+				if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+					return Name{}, fmt.Errorf("policy: invalid underscore label %q", label)
+				}
+			}
+		} else {
+			ascii, err := hostnameProfile.ToASCII(label)
+			if err != nil {
+				return Name{}, fmt.Errorf("policy: invalid hostname label %q: %w", label, err)
+			}
+			label = ascii
+		}
 		if len(label) == 0 || len(label) > 63 {
 			return Name{}, fmt.Errorf("policy: invalid label length")
 		}
