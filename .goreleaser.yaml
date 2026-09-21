@@ -22,6 +22,8 @@ archives:
       - deploy/dimsum.service
       - deploy/dimsum.sysusers
       - deploy/dimsum.example.yaml
+      - deploy/setup-service.sh
+      - scripts/install-service.sh
       - docs/operations/*.md
       - src: artifacts/packaging-metadata/**
         dst: metadata
@@ -29,17 +31,24 @@ nfpms:
   - id: native
     package_name: dimsum
     homepage: https://github.com/richkeenan/dimsum
-    description: Private-network DNS filtering service (local qualification build)
+    description: Private-network DNS filtering service
     maintainer: dimsum maintainers
     formats: [deb]
     bindir: /usr/bin
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
+    dependencies: [systemd, curl, iproute2, util-linux]
+    scripts:
+      postinstall: deploy/postinstall.sh
+      preremove: deploy/preremove.sh
     contents:
       - src: deploy/dimsum.service
         dst: /usr/lib/systemd/system/dimsum.service
       - src: deploy/dimsum.sysusers
         dst: /usr/lib/sysusers.d/dimsum.conf
       - src: deploy/dimsum.example.yaml
-        dst: /usr/share/doc/dimsum/dimsum.example.yaml
+        dst: /usr/lib/dimsum/dimsum.example.yaml
+      - src: deploy/setup-service.sh
+        dst: /usr/lib/dimsum/setup-service.sh
       - src: artifacts/packaging-metadata/
         dst: /usr/share/doc/dimsum/metadata
         type: tree
@@ -49,9 +58,11 @@ checksum:
 snapshot:
   version_template: "0.0.0-local-{{ .ShortCommit }}"
 release:
-  disable: true
+  prerelease: auto
+  extra_files:
+    - glob: install.sh
 changelog:
-  disable: true
+  sort: asc
 dockers_v2:
   - images: [dimsum-local]
     # v2 builds local per-architecture images in snapshot mode. Non-snapshot

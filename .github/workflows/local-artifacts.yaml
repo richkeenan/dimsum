@@ -1,10 +1,20 @@
 name: Local qualification artifacts
 on:
   workflow_dispatch:
+  workflow_call:
   pull_request:
 permissions:
   contents: read
 jobs:
+  installer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f tests/installer.Dockerfile -t dimsum-installer-test .
+      - run: docker run --rm dimsum-installer-test shellcheck -x -S warning install.sh scripts/install-service.sh deploy/setup-service.sh deploy/postinstall.sh deploy/preremove.sh tests/install.sh tests/package-install.sh
+      - run: docker run --rm dimsum-installer-test
+      - run: docker run --rm dimsum-installer-test sh tests/deploy-service.sh
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -43,6 +53,10 @@ jobs:
       - run: goreleaser build --snapshot --clean --single-target --output dist/dimsum
       - run: python3 scripts/qualification.py dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
       - run: goreleaser release --snapshot --clean --skip=publish,docker
+      - name: Test packaged install and upgrade
+        run: |
+          docker build -f tests/installer.Dockerfile -t dimsum-installer-test .
+          docker run --rm -v "$PWD/dist:/packages:ro" dimsum-installer-test sh tests/package-install.sh
       - uses: actions/upload-artifact@v4
         with:
           name: local-linux-artifacts
