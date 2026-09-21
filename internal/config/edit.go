@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -25,6 +26,14 @@ func (d *Document) Edit(edits []Edit) (*Document, error) {
 			return nil, fmt.Errorf("edit: empty path")
 		}
 		for _, key := range edit.Path {
+			if n.Kind == yaml.SequenceNode && n.Style&yaml.FlowStyle == 0 {
+				i, err := strconv.Atoi(key)
+				if err != nil || i < 0 || i >= len(n.Content) {
+					return nil, fmt.Errorf("edit %v: invalid sequence index", edit.Path)
+				}
+				n = n.Content[i]
+				continue
+			}
 			if n.Kind != yaml.MappingNode || n.Style&yaml.FlowStyle != 0 {
 				return nil, fmt.Errorf("edit %v: requires block mapping", edit.Path)
 			}

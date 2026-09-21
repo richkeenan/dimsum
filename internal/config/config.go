@@ -7,15 +7,21 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/richkeenan/dimsum/internal/lists"
+
 	"go.yaml.in/yaml/v3"
 )
 
 type Config struct {
-	Version int   `yaml:"version"`
-	DNS     DNS   `yaml:"dns"`
-	Admin   Admin `yaml:"admin"`
-	Paths   Paths `yaml:"paths"`
-	Cache   Cache `yaml:"cache"`
+	Version int                  `yaml:"version"`
+	DNS     DNS                  `yaml:"dns"`
+	Admin   Admin                `yaml:"admin"`
+	Paths   Paths                `yaml:"paths"`
+	Cache   Cache                `yaml:"cache"`
+	Lists   []lists.Subscription `yaml:"lists,omitempty"`
+	Rules   []CustomRule         `yaml:"rules,omitempty"`
+	Records []Record             `yaml:"records,omitempty"`
+	Clients []ClientOverride     `yaml:"clients,omitempty"`
 }
 type DNS struct {
 	Listen    []string `yaml:"listen"`
@@ -95,6 +101,10 @@ func (d *Document) Config() Config {
 	c := d.value
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)
 	c.DNS.Upstreams = append([]string(nil), c.DNS.Upstreams...)
+	c.Lists = append([]lists.Subscription(nil), c.Lists...)
+	c.Rules = append([]CustomRule(nil), c.Rules...)
+	c.Records = append([]Record(nil), c.Records...)
+	c.Clients = append([]ClientOverride(nil), c.Clients...)
 	return c
 }
 func (d *Document) Bytes() []byte    { return bytes.Clone(d.source) }

@@ -51,7 +51,7 @@ func Validate(c Config) error {
 	if c.Cache.MaxStaleSeconds < 0 {
 		return fmt.Errorf("cache.max_stale_seconds: must be nonnegative")
 	}
-	return nil
+	return validatePolicy(c)
 }
 
 func address(field, value string) error {
