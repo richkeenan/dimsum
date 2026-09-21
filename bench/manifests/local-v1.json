@@ -1,0 +1,27 @@
+{
+  "generator_version": 1,
+  "upstream_fixture": "loopback UDP; echo question and ID; QR/RD/RA; NOERROR; zero records, no SOA, no EDNS (uncacheable NODATA)",
+  "fixtures": [
+    {
+      "spec": {"family": "household", "seed": 42, "count": 100, "rate": 1000},
+      "sha256": "01c6e242b41e59c8c45485678339610e3b7e4a0cd10c5654cd3d97e30e224557",
+      "qtypes": {"1": 67, "28": 14, "65": 17, "12": 1, "64": 1},
+      "expected_answers": 100,
+      "expected_upstream": 100
+    },
+    {
+      "spec": {"family": "hot-key", "seed": 42, "count": 100, "rate": 1000},
+      "sha256": "3a16bac2f667af0fc6902506fc26cc89772180bbb767aa8832eb0f264ba3a301",
+      "qtypes": {"1": 100},
+      "expected_answers": 100,
+      "expected_upstream": 100
+    },
+    {
+      "spec": {"family": "churn", "seed": 42, "count": 100, "rate": 1000},
+      "sha256": "d927731745b2b2fcdf219ecfba99e53aca7daecb7298db2fb6847631fcdd29a0",
+      "qtypes": {"1": 100},
+      "expected_answers": 100,
+      "expected_upstream": 100
+    }
+  ]
+}
