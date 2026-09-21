@@ -1,0 +1,270 @@
+package storage
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"time"
+
+	"github.com/richkeenan/dimsum/internal/stats"
+)
+
+const MaxBatch = 512
+
+type RuleVersion struct {
+	Generation, RuleID uint32
+	Description        string
+}
+
+// BatchOptions supplies an optional independent cumulative snapshot and immutable
+// historical explanations. Aliases are canonical wire names indexed by sequence.
+// Producers supplying matched aliases must arrange bounded consumer-side delivery.
+type BatchOptions struct {
+	Snapshot    *stats.Snapshot
+	Rules       []RuleVersion
+	Aliases     map[uint64][]byte
+	LostDetails uint64 // Cumulative consumer losses for this boot, replay-safe.
+}
+
+// WriteBatch atomically stores at most 512 events, rollups and watermarks. Events
+// must have increasing nonzero sequences within a boot; replay at/below the last
+// committed event watermark is ignored, including after retention. Snapshot.Version
+// has its own watermark and is never added to event-derived totals.
+func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEvent, options ...BatchOptions) error {
+	if len(boot) == 0 || len(boot) > 128 || len(events) > MaxBatch || len(options) > 1 {
+		return errors.New("invalid batch bounds")
+	}
+	var o BatchOptions
+	if len(options) > 0 {
+		o = options[0]
+	}
+	if len(o.Rules) > MaxBatch || len(o.Aliases) > MaxBatch || o.LostDetails > math.MaxInt64 {
+		return errors.New("invalid metadata bounds")
+	}
+	for i, e := range events {
+		if e.Sequence == 0 || e.Sequence > math.MaxInt64 || e.Outcome >= stats.OutcomeCount || (i > 0 && e.Sequence <= events[i-1].Sequence) {
+			return errors.New("invalid event sequence or outcome")
+		}
+		if len(o.Aliases[e.Sequence]) > 255 {
+			return errors.New("alias exceeds wire name bound")
+		}
+	}
+	for _, r := range o.Rules {
+		if len(r.Description) > 4096 {
+			return errors.New("rule description too large")
+		}
+	}
+	if o.Snapshot != nil && (o.Snapshot.Version > math.MaxInt64 || o.Snapshot.Sequence > math.MaxInt64) {
+		return errors.New("snapshot watermark overflow")
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	tx, err := d.write.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "INSERT INTO writer_state(boot_id) VALUES(?) ON CONFLICT DO NOTHING", boot); err != nil {
+		return err
+	}
+	var watermark uint64
+	if err = tx.QueryRowContext(ctx, "SELECT event_watermark FROM writer_state WHERE boot_id=?", boot).Scan(&watermark); err != nil {
+		return err
+	}
+	for _, r := range o.Rules {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions VALUES(?,?,?) ON CONFLICT DO NOTHING", r.Generation, r.RuleID, r.Description); err != nil {
+			return err
+		}
+		var text string
+		if err = tx.QueryRowContext(ctx, "SELECT description FROM rule_versions WHERE generation=? AND rule_id=?", r.Generation, r.RuleID).Scan(&text); err != nil {
+			return err
+		}
+		if text != r.Description {
+			return errors.New("immutable rule version conflict")
+		}
+	}
+	insert, err := tx.PrepareContext(ctx, `INSERT INTO query_events(boot_id,sequence,timestamp,duration,domain_id,client_id,qtype,qclass,outcome,rcode,upstream_id,generation,rule_id,flags,alias) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		return err
+	}
+	defer insert.Close()
+	roll, err := tx.PrepareContext(ctx, `INSERT INTO rollups VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(resolution,bucket,outcome) DO UPDATE SET count=count+excluded.count,duration=duration+excluded.duration,h0=h0+excluded.h0,h1=h1+excluded.h1,h2=h2+excluded.h2,h3=h3+excluded.h3,h4=h4+excluded.h4,h5=h5+excluded.h5,h6=h6+excluded.h6,h7=h7+excluded.h7`)
+	if err != nil {
+		return err
+	}
+	defer roll.Close()
+	rank, err := tx.PrepareContext(ctx, `INSERT INTO rankings_hour VALUES(?,?,?,1) ON CONFLICT(bucket,kind,key) DO UPDATE SET count=count+1`)
+	if err != nil {
+		return err
+	}
+	defer rank.Close()
+	var detailCutoff int64
+	if err = tx.QueryRowContext(ctx, "SELECT value FROM storage_meta WHERE key='detail_cutoff'").Scan(&detailCutoff); err != nil {
+		return err
+	}
+	for _, e := range events {
+		if e.Sequence <= watermark {
+			continue
+		}
+		if e.Sequence != watermark+1 {
+			if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET incomplete=1 WHERE boot_id=?", boot); err != nil {
+				return err
+			}
+		}
+		watermark = e.Sequence
+		// Retained windows must not be repopulated by delayed historical batches.
+		if e.Timestamp < detailCutoff {
+			continue
+		}
+		domain, er := dimension(ctx, tx, "domains", "name", e.QName[:e.QNameLength])
+		if er != nil {
+			return er
+		}
+		client, er := dimension(ctx, tx, "clients", "address", e.Client[:])
+		if er != nil {
+			return er
+		}
+		if _, err = insert.ExecContext(ctx, boot, e.Sequence, e.Timestamp, e.Duration, domain, client, e.QType, e.QClass, e.Outcome, e.RCode, e.UpstreamID, e.Generation, e.RuleID, e.Flags, o.Aliases[e.Sequence]); err != nil {
+			return err
+		}
+		var hist [8]int
+		hist[stats.HistogramIndex(e.Duration)] = 1
+		for _, width := range []time.Duration{time.Minute, time.Hour, 24 * time.Hour} {
+			if _, err = roll.ExecContext(ctx, int64(width/time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, 1, e.Duration, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7]); err != nil {
+				return err
+			}
+		}
+		if e.Outcome != stats.AdmissionRejected {
+			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 0, e.Client[:]); err != nil {
+				return err
+			}
+		}
+		if e.Outcome == stats.PolicyBlock {
+			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 1, e.QName[:e.QNameLength]); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET event_watermark=? WHERE boot_id=?", watermark, boot); err != nil {
+		return err
+	}
+	if o.Snapshot != nil {
+		blob, er := json.Marshal(o.Snapshot)
+		if er != nil {
+			return er
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET snapshot_watermark=?,snapshot=?,incomplete=MAX(incomplete,?) WHERE boot_id=? AND snapshot_watermark<?", o.Snapshot.Version, blob, o.Snapshot.Dropped > 0, boot, o.Snapshot.Version); err != nil {
+			return err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET lost_details=MAX(lost_details,?) WHERE boot_id=?", o.LostDetails, boot); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "UPDATE storage_meta SET value=? WHERE key='last_write'", time.Now().UnixMicro()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func dimension(ctx context.Context, tx *sql.Tx, table, column string, value []byte) (int64, error) {
+	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+"("+column+") VALUES(?) ON CONFLICT DO NOTHING", value); err != nil {
+		return 0, err
+	}
+	var id int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM "+table+" WHERE "+column+"=?", value).Scan(&id)
+	return id, err
+}
+
+// Run is the single consumer. One bounded failed batch is discarded, reported,
+// and counted on the next successful transaction; DNS producers never retry it.
+// Cancellation flushes with an independent bounded context. Stop producers first
+// when an exact final snapshot is required. The collector channel is never closed.
+func (d *DB) Run(ctx context.Context, c *stats.Collector, boot string, enrich ...func([]stats.QueryEvent) (BatchOptions, error)) error {
+	if c == nil || boot == "" || len(boot) > 128 || len(enrich) > 1 {
+		return errors.New("invalid consumer arguments")
+	}
+	d.statusMu.Lock()
+	if d.running {
+		d.statusMu.Unlock()
+		return errors.New("storage consumer already running")
+	}
+	d.running = true
+	d.statusMu.Unlock()
+	defer func() { d.statusMu.Lock(); d.running = false; d.statusMu.Unlock() }()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	maintenance := time.NewTicker(time.Minute)
+	defer maintenance.Stop()
+	batch := make([]stats.QueryEvent, 0, MaxBatch)
+	var lost uint64
+	flush := func(flushCtx context.Context) error {
+		s := c.Snapshot()
+		var options BatchOptions
+		var err error
+		if len(enrich) > 0 && len(batch) > 0 {
+			options, err = enrich[0](batch)
+		}
+		options.Snapshot = &s
+		options.LostDetails = lost
+		if err == nil {
+			err = d.WriteBatch(flushCtx, boot, batch, options)
+		}
+		d.statusMu.Lock()
+		defer d.statusMu.Unlock()
+		if err != nil {
+			lost += uint64(len(batch))
+			d.status.LostDetails += uint64(len(batch))
+			d.status.LastError = err.Error()
+		} else {
+			d.status.LastError = ""
+			d.status.LastSuccess = time.Now()
+		}
+		batch = batch[:0]
+		return err
+	}
+	for {
+		select {
+		case e := <-c.Events():
+			batch = append(batch, e)
+			if len(batch) == MaxBatch {
+				_ = flush(ctx)
+			}
+		case <-ticker.C:
+			_ = flush(ctx)
+		case <-maintenance.C:
+			if err := d.Retain(ctx, time.Now(), d.Retention()); err != nil {
+				d.statusMu.Lock()
+				d.status.LastError = fmt.Sprintf("retention: %v", err)
+				d.statusMu.Unlock()
+			}
+			if _, err := d.Checkpoint(ctx); err != nil {
+				d.statusMu.Lock()
+				d.status.LastError = fmt.Sprintf("checkpoint: %v", err)
+				d.statusMu.Unlock()
+			}
+		case <-ctx.Done():
+			final, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			// Drain only the queue capacity observed at shutdown, not continuing producers.
+			n := len(c.Events())
+			for range n {
+				select {
+				case e := <-c.Events():
+					batch = append(batch, e)
+					if len(batch) == MaxBatch {
+						if err := flush(final); err != nil {
+							return err
+						}
+					}
+				default:
+				}
+			}
+			return flush(final)
+		}
+	}
+}
