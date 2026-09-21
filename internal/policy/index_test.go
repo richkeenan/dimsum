@@ -263,3 +263,25 @@ func TestCompileFallbackDoesNotPinSourceBuffer(t *testing.T) {
 		})
 	}
 }
+
+func TestCompileRegexReusesReferenceCompilation(t *testing.T) {
+	rules := make([]Rule, 64)
+	for i := range rules {
+		rules[i] = Rule{ID: fmt.Sprint(i), Kind: Regex, Class: CustomAllow, Pattern: `(^|\.)ads[0-9]+\.example$`}
+	}
+	var ref *Matcher
+	var snapshot *PolicySnapshot
+	var err error
+	refAllocs := testing.AllocsPerRun(3, func() { ref, err = Compile(1, rules, DefaultLimits()) })
+	require.NoError(t, err)
+	require.NotNil(t, ref)
+	snapshotAllocs := testing.AllocsPerRun(3, func() { snapshot, err = CompileSnapshot(1, rules, DefaultLimits()) })
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	// Arena/provenance work is small compared with regexp compilation. Compiling
+	// each regex twice just to recover its accounting charge violates this bound.
+	assert.Less(t, snapshotAllocs, refAllocs*1.5)
+	n, err := NormalizeName("ads123.example")
+	require.NoError(t, err)
+	assert.Equal(t, ref.Match(n), snapshot.Match(n))
+}

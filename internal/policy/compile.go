@@ -79,7 +79,6 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	var suffixes []suffixBuild
 	var suffixKeyBytes uint64
 	var fallback []Rule
-	var fallbackCharge uint64
 	for _, r := range input {
 		if o.DisabledSources[r.SourceID] {
 			continue
@@ -153,18 +152,12 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		return nil, err
 	}
 	s.fallback = m.rules
+	fallbackCharge := uint64(m.regexBytes)
 	for i := range s.fallback {
 		r := &s.fallback[i]
 		fallbackCharge += uint64(len(r.name.wire)) + uint64(cap(r.labels))*16
 		for _, label := range r.labels {
 			fallbackCharge += uint64(len(label))
-		}
-		if r.kind == Regex {
-			_, charge, err := compileRegex(r.rule.Pattern, r.rule.Dialect, limits, limits.MaxTotalRegexBytes)
-			if err != nil {
-				return nil, err
-			}
-			fallbackCharge += uint64(charge)
 		}
 		// Retain no original Rule strings in fallback; diagnostics live in arena.
 		r.rule = Rule{}

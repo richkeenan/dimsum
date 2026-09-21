@@ -13,6 +13,7 @@ import (
 type Matcher struct {
 	generation uint64
 	rules      []compiledRule
+	regexBytes int64 // validated aggregate charge, reusable by snapshot compiler
 }
 
 // Rule returns a value copy of the original diagnostic input, not compiled
@@ -89,6 +90,7 @@ func Compile(generation uint64, rules []Rule, limits Limits) (*Matcher, error) {
 		}
 		m.rules = append(m.rules, c)
 	}
+	m.regexBytes = total
 	return m, nil
 }
 
