@@ -84,6 +84,11 @@ func TestCacheIsolationAndCollision(t *testing.T) {
 		key, _ := NewKey(&q, dims[0], dims[1], dims[2])
 		assert.False(t, c.Get(key, &q, out, now).Hit)
 	}
+	qtype := q
+	qtype.Question.Type = dns.TypeAAAA
+	aaaa, ok := NewKey(&qtype, 1, 2, 3)
+	require.True(t, ok)
+	assert.False(t, c.Get(aaaa, &qtype, out, now).Hit)
 	q.Question.Header.Flags |= dnswire.FlagCD
 	cd, _ := NewKey(&q, 1, 2, 3)
 	assert.False(t, c.Get(cd, &q, out, now).Hit)
@@ -137,7 +142,7 @@ func TestNegativeCacheAndBypasses(t *testing.T) {
 			m.Ns = []dns.RR{&dns.SOA{Hdr: dns.RR_Header{Name: "other.org.", Rrtype: 6, Class: 1, Ttl: 100}, Ns: ".", Mbox: ".", Minttl: 60}}
 		}},
 		{"large", func(m *dns.Msg) {
-			m.Answer = []dns.RR{&dns.RFC3597{Hdr: dns.RR_Header{Name: "example.org.", Rrtype: 65400, Class: 1, Ttl: 100}, Rdata: fmt.Sprintf("%036000x", 1)}}
+			m.Answer[1] = &dns.RFC3597{Hdr: dns.RR_Header{Name: "example.org.", Rrtype: 65400, Class: 1, Ttl: 100}, Rdata: fmt.Sprintf("%036000x", 1)}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -192,6 +197,12 @@ func TestCacheEDNSAndOutputBoundaries(t *testing.T) {
 	assert.EqualValues(t, 0x8000, got.IsEdns0().Hdr.Ttl)
 	assert.EqualValues(t, 1232, got.IsEdns0().UDPSize())
 	assert.False(t, c.Get(k, &q, out, now.Add(-time.Second)).Hit)
+	q.EDNS.DO, q.EDNS.Flags = false, 0
+	withoutDO, ok := NewKey(&q, 1, 1, 0)
+	require.True(t, ok)
+	assert.False(t, c.Get(withoutDO, &q, out, now).Hit)
+	assert.False(t, c.Put(withoutDO, w, now))
+	q.EDNS.DO, q.EDNS.Flags = true, 0x8000
 	q.EDNS.UDPSize = 4096
 	assert.False(t, c.Get(k, &q, out, now).Hit)
 	op := m.IsEdns0()
