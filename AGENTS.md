@@ -7,3 +7,4 @@
 - Keep existing Pi-hole and production network settings untouched. Tests use isolated local ports and fixtures. Cutover and public release require owner authorization.
 - Every UI operation must have a CLI equivalent. Configuration is authoritative Git-friendly text; derived state and statistics are separate.
 - Consult current library documentation for dependencies. Do not claim Pi benchmarks, multi-day soaks, or release qualification without actual evidence.
+- Never commit real household device names, IP/MAC addresses, serial numbers, or raw network inventories. Use synthetic names/models and documentation address ranges in fixtures and examples; keep live probe output outside tracked files.

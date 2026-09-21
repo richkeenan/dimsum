@@ -62,7 +62,7 @@ func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 func genericName(name string) bool {
 	n := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(name, "."), ".local"))
 	switch n {
-	case "", "android", "linux", "home", "unknown", "device", "localhost", "none", "none-2":
+	case "", "android", "linux", "home", "unknown", "device", "localhost", "none":
 		return true
 	}
 	// Opaque service UUIDs and raw hex identifiers are poor display labels.

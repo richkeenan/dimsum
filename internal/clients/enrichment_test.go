@@ -34,14 +34,14 @@ func TestDeviceClassificationUsesSpecificEvidence(t *testing.T) {
 		evidence []Evidence
 		want     string
 	}{
-		{"Richards-iPhone.local", nil, "phone"}, {"MacBook-Pro.local", nil, "laptop"},
+		{"Example-iPhone.local", nil, "phone"}, {"Example-MacBook.local", nil, "laptop"},
 		{"ipad.local", nil, "tablet"}, {"imac.local", nil, "desktop"},
 		{"linux.local", nil, "unknown"}, {"Android.local", nil, "unknown"},
-		{"none-2.local", nil, "unknown"}, {"notiphonecase.local", nil, "unknown"},
+		{"unknown-7.local", nil, "unknown"}, {"notiphonecase.local", nil, "unknown"},
 		{"player.local", []Evidence{{ServiceType: "_airplay._tcp"}}, "unknown"},
 		{"printer.local", []Evidence{{ServiceType: "_ipp._tcp"}}, "printer"},
 		{"controller.local", []Evidence{{ServiceType: "_wled._tcp"}}, "lighting"},
-		{"Android.local", []Evidence{{Model: "KD-55XH8196", Manufacturer: "Sony"}}, "tv"},
+		{"Android.local", []Evidence{{Model: "KD-EXAMPLE", Manufacturer: "Sony"}}, "tv"},
 		{"host.local", []Evidence{{Manufacturer: "Sony"}}, "unknown"},
 		{"host.local", []Evidence{{ServiceType: "_home-assistant._tcp"}}, "server"},
 		{"host.local", []Evidence{{ServiceType: "_homeconnect._tcp"}}, "appliance"},
@@ -61,10 +61,10 @@ func TestDeviceClassificationUsesSpecificEvidence(t *testing.T) {
 func TestEnrichmentSelectsUsefulLabelAndExpires(t *testing.T) {
 	now := time.Now()
 	n := Name{Name: "Android.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "Android.local", Evidence: []Evidence{
-		{Source: "dns-sd", Hostname: "Android.local", Label: "SONY KD-55XH8196", ServiceType: "_airplay._tcp", Model: "KD-55XH8196", Manufacturer: "Sony", Expires: now.Add(time.Minute)},
+		{Source: "dns-sd", Hostname: "Android.local", Label: "Example Television", ServiceType: "_airplay._tcp", Model: "KD-EXAMPLE", Manufacturer: "Sony", Expires: now.Add(time.Minute)},
 	}}}
 	got := enrichDiscovered(n, now)
-	assert.Equal(t, "SONY KD-55XH8196", got.Name)
+	assert.Equal(t, "Example Television", got.Name)
 	assert.Equal(t, "tv", got.Device.Category)
 	assert.Equal(t, "dns-sd", got.Source)
 	assert.Empty(t, enrichDiscovered(n, now.Add(time.Hour)).Name)
