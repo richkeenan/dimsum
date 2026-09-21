@@ -37,15 +37,24 @@ export default function Overview({
   const s = summary.data;
   return (
     <>
+      <Completeness
+        meta={{
+          complete: ![
+            s,
+            series.data,
+            rankings.data,
+            clients.data?.observed,
+          ].some((meta) => meta?.complete === false),
+        }}
+      />
       <Resource state={summary}>
-        <Completeness meta={s} />
         <div className="metrics">
           {[
-            ["Admitted queries", count(s?.queries)],
-            ["Blocked", percentage(s?.blocked, s?.queries)],
-            ["Fresh cache", percentage(s?.fresh, s?.queries)],
+            ["Total queries", count(s?.queries)],
+            ["Blocked queries", count(s?.blocked)],
+            ["Answered from cache", percentage(s?.fresh, s?.queries)],
             [
-              "Observed clients",
+              "Active clients",
               clients.data?.observed
                 ? (clients.data.observed.truncated ? "≥ " : "") +
                   count(String(clients.data.observed.items?.length ?? 0))
@@ -60,15 +69,19 @@ export default function Overview({
         </div>
         <div className="healthline">
           <span>
-            Stale <b>{count(s?.stale)}</b>
+            Blocked <b>{percentage(s?.blocked, s?.queries)}</b>
           </span>
           <span>
-            Rejected admissions <b>{count(s?.rejected)}</b>
+            Rejected queries <b>{count(s?.rejected)}</b>
           </span>
         </div>
       </Resource>
       <Resource state={clients}>
-        <Completeness meta={clients.data?.observed} />
+        {clients.data?.observed?.truncated && (
+          <p className="muted">
+            Client count shows the first 200 observed addresses.
+          </p>
+        )}
       </Resource>
       <Health refresh={refresh} />
       <section className="panel">
@@ -77,14 +90,12 @@ export default function Overview({
           <span className="muted">Outcomes over the selected range</span>
         </div>
         <Resource state={series}>
-          <Completeness meta={series.data} />
           <Suspense fallback={<p role="status">Loading chart…</p>}>
             <TrafficChart buckets={series.data?.points ?? []} />
           </Suspense>
         </Resource>
       </section>
       <Resource state={rankings}>
-        <Completeness meta={rankings.data} />
         <div className="split">
           <section className="panel">
             <div className="panel-heading">
@@ -103,13 +114,17 @@ export default function Overview({
                       onClick={() => drill("client", text(r.address))}
                     >
                       {text(r.name || r.address)}
-                      <small>{text(r.address)}</small>
+                      {!!r.name && r.name !== r.address && (
+                        <small>{text(r.address)}</small>
+                      )}
                     </button>
                   ),
                 },
                 {
                   key: "count",
                   label: "Requests",
+                  align: "right",
+                  width: 110,
                   render: (r) => count(r.count),
                 },
               ]}
@@ -138,6 +153,8 @@ export default function Overview({
                 {
                   key: "count",
                   label: "Blocked",
+                  align: "right",
+                  width: 110,
                   render: (r) => count(r.count),
                 },
               ]}

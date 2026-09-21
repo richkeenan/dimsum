@@ -31,29 +31,54 @@ export default function Queries({
   initialFilter,
   refresh,
   onLiveTick,
+  onFilterChange,
+  liveAllowed = true,
 }: {
   range: string;
   initialFilter: Record<string, string>;
   refresh: number;
   onLiveTick: () => void;
+  onFilterChange?: (filters: Record<string, string>) => void;
+  liveAllowed?: boolean;
 }) {
   const [filters, setFilters] = useState(initialFilter);
   const [draft, setDraft] = useState(initialFilter);
   const [cursors, setCursors] = useState<string[]>([""]);
   const [selected, setSelected] = useState<string>();
-  const [live, setLive] = useState(false);
+  const [live, setLive] = useState(true);
+  const [technical, setTechnical] = useState(false);
+  const [snapshot, setSnapshot] = useState<string>();
   const [tick, setTick] = useState(0);
   const invalidate = useCallback(() => {
     setTick((v) => v + 1);
-    onLiveTick();
-  }, [onLiveTick]);
+    if (liveAllowed && cursors.length === 1 && !selected) onLiveTick();
+  }, [onLiveTick, liveAllowed, cursors.length, selected]);
   const connection = useLive(
-    live && !selected && cursors.length === 1,
+    liveAllowed && live && !selected && cursors.length === 1,
     invalidate,
   );
+  const filterKey = JSON.stringify(Object.entries(initialFilter).sort());
   useEffect(() => {
+    const next = Object.fromEntries(JSON.parse(filterKey)) as Record<
+      string,
+      string
+    >;
+    setFilters(next);
+    setDraft(next);
     setCursors([""]);
-  }, [range]);
+    setSnapshot(undefined);
+  }, [filterKey]);
+  function applyFilters(next: Record<string, string>) {
+    setFilters(next);
+    setDraft(next);
+    setCursors([""]);
+    setSnapshot(undefined);
+    onFilterChange?.(next);
+  }
+  function inspect(row: Row) {
+    setSnapshot(snapshot ?? range);
+    setSelected(text(row.id));
+  }
   const query = queryParameters(filters, cursors.at(-1));
   function filterIdentity(
     row: Row,
@@ -64,12 +89,11 @@ export default function Queries({
       next.boot_id = text(row.boot_id);
       next.generation = text(row.generation);
     }
-    setFilters(next);
-    setDraft(next);
-    setCursors([""]);
+    applyFilters(next);
+    setSelected(undefined);
   }
   const state = useResource<Page>(
-    "queries?" + range + "&" + query,
+    "queries?" + (snapshot ?? range) + "&" + query,
     refresh + tick,
   );
   return (
@@ -78,23 +102,16 @@ export default function Queries({
         className="filters"
         onSubmit={(e) => {
           e.preventDefault();
-          setFilters(draft);
-          setCursors([""]);
+          applyFilters(draft);
         }}
       >
-        {[
-          "name",
-          "client",
-          "outcome",
-          "qtype",
-          "source_id",
-          "rule_id",
-          "upstream_id",
-          "boot_id",
-          "generation",
-        ].map((key) => (
+        {["name", "client", "outcome"].map((key) => (
           <label key={key}>
-            {key === "qtype" ? "Type" : key === "name" ? "Exact name" : key}
+            {key === "name"
+              ? "Domain (exact)"
+              : key === "client"
+                ? "Client"
+                : "Result"}
             {key === "outcome" ? (
               <select
                 aria-label="Filter outcome"
@@ -103,7 +120,9 @@ export default function Queries({
               >
                 <option value="">All outcomes</option>
                 {outcomes.map((o) => (
-                  <option key={o}>{o}</option>
+                  <option key={o} value={o}>
+                    {resultLabel(o)}
+                  </option>
                 ))}
               </select>
             ) : (
@@ -115,30 +134,72 @@ export default function Queries({
             )}
           </label>
         ))}
-        <Button type="submit">Filter</Button>
+        <details className="advanced-filters">
+          <summary>Advanced filters</summary>
+          <div className="form-grid">
+            {Object.entries({
+              qtype: "Type",
+              source_id: "Source ID",
+              rule_id: "Rule ID",
+              upstream_id: "Upstream ID",
+              boot_id: "Boot ID",
+              generation: "Generation",
+            }).map(([key, label]) => (
+              <label key={key}>
+                {label}
+                <Input
+                  aria-label={"Filter " + key}
+                  value={draft[key] ?? ""}
+                  onChange={(e) =>
+                    setDraft({ ...draft, [key]: e.target.value })
+                  }
+                />
+              </label>
+            ))}
+          </div>
+          <p className="muted">
+            Rule and upstream IDs need a boot ID and generation. Use query
+            details to capture that scope. Source IDs match archived identities.
+          </p>
+        </details>
+        <Button type="submit">Apply filters</Button>
         <Button
           type="button"
           variant="outline"
           onClick={() => {
-            setDraft({});
-            setFilters({});
-            setCursors([""]);
+            applyFilters({});
           }}
         >
           Clear
         </Button>
       </form>
-      <p className="muted">
-        Rule and upstream IDs require boot ID and generation. Click an ID in a
-        row to capture its scope. Source IDs match exact archived identities.
-      </p>
       <div className="toolbar">
         <span role="status">
-          {selected ? "Paused while inspecting" : connection}
+          {selected
+            ? "Paused while inspecting"
+            : cursors.length > 1
+              ? "Paused on older queries"
+              : !liveAllowed
+                ? "Fixed time range"
+                : !live
+                  ? "Live updates paused"
+                  : connection}
         </span>
-        <Button variant="outline" onClick={() => setLive(!live)}>
+        <Button
+          variant="outline"
+          disabled={!liveAllowed}
+          onClick={() => setLive(!live)}
+        >
           {live ? "Pause live" : "Start live"}
         </Button>
+        <label>
+          <input
+            type="checkbox"
+            checked={technical}
+            onChange={(e) => setTechnical(e.target.checked)}
+          />{" "}
+          Technical columns
+        </label>
       </div>
       <Resource state={state} retry={invalidate}>
         <Completeness meta={state.data} />
@@ -149,20 +210,27 @@ export default function Queries({
               {
                 key: "time",
                 label: "Time",
+                width: 100,
                 render: (r) => (
                   <button
                     className="text-button"
-                    onClick={() => setSelected(text(r.id))}
+                    onClick={() => inspect(r)}
+                    title={text(r.time)}
+                    style={{
+                      whiteSpace: "nowrap",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
                   >
-                    {text(r.time)}
+                    {shortTime(r.time)}
                   </button>
                 ),
               },
               {
                 key: "client",
                 label: "Client",
+                width: 190,
                 render: (r) => (
-                  <span>
+                  <span style={{ whiteSpace: "nowrap" }}>
                     {text(r.client_name || r.client)}
                     {!!r.client_name && (
                       <small>
@@ -175,29 +243,40 @@ export default function Queries({
               },
               {
                 key: "name",
-                label: "Name",
+                label: "Domain",
+                width: 300,
                 render: (r) => (
                   <button
                     className="text-button dns"
-                    onClick={() => setSelected(text(r.id))}
+                    onClick={() => inspect(r)}
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     {text(r.name)}
                   </button>
                 ),
               },
-              { key: "qtype", label: "Type" },
+              { key: "qtype", label: "Type", width: 80 },
               {
                 key: "outcome",
                 label: "Result",
+                width: 140,
                 render: (r) => (
                   <span className={"outcome " + text(r.outcome)}>
-                    {text(r.outcome)}
+                    {resultLabel(r.outcome)}
                   </span>
                 ),
               },
               {
+                key: "duration_us",
+                label: "ms",
+                width: 90,
+                align: "right",
+                render: (r) => microsecondsToMS(r.duration_us),
+              },
+              {
                 key: "rule_id",
                 label: "Rule ID",
+                hidden: !technical,
                 render: (r) => (
                   <button
                     className="text-button"
@@ -210,6 +289,7 @@ export default function Queries({
               {
                 key: "source_id",
                 label: "Source ID",
+                hidden: !technical,
                 render: (r) =>
                   r.source_id ? (
                     <button
@@ -223,13 +303,9 @@ export default function Queries({
                   ),
               },
               {
-                key: "duration_us",
-                label: "Time (ms)",
-                render: (r) => microsecondsToMS(r.duration_us),
-              },
-              {
                 key: "upstream_id",
                 label: "Upstream ID",
+                hidden: !technical,
                 render: (r) => (
                   <button
                     className="text-button"
@@ -239,7 +315,7 @@ export default function Queries({
                   </button>
                 ),
               },
-              { key: "generation", label: "Generation" },
+              { key: "generation", label: "Generation", hidden: !technical },
             ]}
           />
         </section>
@@ -248,16 +324,19 @@ export default function Queries({
           <div className="actions">
             <Button
               variant="outline"
-              disabled={cursors.length === 1}
-              onClick={() => setCursors((c) => c.slice(0, -1))}
+              disabled={cursors.length === 1 || state.isFetching}
+              onClick={() => {
+                if (cursors.length === 2) setSnapshot(undefined);
+                setCursors((c) => c.slice(0, -1));
+              }}
             >
               Previous
             </Button>
             <Button
               variant="outline"
-              disabled={!state.data?.next_cursor}
+              disabled={!state.data?.next_cursor || state.isFetching}
               onClick={() => {
-                setLive(false);
+                setSnapshot(snapshot ?? range);
                 setCursors((c) => [...c, state.data!.next_cursor!]);
               }}
             >
@@ -269,7 +348,10 @@ export default function Queries({
       <Dialog
         open={!!selected}
         onOpenChange={(open) => {
-          if (!open) setSelected(undefined);
+          if (!open) {
+            setSelected(undefined);
+            if (cursors.length === 1) setSnapshot(undefined);
+          }
         }}
       >
         <DialogContent side>
@@ -277,13 +359,54 @@ export default function Queries({
           <DialogDescription>
             Historical explanation from the query’s policy generation.
           </DialogDescription>
-          {selected && <QueryDetail id={selected} />}
+          {selected && (
+            <QueryDetail
+              key={selected}
+              id={selected}
+              filterIdentity={filterIdentity}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </>
   );
 }
-function QueryDetail({ id }: { id: string }) {
+export function shortTime(value: unknown) {
+  const date = new Date(text(value));
+  return Number.isNaN(date.getTime())
+    ? text(value)
+    : date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+}
+export function resultLabel(value: unknown) {
+  return (
+    (
+      {
+        local: "Local answer",
+        blocked: "Blocked",
+        cache: "Cached",
+        stale: "Cached (stale)",
+        forwarded: "Forwarded",
+        error: "Failed",
+        rejected: "Rejected",
+      } as Record<string, string>
+    )[text(value)] ?? text(value)
+  );
+}
+function QueryDetail({
+  id,
+  filterIdentity,
+}: {
+  id: string;
+  filterIdentity: (
+    row: Row,
+    key: "rule_id" | "source_id" | "upstream_id",
+  ) => void;
+}) {
   const state = useResource<Row>("queries/" + encodeURIComponent(id));
   const [scope, setScope] = useState("exact");
   const [action, setAction] = useState("allow");
@@ -316,11 +439,53 @@ function QueryDetail({ id }: { id: string }) {
   }
   return (
     <Resource state={state}>
-      <Details value={state.data} />
-      <p className="muted">
-        Absent fields were not retained or are unsupported. They cannot be
-        reconstructed from current policy.
-      </p>
+      <h3 className="dns">{name || "Root domain"}</h3>
+      <span className={"outcome " + text(state.data?.outcome)}>
+        {resultLabel(state.data?.outcome)}
+      </span>
+      <Details
+        value={{
+          Client: state.data?.client_name || state.data?.client,
+          ...(state.data?.client_name ? { Address: state.data.client } : {}),
+          Time: state.data?.time,
+          Type: state.data?.qtype,
+          "Duration (ms)": microsecondsToMS(state.data?.duration_us),
+        }}
+      />
+      {!!state.data?.rule_description_available && (
+        <p>{text(state.data.rule_description)}</p>
+      )}
+      {!!state.data?.alias_available && (
+        <p>
+          Matched alias: <span className="dns">{text(state.data.alias)}</span>
+        </p>
+      )}
+      <div className="actions">
+        {(["rule_id", "source_id", "upstream_id"] as const).map((key) =>
+          state.data?.[key] && text(state.data[key]) !== "0" ? (
+            <Button
+              key={key}
+              variant="outline"
+              onClick={() => filterIdentity(state.data!, key)}
+            >
+              Queries for this{" "}
+              {key === "rule_id"
+                ? "rule"
+                : key === "source_id"
+                  ? "source"
+                  : "upstream"}
+            </Button>
+          ) : null,
+        )}
+      </div>
+      {!!state.data?.source_id && <p>Source: {text(state.data.source_id)}</p>}
+      <details>
+        <summary>Technical details</summary>
+        <p className="muted">
+          Historical policy scope. Unavailable fields were not retained.
+        </p>
+        <Details value={state.data} />
+      </details>
       <section className="panel inset">
         <h3>Create a rule</h3>
         <div className="form-grid">
@@ -328,7 +493,7 @@ function QueryDetail({ id }: { id: string }) {
             Action
             <select value={action} onChange={(e) => setAction(e.target.value)}>
               <option value="allow">Allow</option>
-              <option value="deny">Deny</option>
+              <option value="deny">Block</option>
             </select>
           </label>
           <label>
@@ -346,7 +511,9 @@ function QueryDetail({ id }: { id: string }) {
         </div>
         {error && <ErrorNotice error={error} />}
         <Button disabled={busy || !state.data?.name} onClick={save}>
-          {busy ? "Saving…" : `Create ${action} rule`}
+          {busy
+            ? "Saving…"
+            : `Create ${action === "deny" ? "block" : "allow"} rule`}
         </Button>
         {result && (
           <>

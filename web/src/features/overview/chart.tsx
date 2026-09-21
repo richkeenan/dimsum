@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { count, text, outcomes, type Row, type Point } from "@/lib/api";
 import { DataTable } from "@/components/data";
+const labels: Record<(typeof outcomes)[number], string> = {
+  local: "Local answer",
+  blocked: "Blocked",
+  cache: "Cached",
+  stale: "Cached (stale)",
+  forwarded: "Forwarded",
+  error: "Failed",
+  rejected: "Rejected",
+};
 export default function TrafficChart({ buckets }: { buckets: Point[] }) {
   const [table, setTable] = useState(false);
   const values = buckets.map((b) =>
@@ -16,7 +25,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
         {outcomes.map((k) => (
           <span key={k}>
             <i className={k} />
-            {k}
+            {labels[k]}
           </span>
         ))}
         <span>
@@ -38,7 +47,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
                 (b.gap || !b.outcomes || b.complete === false ? "gap" : "")
               }
               key={i}
-              title={`${b.time}: ${b.gap || !b.outcomes ? "Missing interval" : outcomes.map((k) => `${k}: ${b.outcomes?.[k] ?? "unavailable"}`).join(", ")}`}
+              title={`${b.time}: ${b.gap || !b.outcomes ? "Missing interval" : (b.complete === false ? "Partial coverage. " : "") + outcomes.map((k) => `${labels[k]}: ${count(b.outcomes?.[k])}`).join(", ")}`}
             >
               {!b.gap &&
                 b.outcomes &&
@@ -68,7 +77,8 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
               },
               ...outcomes.map((key) => ({
                 key,
-                label: key,
+                label: labels[key],
+                align: "right" as const,
                 render: (r: Row) =>
                   r.gap || !r.outcomes
                     ? "Missing"
