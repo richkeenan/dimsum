@@ -38,6 +38,12 @@ func (p *PolicySnapshot) InspectResponse(message []byte, original Name, paused b
 			if rr.Section != dnswire.Answer || rr.Class != 1 {
 				continue
 			}
+			// Only alias-bearing records can extend the policy chain. The scanner
+			// still validates every record, but ordinary A/AAAA/TXT owners need
+			// no separately allocated policy-name copy.
+			if rr.Type != 5 && rr.Type != 39 && !((rr.Type == 64 || rr.Type == 65) && rr.Type == envelope.Question.Type && binary.BigEndian.Uint16(rr.RData) == 0) {
+				continue
+			}
 			owner, _ := NameFromWire(rr.Name.Canonical[:rr.Name.Length])
 			off := rr.DataOffset
 			relevant := rr.Type == 5 && owner == current
@@ -116,17 +122,32 @@ func wireSuffix(name, suffix Name) bool {
 // PrivateReverse protects client-query routing independently of ad-filter pause.
 // Match reverse-zone suffixes as well as full PTR names (including unknown QTYPEs).
 func PrivateReverse(n Name) bool {
-	s := n.Display()
-	for _, zone := range []string{"10.in-addr.arpa", "127.in-addr.arpa", "168.192.in-addr.arpa", "254.169.in-addr.arpa", "0.in-addr.arpa", "c.f.ip6.arpa", "d.f.ip6.arpa", "8.e.f.ip6.arpa", "9.e.f.ip6.arpa", "a.e.f.ip6.arpa", "b.e.f.ip6.arpa"} {
-		if s == zone || strings.HasSuffix(s, "."+zone) {
+	// Ordinary forward names need no formatting, label walk, or allocation.
+	if !strings.HasSuffix(n.wire, "\x07in-addr\x04arpa") && !strings.HasSuffix(n.wire, "\x03ip6\x04arpa") {
+		return false
+	}
+	for _, zone := range privateReverseZones {
+		if wireSuffix(n, zone) {
 			return true
 		}
 	}
-	for i := 16; i <= 31; i++ {
-		zone := fmt.Sprintf("%d.172.in-addr.arpa", i)
-		if s == zone || strings.HasSuffix(s, "."+zone) {
-			return true
-		}
-	}
-	return s == "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa" || s == "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa"
+	return len(n.wire) == len(ipv6ReverseZeroTail)+2 && n.wire[0] == 1 && (n.wire[1] == '0' || n.wire[1] == '1') && n.wire[2:] == ipv6ReverseZeroTail
 }
+
+var ipv6ReverseZeroTail = strings.Repeat("\x010", 31) + "\x03ip6\x04arpa"
+
+var privateReverseZones = func() []Name {
+	texts := []string{"10.in-addr.arpa", "127.in-addr.arpa", "168.192.in-addr.arpa", "254.169.in-addr.arpa", "0.in-addr.arpa", "c.f.ip6.arpa", "d.f.ip6.arpa", "8.e.f.ip6.arpa", "9.e.f.ip6.arpa", "a.e.f.ip6.arpa", "b.e.f.ip6.arpa"}
+	for i := 16; i <= 31; i++ {
+		texts = append(texts, fmt.Sprintf("%d.172.in-addr.arpa", i))
+	}
+	names := make([]Name, len(texts))
+	for i, text := range texts {
+		var err error
+		names[i], err = NormalizeName(text)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return names
+}()

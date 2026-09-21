@@ -62,14 +62,16 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			return 0, errors.New("resolve: no active policy")
 		}
 		r.Result.Generation = snapshot.Generation()
-		if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
-			r.Result.Outcome = transport.LocalAnswer
-			if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
-				if target := snapshot.Local().Continuation(&r.Message); target != nil {
-					return p.completeLocal(ctx, r, out, n, target, snapshot)
+		if !snapshot.Local().Empty() {
+			if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
+				r.Result.Outcome = transport.LocalAnswer
+				if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
+					if target := snapshot.Local().Continuation(&r.Message); target != nil {
+						return p.completeLocal(ctx, r, out, n, target, snapshot)
+					}
 				}
+				return n, err
 			}
-			return n, err
 		}
 		settings = snapshot.Filtering()
 		paused = settings.Paused(time.Now())
@@ -108,7 +110,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			} else {
 				p.cache.hits.Add(1)
 			}
-			return p.finish(r, out, hit.Length, snapshot, name, settings, paused)
+			return p.finish(r, out, hit.Length, snapshot, name, settings, paused, true)
 		}
 		p.cache.misses.Add(1)
 	} else {
@@ -133,7 +135,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 				r.Result.Outcome = transport.StaleAnswer
 				p.cache.stale.Add(1)
 				p.cache.staleAgeSeconds.Add(hit.StaleAge)
-				return p.finish(r, out, hit.Length, snapshot, name, settings, paused)
+				return p.finish(r, out, hit.Length, snapshot, name, settings, paused, true)
 			}
 		}
 		if exchangeErr != nil {
@@ -152,10 +154,10 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		r.Result.UpstreamID = result.EndpointID
 		r.Result.Fallback = result.Fallback
 	}
-	return p.finish(r, out, n, snapshot, name, settings, paused)
+	return p.finish(r, out, n, snapshot, name, settings, paused, false)
 }
 
-func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *config.Snapshot, name policy.Name, settings policy.Settings, paused bool) (int, error) {
+func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *config.Snapshot, name policy.Name, settings policy.Settings, paused, personalized bool) (int, error) {
 	if n >= 12 && (out[3]&15 == 2 || out[3]&15 == 5) {
 		r.Result.Outcome = transport.ResolutionError
 	}
@@ -173,6 +175,12 @@ func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *con
 			r.Result.AliasLength = uint8(decision.BlockedAlias.CopyWire(r.Result.Alias[:]))
 			return buildBlock(out, &r.Message, settings, decision.Decision)
 		}
+	}
+	// Cache templates already validated compression safety and reconstructed ID,
+	// question case, flags and TTLs into this client's output. Policy inspection
+	// above still runs; the uncached arbitrary-wire relocation path is redundant.
+	if personalized {
+		return n, nil
 	}
 	return dnswire.PersonalizeReply(out, out[:n], &r.Message)
 }

@@ -16,6 +16,10 @@ type Zones struct {
 	names   map[netip.Addr]string
 }
 
+// Empty lets a validated-request caller bypass local-name formatting when the
+// immutable configuration contains neither records nor owned zones.
+func (z *Zones) Empty() bool { return len(z.zones) == 0 && len(z.records) == 0 }
+
 func Build(zones []Zone, records []Record) (*Zones, error) {
 	z := &Zones{records: map[string][]Record{}, exists: map[string]bool{}, names: map[netip.Addr]string{}}
 	seen := map[string]bool{}

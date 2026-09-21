@@ -18,7 +18,7 @@ func TestForwardedErrorIsSingleErrorOutcome(t *testing.T) {
 		out := make([]byte, 1232)
 		n, err := dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: code, RecursionAvailable: true}, 1232)
 		require.NoError(t, err)
-		_, err = New(nil).finish(&r, out, n, nil, policy.Name{}, policy.Settings{}, false)
+		_, err = New(nil).finish(&r, out, n, nil, policy.Name{}, policy.Settings{}, false, false)
 		require.NoError(t, err)
 		assert.Equal(t, transport.ResolutionError, r.Result.Outcome)
 	}

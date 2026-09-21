@@ -23,6 +23,10 @@ type cacheState struct {
 
 type CacheStats struct{ Hits, Misses, Bypasses, Stale, RefreshSuccess, RefreshFailure, Overflow, StaleAgeSeconds uint64 }
 
+// Cache defaults contain no slices; avoid constructing the full configuration
+// (including its listener slice) for each request.
+var defaultCacheSettings = config.Default().Cache
+
 func (p *Pipeline) CacheStats() CacheStats {
 	c := &p.cache
 	return CacheStats{c.hits.Load(), c.misses.Load(), c.bypasses.Load(), c.stale.Load(), c.refreshOK.Load(), c.refreshFailed.Load(), c.overflow.Load(), c.staleAgeSeconds.Load()}
@@ -32,7 +36,7 @@ func (p *Pipeline) CacheStats() CacheStats {
 // restart; generations share storage but never keys, so reload cannot accumulate
 // overlapping cache instances. Old completions remain in their original namespace.
 func (p *Pipeline) cacheFor(s *config.Snapshot) (*dnscache.Cache, config.Cache, error) {
-	cfg := config.Default().Cache
+	cfg := defaultCacheSettings
 	if s != nil {
 		cfg = s.CacheSettings()
 	}
