@@ -1,4 +1,5 @@
 import {
+  ClientOnly,
   createRootRouteWithContext,
   HeadContent,
   Outlet,
@@ -31,8 +32,17 @@ function Root() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <App />
-      <Outlet />
+      {/* SPA prerendering cannot determine the browser's session state. */}
+      <ClientOnly
+        fallback={
+          <div className="p-8 text-center text-muted-foreground" role="status">
+            Loading dimsum…
+          </div>
+        }
+      >
+        <App />
+        <Outlet />
+      </ClientOnly>
     </QueryClientProvider>
   );
 }

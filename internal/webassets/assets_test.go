@@ -19,6 +19,10 @@ func TestEmbeddedSPA(t *testing.T) {
 			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
 			require.Equal(t, http.StatusOK, w.Code)
 			assert.Contains(t, w.Body.String(), `<div id="root">`)
+			// The shared static shell cannot know the browser's session state.
+			// Rendering sign-in here flashes it before authenticated hydration.
+			assert.NotContains(t, w.Body.String(), `type="password"`)
+			assert.NotContains(t, w.Body.String(), `Sign in to manage your network.`)
 			assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
 			assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 		})
