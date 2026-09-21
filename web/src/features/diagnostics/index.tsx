@@ -11,7 +11,7 @@ export default function Diagnostics() {
   return (
     <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 [&_p]:leading-relaxed">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5 border-b border-border pb-4">
-        <h2 className="text-sm font-semibold">Service diagnostics</h2>
+        <h2 className="text-sm font-medium">Service diagnostics</h2>
         <Button variant="outline" onClick={() => setTick((t) => t + 1)}>
           Refresh measurements
         </Button>
@@ -23,7 +23,7 @@ export default function Diagnostics() {
       <Resource state={state} retry={() => setTick((t) => t + 1)}>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-            <h3 className="mb-3 text-sm font-semibold">DNS service</h3>
+            <h3 className="mb-3 text-sm font-medium">DNS service</h3>
             <strong>
               {state.data?.dns_ready === true
                 ? "Ready to answer queries"
@@ -33,7 +33,7 @@ export default function Diagnostics() {
             </strong>
           </section>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-            <h3 className="mb-3 text-sm font-semibold">Query history</h3>
+            <h3 className="mb-3 text-sm font-medium">Query history</h3>
             <strong>
               {storage?.available === true
                 ? "Storage available"
@@ -51,7 +51,7 @@ export default function Diagnostics() {
             ) : null}
           </section>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-            <h3 className="mb-3 text-sm font-semibold">Upstream servers</h3>
+            <h3 className="mb-3 text-sm font-medium">Upstream servers</h3>
             {upstreams.length ? (
               <ul className="space-y-2 text-xs [overflow-wrap:anywhere]">
                 {upstreams.map((server, index) => (

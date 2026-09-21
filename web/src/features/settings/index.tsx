@@ -175,14 +175,14 @@ function SettingsForm({
           className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5"
           key={group.title}
         >
-          <h2 className="mb-3 text-sm font-semibold">{group.title}</h2>
+          <h2 className="mb-3 text-sm font-medium">{group.title}</h2>
           <p className="mb-[18px] text-xs text-muted-foreground">
             {group.description}
           </p>
           <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
             {group.fields.map((field) => (
               <label
-                className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
                 key={field.path}
               >
                 {field.label}
@@ -264,7 +264,7 @@ export function PasswordForm() {
   const [error, setError] = useState<Error>();
   return (
     <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-      <h2 className="mb-3 text-sm font-semibold">Change password</h2>
+      <h2 className="mb-3 text-sm font-medium">Change password</h2>
       <p className="mb-[18px] text-xs text-muted-foreground">
         You will be signed out on all devices after changing your password.
       </p>
@@ -291,7 +291,7 @@ export function PasswordForm() {
         }}
       >
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             New password
             <Input
               type="password"
@@ -302,7 +302,7 @@ export function PasswordForm() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             Confirm new password
             <Input
               type="password"

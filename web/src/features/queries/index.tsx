@@ -12,7 +12,6 @@ import {
 } from "@/lib/api";
 import { useLive, useResource } from "@/lib/hooks";
 import {
-  Completeness,
   DataTable,
   Details,
   ErrorNotice,
@@ -107,7 +106,7 @@ export default function Queries({
       >
         {["name", "client", "outcome"].map((key) => (
           <label
-            className="mb-4 flex min-w-[100px] max-w-[190px] flex-1 flex-col gap-1.5 text-xs font-medium"
+            className="mb-4 flex min-w-[100px] max-w-[190px] flex-1 flex-col gap-1.5 text-xs font-normal"
             key={key}
           >
             {key === "name"
@@ -152,7 +151,7 @@ export default function Queries({
               generation: "Generation",
             }).map(([key, label]) => (
               <label
-                className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
                 key={key}
               >
                 {label}
@@ -204,7 +203,7 @@ export default function Queries({
         >
           {live ? "Pause live" : "Start live"}
         </Button>
-        <label className="flex flex-row items-center gap-1.5 text-xs font-medium">
+        <label className="flex flex-row items-center gap-1.5 text-xs font-normal">
           <input
             className="size-4 accent-primary"
             type="checkbox"
@@ -215,7 +214,6 @@ export default function Queries({
         </label>
       </div>
       <Resource state={state} retry={invalidate}>
-        <Completeness meta={state.data} />
         <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <DataTable
             items={rows(state.data)}
@@ -452,7 +450,7 @@ function QueryDetail({
   }
   return (
     <Resource state={state}>
-      <h3 className="text-sm font-semibold wrap-anywhere">
+      <h3 className="text-sm font-medium wrap-anywhere">
         {name || "Root domain"}
       </h3>
       <span
@@ -515,9 +513,9 @@ function QueryDetail({
         <Details value={state.data} />
       </details>
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h3 className="mb-3 text-sm font-semibold">Create a rule</h3>
+        <h3 className="mb-3 text-sm font-medium">Create a rule</h3>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             Action
             <select
               className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -528,7 +526,7 @@ function QueryDetail({
               <option value="deny">Block</option>
             </select>
           </label>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             Match scope
             <select
               className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

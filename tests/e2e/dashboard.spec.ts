@@ -152,9 +152,63 @@ test("incomplete history and unavailable statistics do not imply DNS outage", as
   await page.goto("/");
   await expect(
     page.getByText("Some history is unavailable", { exact: true }).first(),
-  ).toBeVisible();
+  ).not.toBeVisible();
   await expect(page.getByText("History storage unavailable")).toBeVisible();
-  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("DNS is not ready.", { exact: true })).not.toBeVisible();
+});
+
+test("header copies a DNS IP without its port and exposes nonstandard ports", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
+    dns_ready: true,
+    dns_addresses: ["192.0.2.53:53", "[2001:db8::53]:5353"],
+    storage: { available: true },
+  } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Copy DNS address 192.0.2.53", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("192.0.2.53");
+  await expect(page.getByText("Copied", { exact: true })).toBeVisible();
+  await expect(page.getByText("Port 5353", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Copy DNS address 2001:db8::53", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("2001:db8::53");
+});
+
+test("paused filtering can be resumed from any page", async ({ page }) => {
+  let enabled = false;
+  await page.route("**/api/v1/blocking", route => {
+    if (route.request().method() === "PUT") enabled = route.request().postDataJSON().enabled;
+    return route.fulfill({ json: { enabled, pause_until: "2026-09-21T12:30:00Z" } });
+  });
+  await page.goto("/queries");
+  await expect(page.getByText(/Filtering is paused for all devices/)).toBeVisible();
+  await page.getByRole("button", { name: "Resume filtering", exact: true }).click();
+  await expect.poll(() => enabled).toBe(true);
+  await expect(page.getByText(/Filtering is paused for all devices/)).not.toBeVisible();
+});
+
+test("service faults appear and clear when diagnostics recover", async ({ page }) => {
+  let healthy = false;
+  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
+    dns_ready: healthy,
+    dns_addresses: ["192.0.2.53:53"],
+    storage: { available: healthy },
+  } }));
+  await page.goto("/");
+  await expect(page.getByRole("alert")).toContainText("DNS is not ready.");
+  await expect(page.getByRole("alert")).toContainText("Statistics are unavailable.");
+  healthy = true;
+  await page.getByRole("button", { name: "Refresh all data" }).click();
+  await expect(page.getByRole("alert")).not.toBeVisible();
+});
+
+test("DNS copying works without the secure-context Clipboard API", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
+  await page.getByRole("button", { name: "Copy DNS address 192.0.2.53", exact: true }).click();
+  await expect(page.getByText("Copied", { exact: true })).toBeVisible();
+  await page.evaluate(() => delete (navigator as unknown as Record<string, unknown>).clipboard);
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("192.0.2.53");
 });
 
 test("live polling defaults on only for newest uninspected queries", async ({ page }) => {

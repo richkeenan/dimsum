@@ -81,7 +81,7 @@ export default function Jobs() {
   return (
     <div className="min-w-0 [&_p]:leading-relaxed">
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h2 className="mb-3 text-sm font-semibold">
+        <h2 className="mb-3 text-sm font-medium">
           Back up your configuration
         </h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
@@ -105,7 +105,7 @@ export default function Jobs() {
         )}
       </section>
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h2 className="mb-3 text-sm font-semibold">Restore a backup</h2>
+        <h2 className="mb-3 text-sm font-medium">Restore a backup</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
           Replace the saved configuration with a dimsum archive. The archive is
           checked before it is applied.
@@ -117,7 +117,7 @@ export default function Jobs() {
             void start("restore");
           }}
         >
-          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
             Configuration archive (.tar, up to 2 MiB)
             <Input
               type="file"
@@ -151,7 +151,7 @@ export default function Jobs() {
             void start();
           }}
         >
-          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
+          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
             Operation
             <select
               className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
@@ -171,7 +171,7 @@ export default function Jobs() {
             </select>
           </label>
           {kind === "upstream-probe" && (
-            <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
+            <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
               Configured upstream (IP:port)
               <Input
                 value={endpoint}
@@ -219,7 +219,7 @@ export default function Jobs() {
       )}
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
-          <h2 className="text-sm font-semibold">Background jobs</h2>
+          <h2 className="text-sm font-medium">Background jobs</h2>
           <Button variant="outline" onClick={() => setTick((t) => t + 1)}>
             Refresh
           </Button>

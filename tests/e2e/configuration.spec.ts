@@ -89,11 +89,11 @@ test("timed pause sends an absolute expiry and the saved revision", async ({
     body = route.request().postDataJSON();
     return route.fulfill({ json: activation });
   });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Blocking controls" }).click();
+  await page.goto("/lists");
+  await page.getByRole("button", { name: "Pause filtering…" }).click();
   await page.getByLabel("Pause duration").selectOption("30");
   await page
-    .getByRole("button", { name: "Pause blocking", exact: true })
+    .getByRole("button", { name: "Pause filtering", exact: true })
     .click();
   await expect.poll(() => body?.enabled).toBe(false);
   expect(body?.revision).toBe(activation.saved_revision);

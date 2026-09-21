@@ -4,7 +4,7 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { APIError, text, type Meta, type Row } from "@/lib/api";
+import { APIError, text, type Row } from "@/lib/api";
 import { Button } from "./ui/button";
 import {
   Table,
@@ -88,21 +88,6 @@ export function Resource({
       )}
       {children}
     </>
-  );
-}
-
-export function Completeness({ meta }: { meta?: Meta }) {
-  if (!(meta?.complete === false || meta?.incomplete || !!meta?.gaps?.length))
-    return null;
-  return (
-    <details className="my-3 text-xs text-muted-foreground [&>p]:my-2 [&>p]:max-w-prose">
-      <summary>Some history is unavailable</summary>
-      <p>
-        This time range includes intervals without complete records, which can
-        include time before dimsum started. Totals include available records
-        only.
-      </p>
-    </details>
   );
 }
 

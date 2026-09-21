@@ -56,7 +56,7 @@ export function AgentAccess() {
       className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5"
       aria-labelledby="agent-access-heading"
     >
-      <h2 id="agent-access-heading" className="mb-3 text-sm font-semibold">
+      <h2 id="agent-access-heading" className="mb-3 text-sm font-medium">
         Agent access
       </h2>
       <p className="mb-4 text-xs text-muted-foreground">
@@ -64,7 +64,7 @@ export function AgentAccess() {
         Each token is shown only once, when created. Your existing password
         stays unchanged.
       </p>
-      <label className="mb-4 flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+      <label className="mb-4 flex min-w-0 flex-col gap-1.5 text-xs font-normal">
         MCP URL
         <Input
           readOnly
@@ -96,7 +96,7 @@ export function AgentAccess() {
           }
         }}
       >
-        <label className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5 text-xs font-medium">
+        <label className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5 text-xs font-normal">
           Token name
           <Input
             required
@@ -115,13 +115,13 @@ export function AgentAccess() {
 
       {created && (
         <div className="mt-4 min-w-0 rounded-md border border-border bg-muted p-4">
-          <h3 className="text-xs font-semibold">
+          <h3 className="text-xs font-medium">
             Save your token for {created.name}
           </h3>
           <p className="mt-2 text-xs text-muted-foreground">
             Copy it now. Done or leaving this page hides the secret permanently.
           </p>
-          <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             New token
             <Input
               ref={tokenField}
@@ -132,7 +132,7 @@ export function AgentAccess() {
               className="font-mono"
             />
           </label>
-          <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+          <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             Connection fields
             <textarea
               ref={connectionField}
@@ -176,7 +176,7 @@ export function AgentAccess() {
       )}
       {error && <ErrorNotice error={error} />}
       <div className="mt-5">
-        <h3 className="mb-3 text-xs font-semibold">Existing tokens</h3>
+        <h3 className="mb-3 text-xs font-medium">Existing tokens</h3>
         {state.loading && (
           <p role="status" className="text-xs text-muted-foreground">
             Loading tokens…
@@ -198,7 +198,7 @@ export function AgentAccess() {
               className="flex min-w-0 flex-wrap items-center justify-between gap-3 py-3"
             >
               <div className="min-w-0 text-xs [overflow-wrap:anywhere]">
-                <p className="font-medium">{token.name}</p>
+                <p className="font-normal">{token.name}</p>
                 <p className="mt-1 text-muted-foreground">
                   Created{" "}
                   <time dateTime={token.created_at}>

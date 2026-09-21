@@ -134,7 +134,7 @@ function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
   const [selected, setSelected] = useState<Row>();
   return (
     <Resource state={catalog}>
-      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
+      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
         Start with a list
         <select
           className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -295,7 +295,7 @@ export default function Configuration({
         <Resource state={state}>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
-              <h2 className="text-sm font-semibold">Devices</h2>
+              <h2 className="text-sm font-medium">Devices</h2>
               <Button disabled={!ready} onClick={() => open()}>
                 Name an address
               </Button>
@@ -372,7 +372,7 @@ export default function Configuration({
       {kind !== "clients" && (
         <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
-            <h2 className="text-sm font-semibold">
+            <h2 className="text-sm font-medium">
               {kind === "clients"
                 ? "Configured friendly names"
                 : "Configured " + kind}
@@ -569,7 +569,7 @@ export default function Configuration({
                 )}
                 {fields[kind].map((f) => (
                   <label
-                    className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                    className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
                     key={f.key}
                   >
                     {f.label}
@@ -678,7 +678,7 @@ function RuleTester() {
   const [busy, setBusy] = useState(false);
   return (
     <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-      <h2 className="mb-3 text-sm font-semibold">Rule tester</h2>
+      <h2 className="mb-3 text-sm font-medium">Rule tester</h2>
       <p className="mb-[18px] text-xs text-muted-foreground">
         Evaluate the current active policy using the same matcher as live DNS.
       </p>
@@ -700,7 +700,7 @@ function RuleTester() {
           }
         }}
       >
-        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
+        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
           Domain
           <Input
             required
@@ -708,7 +708,7 @@ function RuleTester() {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
+        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
           Type
           <select
             className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

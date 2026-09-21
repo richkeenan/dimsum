@@ -60,6 +60,7 @@
   body {
     background: var(--canvas);
     color: var(--foreground);
+    font-weight: 300;
   }
   button,
   summary {

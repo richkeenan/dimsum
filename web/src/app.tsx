@@ -43,6 +43,7 @@ import {
   DialogDescription,
 } from "./components/ui/dialog";
 import { ErrorNotice } from "./components/data";
+import { DNSAddresses, ServiceNotices } from "./components/network-status";
 import Overview from "./features/overview";
 import logo from "./assets/dimsum.svg";
 import Queries from "./features/queries";
@@ -115,7 +116,7 @@ export default function App() {
     setRangeError("");
   }, [range, search.from, search.to]);
   const liveTick = useCallback(() => setAnchor(Date.now()), []);
-  const live = useLive(
+  useLive(
     !auth && ["overview", "clients"].includes(page) && range !== "custom",
     liveTick,
     5000,
@@ -214,15 +215,9 @@ export default function App() {
         <Link
           to="/"
           search={rangeSearch}
-          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-semibold tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
+          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-medium tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
         >
-          <img
-            src={logo}
-            alt=""
-            width={54}
-            height={44}
-            className="shrink-0"
-          />
+          <img src={logo} alt="" width={54} height={44} className="shrink-0" />
           <span>
             dimsum<small>DNS administration</small>
           </span>
@@ -241,15 +236,15 @@ export default function App() {
               to="/$page"
               params={{ page: id }}
               search={rangeSearch}
-              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-semibold text-white" : "text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${i === 3 || i === 7 ? "mt-5" : ""}`}
+              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-normal text-white" : "font-light text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${i === 3 || i === 7 ? "mt-5" : ""}`}
               aria-current={page === id ? "page" : undefined}
             >
-              <Icon size={18} />
+              <Icon size={18} strokeWidth={1.5} />
               <span>{label}</span>
             </Link>
           ))}
         </nav>
-        <div className="mt-auto pt-8 [&>button]:w-full [&>button]:justify-start [&>button]:text-[#c2d0e5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
+        <div className="mt-auto pt-8 [&>button]:w-full [&>button]:justify-start [&>button]:font-normal [&>button]:text-[#c2d0e5] [&>button_svg]:stroke-[1.5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
           <Button variant="ghost" onClick={() => setDark(!dark)}>
             {dark ? <Sun size={16} /> : <Moon size={16} />}{" "}
             {dark ? "Light" : "Dark"} appearance
@@ -273,7 +268,7 @@ export default function App() {
       </aside>
       <div className="min-w-0 flex-1 md:ml-60">
         <header className="flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-border bg-background px-4 py-2 text-xs md:px-8">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Button
               className="md:hidden"
               variant="ghost"
@@ -282,12 +277,8 @@ export default function App() {
             >
               <Menu size={20} />
             </Button>
-            <span className="text-muted-foreground">Your network</span>
+            <DNSAddresses />
           </div>
-          <Button variant="outline" onClick={() => setBlocking(true)}>
-            <ShieldCheck size={16} />
-            Blocking controls
-          </Button>
         </header>
         <main id="main" className="mx-auto max-w-425 px-4 py-6 md:px-8 md:py-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
@@ -296,6 +287,11 @@ export default function App() {
               {page === "overview" && <p>DNS activity across your network.</p>}
             </div>
             <div className="flex items-center gap-2">
+              {page === "lists" && (
+                <Button variant="outline" onClick={() => setBlocking(true)}>
+                  Pause filtering…
+                </Button>
+              )}
               {historical && (
                 <>
                   <label className="sr-only" htmlFor="range">
@@ -363,7 +359,7 @@ export default function App() {
                 });
               }}
             >
-              <label className="flex flex-col gap-1.5 text-xs font-medium">
+              <label className="flex flex-col gap-1.5 text-xs font-normal">
                 From
                 <Input
                   type="datetime-local"
@@ -372,7 +368,7 @@ export default function App() {
                   onChange={(e) => setFrom(e.target.value)}
                 />
               </label>
-              <label className="flex flex-col gap-1.5 text-xs font-medium">
+              <label className="flex flex-col gap-1.5 text-xs font-normal">
                 To
                 <Input
                   type="datetime-local"
@@ -385,26 +381,15 @@ export default function App() {
               {rangeError && <span role="alert">{rangeError}</span>}
             </form>
           )}
-          {historical && page !== "queries" && (
+          {historical && page !== "queries" && range === "custom" && (
             <div className="mb-5 text-xs text-muted-foreground">
-              {range === "custom" ? (
-                <span>
-                  {new Date(search.from!).toLocaleString()} –{" "}
-                  {new Date(search.to!).toLocaleString()}
-                </span>
-              ) : (
-                <span
-                  className={
-                    live === "Live"
-                      ? "before:mr-2 before:inline-block before:size-1.5 before:rounded-full before:bg-primary"
-                      : ""
-                  }
-                >
-                  {live === "Live" ? "Live · updates every 5 seconds" : live}
-                </span>
-              )}
+              <span>
+                {new Date(search.from!).toLocaleString()} –{" "}
+                {new Date(search.to!).toLocaleString()}
+              </span>
             </div>
           )}
+          <ServiceNotices />
           {error && <ErrorNotice error={error} />}
           <Suspense
             fallback={
@@ -451,9 +436,11 @@ export default function App() {
       </div>
       <Dialog open={blocking} onOpenChange={setBlocking}>
         <DialogContent>
-          <DialogTitle>Blocking controls</DialogTitle>
+          <DialogTitle>Pause filtering</DialogTitle>
           <DialogDescription>
-            Pause filtering for all devices, then resume automatically.
+            Temporarily stop blocking domains for all devices, for example to
+            troubleshoot a website. DNS keeps working, and filtering resumes
+            automatically after the selected duration.
           </DialogDescription>
           <Blocking />
         </DialogContent>
@@ -484,7 +471,7 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
         }
       }}
     >
-      <label className="flex flex-col gap-1.5 text-xs font-medium">
+      <label className="flex flex-col gap-1.5 text-xs font-normal">
         Admin password
         <Input
           autoFocus
@@ -532,7 +519,7 @@ function Blocking() {
   }
   return (
     <>
-      <label className="flex flex-col gap-1.5 text-xs font-medium">
+      <label className="flex flex-col gap-1.5 text-xs font-normal">
         Pause duration
         <select
           className="min-h-9 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -546,14 +533,13 @@ function Blocking() {
       </label>
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={busy} variant="outline" onClick={() => update(false)}>
-          Pause blocking
-        </Button>
-        <Button disabled={busy} onClick={() => update(true)}>
-          Resume blocking
+          Pause filtering
         </Button>
       </div>
       {error && <ErrorNotice error={error} />}{" "}
-      {result && <p role="status">Blocking settings updated.</p>}
+      {result && (
+        <p role="status">Pause saved. Filtering will resume automatically.</p>
+      )}
     </>
   );
 }

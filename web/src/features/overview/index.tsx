@@ -5,13 +5,12 @@ import {
   percentage,
   rows,
   text,
-  type Row,
   type Summary,
   type Series,
   type Rankings,
   type ClientsResponse,
 } from "@/lib/api";
-import { Completeness, DataTable, Resource } from "@/components/data";
+import { DataTable, Resource } from "@/components/data";
 const TrafficChart = lazy(() => import("./chart"));
 export default function Overview({
   range,
@@ -37,16 +36,6 @@ export default function Overview({
   const s = summary.data;
   return (
     <>
-      <Completeness
-        meta={{
-          complete: ![
-            s,
-            series.data,
-            rankings.data,
-            clients.data?.observed,
-          ].some((meta) => meta?.complete === false),
-        }}
-      />
       <Resource state={summary}>
         <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[1101px]:grid-cols-5">
           {[
@@ -73,7 +62,7 @@ export default function Overview({
             </div>
           ))}
         </div>
-        <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-xs text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
+        <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-xs text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-normal [&_b]:text-foreground">
           <span>
             Rejected queries <b>{count(s?.rejected)}</b>
           </span>
@@ -86,10 +75,9 @@ export default function Overview({
           </p>
         )}
       </Resource>
-      <Health refresh={refresh} />
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
-          <h2 className="text-sm font-semibold">Query activity</h2>
+          <h2 className="text-sm font-medium">Query activity</h2>
           <span className="text-xs text-muted-foreground">
             Outcomes over the selected range
           </span>
@@ -113,7 +101,7 @@ export default function Overview({
         <div className="grid min-w-0 grid-cols-1 gap-5 min-[1051px]:grid-cols-2">
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
-              <h2 className="text-sm font-semibold">Top clients</h2>
+              <h2 className="text-sm font-medium">Top clients</h2>
               <span className="text-xs text-muted-foreground">
                 By requests · top 10
               </span>
@@ -150,7 +138,7 @@ export default function Overview({
           </section>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
-              <h2 className="text-sm font-semibold">Top blocked domains</h2>
+              <h2 className="text-sm font-medium">Top blocked domains</h2>
               <span className="text-xs text-muted-foreground">
                 Exact names · top 10
               </span>
@@ -183,54 +171,5 @@ export default function Overview({
         </div>
       </Resource>
     </>
-  );
-}
-function Health({ refresh }: { refresh: number }) {
-  const diagnostics = useResource<Row>("diagnostics", refresh);
-  const blocking = useResource<Row>("blocking", refresh);
-  const storage = diagnostics.data?.storage as Row | undefined;
-  const writer = storage?.writer as Row | undefined;
-  return (
-    <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-xs text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
-      <Resource state={diagnostics}>
-        <span>
-          DNS{" "}
-          <b>
-            {diagnostics.data?.dns_ready === true
-              ? "Ready"
-              : diagnostics.data?.dns_ready === false
-                ? "Not ready"
-                : "Unavailable"}
-          </b>
-        </span>
-        <span>
-          Statistics{" "}
-          <b>
-            {storage?.available === false
-              ? "Unavailable"
-              : writer?.LastError
-                ? "Writer error"
-                : storage?.available === true
-                  ? "Available"
-                  : "Unknown"}
-          </b>
-        </span>
-      </Resource>
-      <Resource state={blocking}>
-        <span>
-          Blocking{" "}
-          <b>
-            {blocking.data?.enabled === true
-              ? "Enabled"
-              : blocking.data?.enabled === false
-                ? "Paused"
-                : "Unknown"}
-          </b>
-        </span>
-        {blocking.data?.enabled === false && !!blocking.data?.pause_until && (
-          <span>Pause until {text(blocking.data.pause_until)}</span>
-        )}
-      </Resource>
-    </div>
   );
 }

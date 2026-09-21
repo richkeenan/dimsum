@@ -193,6 +193,7 @@ export async function fixtureAPI(page: Page) {
       jobs: { items: [] },
       diagnostics: {
         dns_ready: true,
+        dns_addresses: ["192.0.2.53:53"],
         storage: { available: true, writer: { LastError: "" } },
         version: "fixture",
       },
