@@ -1,4 +1,4 @@
-.git
+# The build verifies its commit and generates provenance from Git metadata.
 .worktrees
 .superpowers
 web/node_modules

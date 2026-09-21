@@ -68,7 +68,8 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	answer, _, err := dnsClient.Exchange(q, s.Addresses().DNS[0])
 	require.NoError(t, err)
 	assert.Equal(t, dns.RcodeNameError, answer.Rcode)
-	window := url.Values{"from": {time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano)}, "to": {time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano)}}.Encode()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	window := url.Values{"from": {now.Add(-time.Hour).Format(time.RFC3339Nano)}, "to": {now.Add(time.Minute).Format(time.RFC3339Nano)}}.Encode()
 	require.Eventually(t, func() bool {
 		output.Reset()
 		stderr.Reset()
@@ -76,7 +77,7 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 			return false
 		}
 		return strings.Contains(output.String(), "1.0.0.10.in-addr.arpa")
-	}, 3*time.Second, 20*time.Millisecond)
+	}, 3*time.Second, 20*time.Millisecond, "query polling failed: %s", &stderr)
 	output.Reset()
 	stderr.Reset()
 	require.Zero(t, cli.Run(t.Context(), []string{"--socket", s.Addresses().Control, "catalog"}, &output, &stderr), stderr.String())

@@ -25,6 +25,7 @@ ARG SOURCE_COMMIT=unrecorded
 ARG SOURCE_DATE_EPOCH=unrecorded
 RUN test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" && \
     test "$(git show -s --format=%ct HEAD)" = "$SOURCE_DATE_EPOCH" && \
+    mkdir -p /out && \
     GOOS=$TARGETOS GOARCH=$TARGETARCH goreleaser build --snapshot --clean --single-target --skip=before --output /out/dimsum
 RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH python3 scripts/artifact-metadata.py /out/metadata
 

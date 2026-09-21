@@ -13,6 +13,8 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
+  // Prerender fetches must use the same address family as the preview listener.
+  preview: { host: "127.0.0.1" },
   server: {
     proxy: {
       "/api": process.env.DIMSUM_API_URL || "http://127.0.0.1:18080",
