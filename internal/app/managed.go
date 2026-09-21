@@ -19,9 +19,11 @@ import (
 	"sync"
 	"time"
 
+	apispec "github.com/richkeenan/dimsum/api"
 	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/control"
+	"github.com/richkeenan/dimsum/internal/mcpserver"
 	"github.com/richkeenan/dimsum/internal/webassets"
 )
 
@@ -54,6 +56,10 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 		}
 	}
 	m := &managedRuntime{store: store, observations: o}
+	tokens, err := admin.OpenTokenStore(filepath.Join(store.ResolvePath(c.Paths.SecretsDir), "api-tokens.json"))
+	if err != nil {
+		return nil, fmt.Errorf("agent tokens: %w", err)
+	}
 	jobs := map[string]func(context.Context, json.RawMessage) (any, error){
 		"upstream-probe": m.upstreamProbe,
 		"support-bundle": m.supportBundle,
@@ -116,7 +122,19 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 	if host == "127.0.0.1" || host == "::1" || host == "0.0.0.0" || host == "::" {
 		allowed = append(allowed, net.JoinHostPort("localhost", port))
 	}
-	m.admin = admin.New(m.control, admin.Options{AllowedHosts: allowed, SecureCookies: c.Admin.SecureCookies, DownloadBackup: func(ctx context.Context, id string) (io.ReadCloser, int64, error) {
+	openAPI, err := apispec.JSON()
+	if err != nil {
+		m.control.Close()
+		return nil, fmt.Errorf("OpenAPI: %w", err)
+	}
+	mcp, err := mcpserver.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.admin.LocalHandler().ServeHTTP(w, r)
+	}))
+	if err != nil {
+		m.control.Close()
+		return nil, fmt.Errorf("MCP: %w", err)
+	}
+	m.admin = admin.New(m.control, admin.Options{Tokens: tokens, MCP: mcp, OpenAPIJSON: openAPI, OpenAPIYAML: apispec.YAML, AllowedHosts: allowed, SecureCookies: c.Admin.SecureCookies, DownloadBackup: func(ctx context.Context, id string) (io.ReadCloser, int64, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, 0, err
 		}
@@ -145,7 +163,6 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 		m.control.Close()
 		return nil, err
 	}
-	var err error
 	m.local, err = m.admin.ListenUnix(m.socket)
 	if err != nil {
 		m.control.Close()
@@ -154,7 +171,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 	api := m.admin.Handler()
 	assets := webassets.Handler()
 	m.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/session" || strings.HasPrefix(r.URL.Path, "/health/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/mcp" || r.URL.Path == "/session" || strings.HasPrefix(r.URL.Path, "/health/") {
 			api.ServeHTTP(w, r)
 			return
 		}

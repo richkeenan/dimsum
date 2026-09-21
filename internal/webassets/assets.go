@@ -17,6 +17,7 @@ import (
 // ordinary Go builds and release consumers do not require Node.
 //
 // Include Start's underscore-prefixed route chunks as well as ordinary assets.
+//
 //go:embed all:dist
 var assets embed.FS
 
@@ -28,7 +29,7 @@ func Handler() http.Handler {
 		panic(err)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		for _, prefix := range []string{"/api", "/session", "/health", "/metrics", "/debug"} {
+		for _, prefix := range []string{"/api", "/mcp", "/session", "/health", "/metrics", "/debug"} {
 			if r.URL.Path == prefix || strings.HasPrefix(r.URL.Path, prefix+"/") {
 				http.NotFound(w, r)
 				return

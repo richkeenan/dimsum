@@ -5,7 +5,11 @@ info:
   description: |
     All generation and job IDs are decimal strings. Content revisions and transaction IDs
     are opaque SHA256 strings. No unconfigured statistics dependency returns fabricated data.
-    Mutations require Origin and X-CSRF-Token obtained at login. Collections use YAML
+    Browser-session mutations require Origin and X-CSRF-Token obtained at login.
+    Opaque bearer tokens grant full administrator access without browser Origin/CSRF
+    credentials. Tokens have a separate lifetime from browser sessions and remain
+    valid until explicitly revoked. At most 32 tokens may be active; plaintext is
+    returned only at creation. Collections use YAML
     schema field names. PATCH paths are relative to the collection (including index),
     or absolute configuration paths for settings. Unsupported comment-preserving edits
     fail explicitly. Successful saves include saved and active configuration identities.
@@ -15,18 +19,101 @@ info:
     one hour. All endpoints share these defaults. updated_at is the response computation
     time, not a promise of durable observation coverage; complete carries that meaning.
     Reuse explicit range values across requests for a fixed dashboard window.
+    MCP tools are explicitly opted in with path-level x-mcp-tools metadata. Path and
+    query parameters are top-level tool arguments; JSON request bodies use the body
+    argument. Browser sessions, token management, password changes, binary downloads,
+    event streams, and specification downloads remain HTTP/CLI/UI operations only.
 security:
   - session: []
+  - bearer: []
 paths:
+  /api/v1/openapi.json:
+    get:
+      summary: Read the authenticated OpenAPI document as JSON
+      responses:
+        '200':
+          description: Authoritative OpenAPI document
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/openapi.yaml:
+    get:
+      summary: Read the authenticated OpenAPI document as YAML
+      responses:
+        '200':
+          description: Authoritative OpenAPI document
+          content:
+            application/yaml:
+              schema: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/tokens:
+    get:
+      summary: List active full-administrator bearer tokens
+      responses:
+        '200':
+          description: Metadata only; plaintext tokens cannot be retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, maxItems: 32, items: {$ref: '#/components/schemas/Token'}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: Create an opaque full-administrator bearer token
+      description: At most 32 active tokens. Store the returned plaintext token; it is shown only once. Token management is not an MCP tool.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: {type: string, minLength: 1, maxLength: 80}
+      responses:
+        '200':
+          description: Created token and one-time plaintext credential
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - {$ref: '#/components/schemas/Token'}
+                  - type: object
+                    required: [token]
+                    properties:
+                      token: {type: string, readOnly: true, description: Opaque full-administrator bearer credential returned only at creation}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/tokens/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    delete:
+      summary: Revoke a bearer token immediately
+      responses:
+        '200':
+          description: Token revoked; subsequent requests with it are unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: {type: boolean, const: true}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/password:
     post:
       summary: Change the administrator password
       description: |
         Accepts 1–1024 UTF-8 bytes, including admin; no forced-change flow.
-        Browser requests require the session cookie, Origin and X-CSRF-Token.
+        Browser-session requests require the session cookie, Origin and X-CSRF-Token;
+        bearer-authenticated requests do not require browser Origin/CSRF credentials.
         The permission-protected Unix socket uses filesystem authentication.
         Publishes an immutable credential generation through the configuration coordinator.
         All previous browser sessions are revoked before success returns; log in again.
+        Bearer tokens have a separate lifetime and are revoked explicitly through token management.
         Pending external configuration edits or concurrent writes can return 409.
         CLI equivalent is dimsum control password @- with the same JSON body.
       requestBody:
@@ -38,6 +125,8 @@ paths:
         '200': {$ref: '#/components/responses/Activation'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/catalog:
+    x-mcp-tools:
+      get: {name: get_catalog, description: Inspect predefined filter subscription choices}
     get:
       summary: Inspect predefined subscription choices
       description: Availability describes parser support, not download state. Defaults are metadata and do not enable subscriptions. CLI equivalent is dimsum control catalog.
@@ -91,6 +180,8 @@ paths:
         default: {$ref: '#/components/responses/Error'}
     delete:
       summary: Revoke current session
+      security:
+        - session: []
       responses:
         '200': {description: Logged out}
         default: {$ref: '#/components/responses/Error'}
@@ -106,6 +197,8 @@ paths:
         '200': {description: Active configuration available}
         '503': {description: No active configuration}
   /api/v1/summary:
+    x-mcp-tools:
+      get: {name: get_summary, description: Get retained query totals and observation completeness}
     get:
       description: Retained admitted-query totals; rejected admissions are separate. Missing history is 503.
       parameters: &rangeParameters
@@ -119,6 +212,8 @@ paths:
               schema: {$ref: '#/components/schemas/HistorySummary'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/timeseries:
+    x-mcp-tools:
+      get: {name: get_timeseries, description: Get bounded query history time buckets}
     get:
       description: |
         At most 1500 buckets. Auto resolution is 60, then 3600, then 86400 seconds
@@ -139,6 +234,8 @@ paths:
               schema: {$ref: '#/components/schemas/HistorySeries'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/rankings:
+    x-mcp-tools:
+      get: {name: get_rankings, description: Get top clients and blocked domains for a history window}
     get:
       description: Top ten clients by admitted requests and exact domains by blocks; stable identity ties.
       parameters: *rangeParameters
@@ -150,6 +247,8 @@ paths:
               schema: {$ref: '#/components/schemas/HistoryRankings'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/queries:
+    x-mcp-tools:
+      get: {name: list_queries, description: List a bounded page of retained DNS queries}
     get:
       description: |
         Descending timestamp and ID keyset page with a fixed insertion ceiling.
@@ -179,6 +278,8 @@ paths:
               schema: {$ref: '#/components/schemas/HistoryQueries'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/queries/{id}:
+    x-mcp-tools:
+      get: {name: get_query, description: Inspect a retained DNS query by its decimal string ID}
     parameters:
       - {name: id, in: path, required: true, schema: {type: string, pattern: '^[1-9][0-9]*$'}}
     get:
@@ -191,6 +292,9 @@ paths:
               schema: {$ref: '#/components/schemas/HistoryDetail'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/settings:
+    x-mcp-tools:
+      get: {name: get_settings, description: Inspect authoritative configuration and activation status}
+      patch: {name: update_settings, description: Apply revision-checked settings edits}
     get:
       responses:
         '200':
@@ -214,6 +318,11 @@ paths:
         '200': {$ref: '#/components/responses/Activation'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/lists: &collection
+    x-mcp-tools:
+      get: {name: list_filter_lists, description: List configured filter subscriptions and activation status}
+      post: {name: add_filter_list, description: Append a filter subscription using the current revision and item}
+      patch: {name: update_filter_lists, description: Apply revision-checked filter subscription edits}
+      delete: {name: remove_filter_list, description: Remove a filter subscription using the current revision and zero-based index}
     get:
       responses:
         '200':
@@ -234,10 +343,27 @@ paths:
     delete:
       <<: *patch
       description: Remove item using revision and zero-based index
-  /api/v1/rules: *collection
-  /api/v1/records: *collection
+  /api/v1/rules:
+    <<: *collection
+    x-mcp-tools:
+      get: {name: list_rules, description: List configured DNS policy rules}
+      post: {name: add_rule, description: Append a DNS policy rule using the current revision and item}
+      patch: {name: update_rules, description: Apply revision-checked DNS policy rule edits}
+      delete: {name: remove_rule, description: Remove a DNS policy rule using the current revision and zero-based index}
+  /api/v1/records:
+    <<: *collection
+    x-mcp-tools:
+      get: {name: list_records, description: List configured local DNS records}
+      post: {name: add_record, description: Append a local DNS record using the current revision and item}
+      patch: {name: update_records, description: Apply revision-checked local DNS record edits}
+      delete: {name: remove_record, description: Remove a local DNS record using the current revision and zero-based index}
   /api/v1/clients:
     <<: *collection
+    x-mcp-tools:
+      get: {name: list_clients, description: List configured client overrides and bounded retained observations}
+      post: {name: add_client, description: Append a client override using the current revision and item}
+      patch: {name: update_clients, description: Apply revision-checked client override edits}
+      delete: {name: remove_client, description: Remove a client override using the current revision and zero-based index}
     get:
       description: Configured overrides in items, plus optional bounded retained observations and cached names.
       parameters:
@@ -251,8 +377,16 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ClientsResponse'}
         default: {$ref: '#/components/responses/Error'}
-  /api/v1/upstreams: *collection
+  /api/v1/upstreams:
+    <<: *collection
+    x-mcp-tools:
+      get: {name: list_upstreams, description: List configured upstream DNS servers}
+      post: {name: add_upstream, description: Append an upstream DNS server using the current revision and item}
+      patch: {name: update_upstreams, description: Apply revision-checked upstream DNS server edits}
+      delete: {name: remove_upstream, description: Remove an upstream DNS server using the current revision and zero-based index}
   /api/v1/diagnostics:
+    x-mcp-tools:
+      get: {name: get_diagnostics, description: Inspect configuration and installed diagnostic measurements}
     get:
       responses:
         '200':
@@ -262,6 +396,9 @@ paths:
               schema: {type: object, additionalProperties: true}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/blocking:
+    x-mcp-tools:
+      get: {name: get_blocking, description: Inspect blocking state and pause expiry}
+      put: {name: set_blocking, description: Enable blocking or pause until an absolute expiry using the current revision}
     get:
       responses:
         '200': {description: 'Object with status, enabled, pause_until (RFC3339 UTC)'}
@@ -282,6 +419,8 @@ paths:
         '200': {$ref: '#/components/responses/Activation'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/rules/test:
+    x-mcp-tools:
+      post: {name: explain_domain, description: Explain a domain decision with the active policy matcher without performing a DNS lookup, readOnly: true}
     post:
       requestBody:
         required: true
@@ -298,6 +437,8 @@ paths:
         '200': {description: 'name, normalized, generation, decision from active policy matcher; not a DNS lookup'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/config/transactions:
+    x-mcp-tools:
+      post: {name: stage_configuration, description: Validate and stage revision-checked settings edits without activating them}
     post:
       <<: *patch
       description: Validate/stage settings edits without activation
@@ -305,6 +446,8 @@ paths:
         '200': {description: 'id (opaque content hash) and revision; commit explicitly'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/config/transactions/{id}/commit:
+    x-mcp-tools:
+      post: {name: commit_configuration, description: Commit a staged configuration transaction by its opaque content hash}
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
     post:
@@ -312,6 +455,9 @@ paths:
         '200': {$ref: '#/components/responses/Activation'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/jobs:
+    x-mcp-tools:
+      get: {name: list_jobs, description: Inspect the last 32 process-lifetime jobs and their results}
+      post: {name: create_job, description: Start a refresh or backup or restore or diagnostic job and inspect its result with list_jobs}
     get:
       responses:
         '200':
@@ -381,8 +527,16 @@ components:
       in: query
       schema: {type: integer, default: 100, minimum: 1, maximum: 200}
   securitySchemes:
-    session: {type: apiKey, in: cookie, name: dimsum_session}
+    session: {type: apiKey, in: cookie, name: dimsum_session, description: Browser-session authentication; mutations also require Origin and X-CSRF-Token}
+    bearer: {type: http, scheme: bearer, description: Opaque full-administrator token with independent lifetime until explicit revocation; checked on every HTTP request including MCP requests; no browser Origin/CSRF credentials required}
   schemas:
+    Token:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id: {type: string, description: Opaque token metadata identifier; never a credential}
+        name: {type: string, minLength: 1, maxLength: 80}
+        created_at: {type: string, format: date-time}
     PasswordChange:
       type: object
       additionalProperties: false
