@@ -54,7 +54,8 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	if o.MaxRules <= 0 || o.MaxBytes == 0 || o.MaxBytes > math.MaxUint32 {
 		return nil, fmt.Errorf("policy: invalid snapshot budget")
 	}
-	count, exactCount := 0, 0
+	count, exactCount, suffixCount := 0, 0, 0
+	var suffixReserve uint64
 	var textBytes, storedTextBytes uint64
 	sources := make(map[string]textRef)
 	for _, r := range input {
@@ -62,6 +63,12 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			count++
 			if r.Kind == Exact {
 				exactCount++
+			} else if r.Kind == Suffix {
+				suffixCount++
+				// ASCII names need the presentation bytes plus a label-length
+				// byte and an arena-length byte. This is only a sizing hint:
+				// IDNA can change lengths, so validated appends may grow it.
+				suffixReserve += uint64(min(len(r.Pattern), 253) + 2)
 			}
 			textBytes += uint64(len(r.ID)) + uint64(len(r.SourceID)) + uint64(len(r.SourceText)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect))
 			if count > o.MaxRules || uint64(count) > math.MaxUint32-1 || textBytes > o.MaxBytes {
@@ -92,7 +99,10 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	text.Grow(int(storedTextBytes))
 	clear(sources)
 	seen := make(map[string]bool, count)
-	var suffixes []suffixBuild
+	suffixes := suffixBuild{
+		entries: make([]suffixEntry, 0, suffixCount),
+		keys:    make([]byte, 0, min(suffixReserve, o.MaxBytes)),
+	}
 	var suffixKeyBytes uint64
 	var fallback []Rule
 	for _, r := range input {
@@ -146,7 +156,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 				if suffixKeyBytes > o.MaxBytes {
 					return nil, fmt.Errorf("policy: suffix key budget exceeded")
 				}
-				suffixes = append(suffixes, suffixBuild{string(reverseName(n, &buf)), head})
+				suffixes.add(reverseName(n, &buf), head)
 			}
 		} else {
 			// regexp and wildcard-bearing glob labels can retain their input

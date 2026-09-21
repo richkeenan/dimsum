@@ -113,11 +113,11 @@ func BenchmarkIndexCandidates(b *testing.B) {
 			}
 			b.Run("reversed-sorted", func(b *testing.B) {
 				var x suffixIndex
-				in := make([]suffixBuild, n)
+				in := suffixBuild{entries: make([]suffixEntry, 0, n)}
 				meta := make([]ruleMeta, n)
 				for i, name := range names {
 					var buf [255]byte
-					in[i] = suffixBuild{string(reverseName(name, &buf)), uint32(i + 1)}
+					in.add(reverseName(name, &buf), uint32(i+1))
 				}
 				x.build(in, meta)
 				for _, hit := range []bool{true, false} {
@@ -264,11 +264,11 @@ func BenchmarkSuffixCandidates(b *testing.B) {
 			}
 			b.Run("reversed-sorted", func(b *testing.B) {
 				var x suffixIndex
-				in := make([]suffixBuild, n)
+				in := suffixBuild{entries: make([]suffixEntry, 0, n)}
 				meta := make([]ruleMeta, n)
 				for i, name := range names {
 					var buf [255]byte
-					in[i] = suffixBuild{string(reverseName(name, &buf)), uint32(i + 1)}
+					in.add(reverseName(name, &buf), uint32(i+1))
 				}
 				x.build(in, meta)
 				b.ReportAllocs()

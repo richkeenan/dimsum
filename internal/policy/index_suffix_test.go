@@ -20,13 +20,13 @@ func TestSuffixIndexBuildReservation(t *testing.T) {
 		{"binary", []string{"\x04test\x03a.b", "\x04test\x01b\x01a", "\x04test\x03a\x00b", "\x04test\x03a.b", "\x04test\x02\xff\x00"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			in := make([]suffixBuild, len(tc.keys))
+			var in suffixBuild
 			rules := make([]ruleMeta, len(tc.keys))
 			want := make(map[string][]uint32)
 			keyBytes := 0
 			for i, key := range tc.keys {
 				head := uint32(i + 1)
-				in[i] = suffixBuild{key, head}
+				in.add([]byte(key), head)
 				if _, ok := want[key]; !ok {
 					keyBytes += 1 + len(key)
 				}
@@ -56,4 +56,33 @@ func TestReverseNameBinaryLabels(t *testing.T) {
 	var buf [255]byte
 	assert.Equal(t, "\x04test\x03a.b\x03x\x00y", string(reverseName(Name{wire: "\x03x\x00y\x03a.b\x04test"}, &buf)))
 	assert.Equal(t, "\x04test\x01b\x01a", string(reverseName(Name{wire: "\x01a\x01b\x04test"}, &buf)))
+}
+
+func TestSuffixBuildArenaOwnershipAndGrowth(t *testing.T) {
+	in := suffixBuild{keys: make([]byte, 0, 1)}
+	key := []byte("\x04test\x03a.b")
+	in.add(key, 1)
+	clear(key) // Staging must copy the caller's reusable reverse-name buffer.
+	for head := uint32(2); head <= 100; head++ {
+		in.add([]byte("\x04test\x03x\x00y"), head)
+	}
+	var x suffixIndex
+	rules := make([]ruleMeta, 100)
+	x.build(in, rules)
+	clear(in.keys)
+	clear(in.entries)
+	assert.Equal(t, uint32(1), x.find("\x04test\x03a.b"))
+	head := x.find("\x04test\x03x\x00y")
+	var got []uint32
+	for head != 0 {
+		require.LessOrEqual(t, head, uint32(len(rules)))
+		require.Less(t, len(got), 99, "chain must terminate after arena growth")
+		got = append(got, head)
+		head = rules[head-1].next
+	}
+	want := make([]uint32, 99)
+	for i := range want {
+		want[i] = uint32(i + 2)
+	}
+	assert.ElementsMatch(t, want, got)
 }
