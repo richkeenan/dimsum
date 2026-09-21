@@ -226,17 +226,54 @@ func (c *mdnsCache) expire(now time.Time) {
 	}
 }
 
-// Query packets share the existing name normalizer/encoder rather than a DNS library.
+// Query names are canonical Display strings from decoded wire names (or locally
+// generated reverse names), not configuration hostnames. Preserve escaped label
+// octets: DNS-SD instance labels can contain spaces, dots and UTF-8.
 func encodeMDNSQuery(name string, kind uint16) []byte {
-	n, err := policy.NormalizeName(name)
+	wire := make([]byte, 0, 255)
+	for _, label := range strings.Split(name, ".") {
+		start := len(wire)
+		wire = append(wire, 0)
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if c == '\\' {
+				if i+3 >= len(label) {
+					return nil
+				}
+				n := 0
+				for j := 1; j <= 3; j++ {
+					d := label[i+j]
+					if d < '0' || d > '9' {
+						return nil
+					}
+					n = n*10 + int(d-'0')
+				}
+				if n > 255 {
+					return nil
+				}
+				c = byte(n)
+				i += 3
+			}
+			wire = append(wire, c)
+			if len(wire) > 254 || len(wire)-start-1 > 63 {
+				return nil
+			}
+		}
+		if len(wire) == start+1 {
+			return nil
+		}
+		wire[start] = byte(len(wire) - start - 1)
+	}
+	wire = append(wire, 0)
+	n, err := policy.NameFromWire(wire)
 	if err != nil {
 		return nil
 	}
 	p := make([]byte, 12)
 	p[5] = 1
-	var wire [255]byte
-	size := n.CopyWire(wire[:])
-	p = append(p, wire[:size]...)
+	var canonical [255]byte
+	size := n.CopyWire(canonical[:])
+	p = append(p, canonical[:size]...)
 	p = binary.BigEndian.AppendUint16(p, kind)
 	return binary.BigEndian.AppendUint16(p, 1)
 }

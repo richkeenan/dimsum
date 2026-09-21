@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"fmt"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,6 +81,31 @@ func TestMDNSIPv6AndFlush(t *testing.T) {
 	assert.NotEmpty(t, c.lookup(ip, now.Add(2*time.Second)).Name)
 	assert.Empty(t, c.lookup(ip, now.Add(4*time.Second)).Name)
 	assert.Empty(t, c.lookup(netip.MustParseAddr("fe80::2"), now).Name)
+}
+
+func TestMDNSCacheBoundsAndRecentFlushProtection(t *testing.T) {
+	now := time.Now()
+	c := newMDNSCache()
+	for batch := 0; batch < 65; batch++ {
+		var records []dns.RR
+		for i := 0; i < 128; i++ {
+			records = append(records, rr(t, fmt.Sprintf("fixture-%d.local. 120 IN A 192.0.2.20", batch*128+i)))
+		}
+		require.NoError(t, c.ingest(1, mdnsPacket(t, records...), now))
+	}
+	assert.LessOrEqual(t, len(c.records), 8192)
+	c = newMDNSCache()
+	a := rr(t, "host.local. 120 IN A 192.0.2.20")
+	a.Header().Class = 0x8001
+	b := rr(t, "host.local. 120 IN A 192.0.2.21")
+	b.Header().Class = 0x8001
+	require.NoError(t, c.ingest(1, mdnsPacket(t, a), now))
+	require.NoError(t, c.ingest(1, mdnsPacket(t, b), now.Add(100*time.Millisecond)))
+	c.expire(now.Add(2 * time.Second))
+	assert.Len(t, c.records, 2, "recent members of a split RRset survive flush")
+	require.NoError(t, c.ingest(1, mdnsPacket(t, b), now.Add(3*time.Second)))
+	c.expire(now.Add(5 * time.Second))
+	assert.Len(t, c.records, 1, "older replaced members expire after grace")
 }
 func FuzzMDNSCache(f *testing.F) {
 	f.Add([]byte{0, 0, 132, 0, 0, 0, 0, 0, 0, 0, 0, 0})

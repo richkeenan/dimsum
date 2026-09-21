@@ -56,6 +56,14 @@ func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 		category, reason, inferred := classifyDevice(primary.Name, nil)
 		primary.Device = &Enrichment{Category: category, Reason: reason, Inferred: inferred, Fresh: primary.Fresh, Evidence: []Evidence{}}
 	}
+	if primary.Device.Category == "unknown" && primary.Name != "" {
+		category, reason, inferred := classifyDevice(primary.Name, primary.Device.Evidence)
+		if category != "unknown" {
+			primary.Device.Category = category
+			primary.Device.Reason = reason
+			primary.Device.Inferred = inferred
+		}
+	}
 	return primary
 }
 

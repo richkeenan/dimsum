@@ -29,6 +29,10 @@ func TestDNSContinuesDuringBlockedStorageWriter(t *testing.T) {
 	require.NoError(t, err)
 	defer lock.Close()
 	lock.SetMaxOpenConns(1)
+	// Startup retention may briefly own the writer, especially under -race.
+	// Wait for that transaction before deliberately holding our own write lock.
+	_, err = lock.Exec("PRAGMA busy_timeout=5000")
+	require.NoError(t, err)
 	_, err = lock.Exec("BEGIN IMMEDIATE")
 	require.NoError(t, err)
 	defer lock.Exec("ROLLBACK")

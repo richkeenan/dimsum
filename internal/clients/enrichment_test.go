@@ -35,6 +35,7 @@ func TestDeviceClassificationUsesSpecificEvidence(t *testing.T) {
 		want     string
 	}{
 		{"Example-iPhone.local", nil, "phone"}, {"Example-MacBook.local", nil, "laptop"},
+		{"Office printer", nil, "printer"}, {"Garden camera", nil, "camera"}, {"Kitchen speaker", nil, "speaker"},
 		{"ipad.local", nil, "tablet"}, {"imac.local", nil, "desktop"},
 		{"linux.local", nil, "unknown"}, {"Android.local", nil, "unknown"},
 		{"unknown-7.local", nil, "unknown"}, {"notiphonecase.local", nil, "unknown"},
@@ -56,6 +57,15 @@ func TestDeviceClassificationUsesSpecificEvidence(t *testing.T) {
 			assert.NotEmpty(t, reason)
 		})
 	}
+}
+
+func TestOverrideNameCanEnrichAnOtherwiseUnknownCategory(t *testing.T) {
+	now := time.Now()
+	got := mergeDiscovered(Name{Name: "Office printer", Source: "override", Fresh: true}, Name{Name: "generic.local", Expires: now.Add(time.Minute), Device: &Enrichment{Category: "unknown", Fresh: true, Evidence: []Evidence{}}}, now)
+	require.NotNil(t, got.Device)
+	assert.Equal(t, "printer", got.Device.Category)
+	assert.True(t, got.Device.Inferred)
+	assert.Equal(t, "Office printer", got.Name)
 }
 
 func TestEnrichmentSelectsUsefulLabelAndExpires(t *testing.T) {

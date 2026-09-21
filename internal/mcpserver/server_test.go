@@ -72,6 +72,12 @@ func TestToolsDerivedFromSpec(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(output), `"Unsigned integer encoded as a decimal string`)
 	assert.NotContains(t, string(output), `"$ref"`)
+	assert.Contains(t, string(output), `"client_device"`)
+	assert.Contains(t, string(output), `"device_type"`)
+	settingsSchema, err := json.Marshal(tools["update_settings"].InputSchema)
+	require.NoError(t, err)
+	assert.Contains(t, string(settingsSchema), `naming.mdns.interfaces`)
+	assert.Contains(t, string(settingsSchema), `"maxItems":8`)
 }
 
 func TestPathQueryAndDecimalResults(t *testing.T) {

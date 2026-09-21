@@ -40,6 +40,10 @@ func classifyDevice(name string, evidence []Evidence) (string, string, bool) {
 	tokens := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9') })
 	for _, t := range tokens {
 		switch t {
+		case "printer", "camera", "speaker", "laptop", "desktop", "tablet", "phone", "server", "tv", "appliance", "lighting":
+			add(t, "Inferred from device name", 1)
+		case "television":
+			add("tv", "Inferred from device name", 1)
 		case "iphone":
 			add("phone", "Inferred from iPhone hostname", 1)
 		case "ipad":

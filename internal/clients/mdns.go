@@ -73,6 +73,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 	cache := newMDNSCache()
 	observed := map[netip.Addr]time.Time{}
 	questions := map[mdnsQuestion]questionState{}
+	types, instances := map[string]bool{}, map[string]bool{}
 	diag := DiscoveryDiagnostics{Interfaces: []string{}, Errors: []string{}}
 	lastPublish := time.Time{}
 	nextEnumeration := time.Time{}
@@ -95,6 +96,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			view = current
 			cache = newMDNSCache()
 			questions = map[mdnsQuestion]questionState{}
+			types, instances = map[string]bool{}, map[string]bool{}
 			retryOpen = time.Time{}
 			nextEnumeration = time.Time{}
 			diag = DiscoveryDiagnostics{Enabled: view != nil && view.settings.MDNS.Enabled, Interfaces: []string{}, Errors: []string{}}
@@ -132,6 +134,12 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			}
 		case p := <-packets:
 			if p.err != nil {
+				transport.Close()
+				transport = nil
+				packets = nil
+				diag.Running = false
+				diag.Interfaces = []string{}
+				retryOpen = now.Add(time.Minute)
 				diag.Errors = append(diag.Errors, p.err.Error())
 				if len(diag.Errors) > 16 {
 					diag.Errors = diag.Errors[len(diag.Errors)-16:]
@@ -150,7 +158,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			}
 			cache.expire(now)
 			for q, s := range questions {
-				if s.attempt == 0 && !now.Before(s.next) {
+				if s.attempt >= 3 && !now.Before(s.next) {
 					delete(questions, q)
 				}
 			}
@@ -163,20 +171,22 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			}
 			if !now.Before(nextEnumeration) {
 				add(mdnsQuestion{"_services._dns-sd._udp.local", 12}, now)
+				types, instances = map[string]bool{}, map[string]bool{}
 				nextEnumeration = now.Add(5 * time.Minute)
 			}
 			// Discover follow-up questions from validated cached records. The question
 			// and graph bounds keep an enthusiastic advertiser from growing work.
-			types, instances := map[string]bool{}, map[string]bool{}
 			for _, r := range cache.records {
 				switch r.key.kind {
 				case 12:
-					if r.key.owner == "_services._dns-sd._udp.local" && len(types) < 32 && (strings.HasSuffix(r.target, "._tcp.local") || strings.HasSuffix(r.target, "._udp.local")) {
-						types[r.target] = true
-						add(mdnsQuestion{r.target, 12}, now)
+					if r.key.owner == "_services._dns-sd._udp.local" {
+						if (len(types) < 32 || types[r.target]) && (strings.HasSuffix(r.target, "._tcp.local") || strings.HasSuffix(r.target, "._udp.local")) {
+							types[r.target] = true
+							add(mdnsQuestion{r.target, 12}, now)
+						}
 					} else if strings.HasSuffix(r.target, ".local") {
 						if strings.Contains(r.target, "._tcp.") || strings.Contains(r.target, "._udp.") {
-							if len(instances) < 256 {
+							if len(instances) < 256 || instances[r.target] {
 								instances[r.target] = true
 								add(mdnsQuestion{r.target, 33}, now)
 								add(mdnsQuestion{r.target, 16}, now)
@@ -191,7 +201,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 					add(mdnsQuestion{r.target, 28}, now)
 				}
 			}
-			// One question per 250ms tick, sent on each selected interface. IPv4 and
+			// One question per 500ms tick, sent on each selected interface. IPv4 and
 			// IPv6 share a question, with two datagrams per tick at most.
 			var chosen mdnsQuestion
 			var earliest time.Time
@@ -225,7 +235,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				state.attempt++
 				if state.attempt >= 3 || answered {
 					state.next = now.Add(time.Minute)
-					state.attempt = 0
+					state.attempt = 3
 				} else {
 					state.next = now.Add(time.Duration(1<<state.attempt) * time.Second)
 				}
