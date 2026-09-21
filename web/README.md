@@ -31,6 +31,7 @@ From the repository root, run the opt-in real API browser harness:
 
 ```sh
 DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run TestBrowserAgainstGoAPI -v -count=1
+DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run TestBrowserAgainstManagedRuntime -v -count=1
 go test ./internal/webassets
 ```
 
@@ -40,6 +41,16 @@ or use production network settings. It verifies cookie/CSRF login and logout,
 scalar edits preserving comments, client names, rules/test, local records,
 upstream creation, conflicts, atomic external edits, and invalid-file diagnostics.
 The `real-api.spec.ts` test skips in the ordinary fixture run by design.
+
+The managed harness uses `dimsum bootstrap` with an owner-only temporary password
+file, starts `app.Service.StartManaged` on ephemeral local DNS/admin ports, and
+sends 122 actual UDP DNS requests for fixture local records and blocked names.
+`managed-api.spec.ts` then verifies SQLite-backed summary/chart data, cursor paging,
+filters and details, observed client names, an authenticated binary backup download,
+restore conflict after archive selection, and successful restore after reselecting.
+No response mocking or synthetic provider is used in this managed test. Both Go
+browser scenarios skip in the ordinary fixture run; output is separated under
+`test-results/fixtures`, `test-results/go-api`, and `test-results/managed`.
 
 ## Contract boundary
 
@@ -52,17 +63,25 @@ list URLs back while changing an enabled flag. Conflict reload closes collection
 editors so an old index cannot target a different item. Settings drafts survive
 reload and require another explicit save.
 
-The current OpenAPI statistics provider responses are open objects. The proposed
-view types (`Summary`, `Page`, timeseries `buckets`, ranking `clients`/`domains`)
-and illustrative provider fixtures are explicit in `src/lib/api.ts` and
-`tests/e2e/fixtures.ts`. They require alignment with a concrete history provider;
-missing values display as unavailable, never invented traffic. Configured client
-names are not presented as a discovered physical-device inventory.
+Statistics types and fixture shapes now derive from the concrete OpenAPI schemas
+matching `internal/app/provider.go`: `queries`/`fresh` summary counters, nested
+`points[].outcomes`, decimal `duration_us`, string IDs/generations, and separate
+configured/observed client collections. Null gap counters remain gaps. Query
+filters include only the supported nonempty name/client/outcome/qtype fields;
+empty cursors are omitted. Ranges remain exact across every panel, including
+partial first/last buckets, and the chosen chart resolution keeps requests below
+1500 points. Microseconds are formatted using integer/string arithmetic; IDs and
+counter values are never converted through unsafe JavaScript numbers. Numeric
+conversion is confined to bounded percentage/plot geometry. Configured names and
+DNS-observed addresses are not presented as a physical-device inventory.
 
-Jobs send the documented `backup`, `restore`, or `refresh` kind with a JSON
-`input`; that input remains adapter-specific until backup hooks publish a concrete
-schema. Job status polling is bounded to active jobs. An absent hook produces a
-visible API error. Upstream probes and support-bundle exports are not implemented
+Jobs send the documented `backup`, `restore`, or `refresh` kind. Completed backup
+jobs expose an authenticated same-origin download link; superseded artifacts are
+marked expired. Restore selects a real `.tar` file (maximum 2 MiB), reads the saved
+revision at file selection, and sends `{revision, archive}` with base64 archive
+bytes. The captured revision is not silently refreshed at submit. Job status
+polling is bounded to active jobs. An absent hook produces a visible API error.
+Upstream probes and support-bundle exports are not implemented
 by the current API, so the UI does not fabricate results for them. Settings can
 edit existing scalar paths for cache, listener, naming, and retention values;
 the coordinator reports unsupported/missing-path edits precisely.
@@ -78,14 +97,12 @@ updates, reconnect status, and stream cleanup. Screenshots in `screenshots/` are
 labelled fixture renderings, not a real household traffic report.
 
 No one-hour browser heap soak, household 200-row p95 measurement, DNS coexistence
-load test, Pi build, discovery coverage, successful restore-hook test, or release
-qualification is claimed. API provider wiring and those longer acceptance checks
-remain integration work.
+load test, Pi build, household discovery coverage, or release qualification is
+claimed. Those longer acceptance checks remain integration work.
 
-Verified on 2026-09-21: typecheck, 7 unit/hook tests, production build, 11 fixture
-browser scenarios, and the opt-in real Go API browser scenario passed. Embedded
+Verified on 2026-09-21: typecheck, 11 unit/hook tests, production build, 11 fixture
+browser scenarios, and both opt-in real Go API browser scenarios passed. Embedded
 SPA/cache/HEAD/ETag/namespace tests also passed in a compiled Go test binary with
-`PATH=/nonexistent`, proving that asset serving does not invoke Node. The base
-production JS bundle was 328.54 kB (106.00 kB gzip); diagnostics, chart, and job
-chunks are loaded separately. These are local build results, not LAN performance
-measurements.
+`PATH=/nonexistent`, proving that asset serving does not invoke Node. Diagnostics,
+chart, and job chunks are loaded separately. These are local build results, not LAN
+performance measurements.
