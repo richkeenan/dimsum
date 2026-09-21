@@ -1,9 +1,9 @@
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /run/dimsum && chown 65532:65532 /run/dimsum && chmod 0750 /run/dimsum
+RUN mkdir -p /run/dimsum && chown 65532:65532 /run/dimsum && chmod 0700 /run/dimsum
 ARG TARGETPLATFORM
 COPY $TARGETPLATFORM/dimsum /usr/bin/dimsum
-COPY dist/metadata /usr/share/doc/dimsum/metadata
+COPY artifacts/packaging-metadata /usr/share/doc/dimsum/metadata
 USER 65532:65532
 WORKDIR /var/lib/dimsum
 STOPSIGNAL SIGTERM

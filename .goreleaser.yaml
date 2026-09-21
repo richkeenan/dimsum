@@ -3,7 +3,7 @@ project_name: dimsum
 before:
   hooks:
     - sh scripts/build-web.sh
-    - python3 scripts/artifact-metadata.py dist/metadata
+    - python3 scripts/artifact-metadata.py artifacts/packaging-metadata
 builds:
   - id: dimsum
     main: ./cmd/dimsum
@@ -23,7 +23,7 @@ archives:
       - deploy/dimsum.sysusers
       - deploy/dimsum.example.yaml
       - docs/operations/*.md
-      - src: dist/metadata/**
+      - src: artifacts/packaging-metadata/**
         dst: metadata
 nfpms:
   - id: native
@@ -40,7 +40,7 @@ nfpms:
         dst: /usr/lib/sysusers.d/dimsum.conf
       - src: deploy/dimsum.example.yaml
         dst: /usr/share/doc/dimsum/dimsum.example.yaml
-      - src: dist/metadata/
+      - src: artifacts/packaging-metadata/
         dst: /usr/share/doc/dimsum/metadata
         type: tree
 checksum:
@@ -59,7 +59,7 @@ dockers_v2:
     disable: "{{ not .IsSnapshot }}"
     tags: ["{{ .Version }}"]
     dockerfile: deploy/Dockerfile.goreleaser
-    extra_files: [dist/metadata]
+    extra_files: [artifacts/packaging-metadata]
     labels:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Version }}"

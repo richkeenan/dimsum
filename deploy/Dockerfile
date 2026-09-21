@@ -26,7 +26,7 @@ RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH python3 sc
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN mkdir -p /run/dimsum && chown 65532:65532 /run/dimsum && chmod 0750 /run/dimsum
+RUN mkdir -p /run/dimsum && chown 65532:65532 /run/dimsum && chmod 0700 /run/dimsum
 COPY --from=build /out/dimsum /usr/bin/dimsum
 COPY --from=build /out/metadata /usr/share/doc/dimsum/metadata
 ARG SOURCE_COMMIT=unrecorded

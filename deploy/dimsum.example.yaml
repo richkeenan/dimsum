@@ -5,6 +5,7 @@ dns:
   upstreams: ["1.1.1.1:53", "9.9.9.9:53"]
 admin:
   listen: "127.0.0.1:8080"
+  control_socket: /run/dimsum/control.sock
 paths:
   data_dir: /var/lib/dimsum/data
   secrets_dir: /etc/dimsum/secrets
