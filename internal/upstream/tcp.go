@@ -4,21 +4,23 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"net"
 	"net/netip"
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/dnswire"
 )
 
-func exchangeTCP(ctx context.Context, endpoint netip.AddrPort, query []byte, q *dnswire.Question, id uint16, out []byte) (int, dnswire.Message, error) {
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", endpoint.String())
+func (c *Client) exchangeTCP(ctx context.Context, endpoint netip.AddrPort, query []byte, q *dnswire.Question, id uint16, out []byte) (n int, m dnswire.Message, err error) {
+	conn, err := c.connections.take(ctx, endpoint)
 	if err != nil {
 		return 0, dnswire.Message{}, err
 	}
-	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
-	defer stop()
+	defer func() {
+		// If cancellation has started, never return the socket to another lease.
+		stopped := stop()
+		c.connections.put(endpoint, conn, err == nil && stopped && ctx.Err() == nil)
+	}()
 	deadline, _ := ctx.Deadline()
 	if err = conn.SetDeadline(deadline); err != nil {
 		return 0, dnswire.Message{}, err
@@ -40,7 +42,7 @@ func exchangeTCP(ctx context.Context, endpoint netip.AddrPort, query []byte, q *
 	if _, err = io.ReadFull(conn, prefix[:]); err != nil {
 		return 0, dnswire.Message{}, err
 	}
-	n := int(binary.BigEndian.Uint16(prefix[:]))
+	n = int(binary.BigEndian.Uint16(prefix[:]))
 	if n < 12 {
 		return 0, dnswire.Message{}, ErrResponse
 	}
@@ -50,6 +52,6 @@ func exchangeTCP(ctx context.Context, endpoint netip.AddrPort, query []byte, q *
 	if ctx.Err() != nil || !time.Now().Before(deadline) {
 		return 0, dnswire.Message{}, context.DeadlineExceeded
 	}
-	m, err := validate(out[:n], q, id)
+	m, err = validate(out[:n], q, id)
 	return n, m, err
 }

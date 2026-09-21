@@ -1,5 +1,5 @@
-// Package upstream owns bounded exchanges. Each attempt owns its socket, query,
-// and response storage; no borrowed bytes survive Exchange. There is no cache.
+// Package upstream owns bounded exchanges. Each attempt exclusively leases its
+// socket and owns query/response storage; no borrowed bytes survive Exchange.
 package upstream
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"sync"
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/dnswire"
@@ -16,14 +17,22 @@ import (
 var ErrOverloaded = errors.New("upstream: outstanding or ID capacity exhausted")
 
 type Options struct {
-	Endpoints               []netip.AddrPort
-	MaxOutstanding          int
-	Timeout, AttemptTimeout time.Duration
+	Endpoints                     []netip.AddrPort
+	Fallback                      []netip.AddrPort
+	Mode                          string
+	MaxAttempts, FailureThreshold int
+	OpenInterval, MaxBackoff      time.Duration
+	MaxOutstanding                int
+	Timeout, AttemptTimeout       time.Duration
 }
 type Client struct {
-	options Options
-	slots   chan struct{}
-	ids     ids
+	options     Options
+	slots       chan struct{}
+	ids         ids
+	mu          sync.Mutex
+	health      []endpointHealth
+	selections  uint64
+	connections connections
 }
 
 // ExchangeResult refers only to validated bytes copied to caller-owned output.
@@ -39,8 +48,11 @@ func New(o Options) (*Client, error) {
 	if len(o.Endpoints) == 0 || len(o.Endpoints) > 16 {
 		return nil, errors.New("upstream: require 1..16 endpoints")
 	}
-	for _, a := range o.Endpoints {
-		if !a.IsValid() || a.Port() == 0 || a.Addr().IsUnspecified() || a.Addr().IsMulticast() {
+	if len(o.Fallback) > 16 {
+		return nil, errors.New("upstream: at most 16 fallback endpoints")
+	}
+	for _, a := range append(append([]netip.AddrPort(nil), o.Endpoints...), o.Fallback...) {
+		if !a.IsValid() || a.Port() == 0 || a.Addr().Unmap().IsUnspecified() || a.Addr().Unmap().IsMulticast() {
 			return nil, errors.New("upstream: require unicast literal IP and nonzero port")
 		}
 	}
@@ -53,16 +65,37 @@ func New(o Options) (*Client, error) {
 	if o.AttemptTimeout == 0 {
 		o.AttemptTimeout = 750 * time.Millisecond
 	}
+	if o.Mode == "" {
+		o.Mode = "ordered"
+	}
+	if o.MaxAttempts == 0 {
+		o.MaxAttempts = 3
+	}
+	if o.FailureThreshold == 0 {
+		o.FailureThreshold = 2
+	}
+	if o.OpenInterval == 0 {
+		o.OpenInterval = 5 * time.Second
+	}
+	if o.MaxBackoff == 0 {
+		o.MaxBackoff = 60 * time.Second
+	}
+	if (o.Mode != "ordered" && o.Mode != "adaptive") || o.MaxAttempts < 1 || o.MaxAttempts > 16 || o.FailureThreshold < 1 || o.FailureThreshold > 100 || o.OpenInterval < 0 || o.OpenInterval > time.Minute || o.MaxBackoff < o.OpenInterval || o.MaxBackoff > time.Minute {
+		return nil, errors.New("upstream: invalid pool settings")
+	}
 	if o.MaxOutstanding < 1 || o.MaxOutstanding > 65536 || o.Timeout < 0 || o.Timeout > time.Minute || o.AttemptTimeout < 0 || o.AttemptTimeout > time.Minute {
 		return nil, errors.New("upstream: invalid limits")
 	}
 	o.Endpoints = append([]netip.AddrPort(nil), o.Endpoints...)
-	return &Client{options: o, slots: make(chan struct{}, o.MaxOutstanding)}, nil
+	o.Fallback = append([]netip.AddrPort(nil), o.Fallback...)
+	return &Client{options: o, slots: make(chan struct{}, o.MaxOutstanding), health: make([]endpointHealth, len(o.Endpoints)+len(o.Fallback))}, nil
 }
 func (c *Client) Outstanding() int { return len(c.slots) }
 
-func (c *Client) Exchange(parent context.Context, wire, out []byte) (ExchangeResult, error) {
-	var result ExchangeResult
+func (c *Client) Exchange(parent context.Context, wire, out []byte) (result ExchangeResult, returned error) {
+	if c.connections.isClosed() {
+		return result, net.ErrClosed
+	}
 	if err := parent.Err(); err != nil {
 		return result, err
 	}
@@ -85,16 +118,24 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (ExchangeRes
 	buf := make([]byte, 65535)
 	last := error(ErrResponse)
 	attempts := 0
-	for _, endpoint := range c.options.Endpoints {
-		if attempts >= 3 || ctx.Err() != nil {
+	defer func() { result.Attempts = attempts }()
+	for _, index := range c.order() {
+		if attempts >= c.options.MaxAttempts || ctx.Err() != nil {
 			break
 		}
+		eligible, epoch := c.claim(index)
+		if !eligible {
+			continue
+		}
+		endpoint := c.endpoint(index)
+		started := time.Now()
 		attempts++
 		tcp := len(query) > 1232
 		n, m, e := c.attempt(ctx, endpoint, query, &q, buf, tcp)
 		if e == nil && !tcp && m.Question.Header.Flags&dnswire.FlagTC != 0 {
-			if attempts >= 3 {
+			if attempts >= c.options.MaxAttempts {
 				last = ErrResponse
+				c.record(index, epoch, time.Since(started), nil, 0, true)
 				break
 			}
 			attempts++
@@ -104,6 +145,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (ExchangeRes
 		if e == nil && m.Question.Header.Flags&dnswire.FlagTC != 0 {
 			e = ErrResponse
 		}
+		c.record(index, epoch, time.Since(started), e, m.RCode, parent.Err() != nil)
 		if e != nil {
 			last = e
 			continue
@@ -144,7 +186,7 @@ func (c *Client) attempt(parent context.Context, endpoint netip.AddrPort, query 
 	var n int
 	var m dnswire.Message
 	if tcp {
-		n, m, err = exchangeTCP(ctx, endpoint, query, q, id, out)
+		n, m, err = c.exchangeTCP(ctx, endpoint, query, q, id, out)
 	} else {
 		n, m, err = exchangeUDP(ctx, endpoint, query, q, id, out)
 	}
