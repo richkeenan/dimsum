@@ -99,6 +99,10 @@ func (s *Scanner) Init(msg []byte) error {
 func (s *Scanner) Err() error { return s.err }
 
 func (s *Scanner) Next(out *Record) bool {
+	return s.next(out, nil)
+}
+
+func (s *Scanner) next(out *Record, names *nameBoundaries) bool {
 	if s.err != nil {
 		return false
 	}
@@ -113,7 +117,7 @@ func (s *Scanner) Next(out *Record) bool {
 	}
 	var r Record
 	r.Start, r.Section = s.off, s.section
-	if s.err = decodeNameCompared(s.msg, s.reference, s.off, &r.Name); s.err != nil {
+	if s.err = decodeNameChecked(s.msg, s.reference, s.off, &r.Name, names); s.err != nil {
 		return false
 	}
 	off := r.Name.End
@@ -134,7 +138,7 @@ func (s *Scanner) Next(out *Record) bool {
 		r.TTLOffset = -1
 		s.err = s.readOPT(&r)
 	} else {
-		s.err = validateRData(s.msg, s.reference, &r)
+		s.err = validateRData(s.msg, s.reference, &r, names)
 	}
 	if s.err != nil {
 		return false
@@ -226,12 +230,12 @@ func ParseRequest(msg []byte, out *Message) error {
 // rdataName bounds the encoded occurrence to RDLENGTH while allowing legal
 // compression targets elsewhere in the message. Some newer RR types prohibit
 // compression; their original Name.Compressed is checked explicitly.
-func rdataName(msg, reference []byte, off, end int, compression bool) (int, error) {
+func rdataName(msg, reference []byte, off, end int, compression bool, names *nameBoundaries) (int, error) {
 	if off >= end {
 		return off, ErrRecord
 	}
 	var n Name
-	if err := decodeNameCompared(msg, reference, off, &n); err != nil {
+	if err := decodeNameChecked(msg, reference, off, &n, names); err != nil {
 		return off, err
 	}
 	if n.End > end || (!compression && n.Compressed) {
@@ -240,7 +244,7 @@ func rdataName(msg, reference []byte, off, end int, compression bool) (int, erro
 	return n.End, nil
 }
 
-func validateRData(msg, reference []byte, r *Record) error {
+func validateRData(msg, reference []byte, r *Record, names *nameBoundaries) error {
 	off, end := r.DataOffset, r.End
 	nameCount, prefix, tail, compression := 0, 0, 0, true
 	switch r.Type {
@@ -284,7 +288,7 @@ func validateRData(msg, reference []byte, r *Record) error {
 		if end-off < 3 {
 			return ErrRecord
 		}
-		next, err := rdataName(msg, reference, off+2, end, false)
+		next, err := rdataName(msg, reference, off+2, end, false, names)
 		if err != nil {
 			return err
 		}
@@ -306,7 +310,7 @@ func validateRData(msg, reference []byte, r *Record) error {
 		if end-off < 20 {
 			return ErrRecord
 		}
-		next, err := rdataName(msg, reference, off+18, end, false)
+		next, err := rdataName(msg, reference, off+18, end, false, names)
 		if err != nil {
 			return err
 		}
@@ -315,7 +319,7 @@ func validateRData(msg, reference []byte, r *Record) error {
 		}
 		return nil
 	case 47:
-		next, err := rdataName(msg, reference, off, end, false)
+		next, err := rdataName(msg, reference, off, end, false, names)
 		if err != nil {
 			return err
 		}
@@ -348,7 +352,7 @@ func validateRData(msg, reference []byte, r *Record) error {
 	}
 	off += prefix
 	for i := 0; i < nameCount; i++ {
-		next, err := rdataName(msg, reference, off, end, compression)
+		next, err := rdataName(msg, reference, off, end, compression, names)
 		if err != nil {
 			return err
 		}

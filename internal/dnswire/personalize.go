@@ -8,12 +8,17 @@ import (
 
 var ErrNameChanged = errors.New("dnswire: personalization changes name semantics or requires unsafe relocation")
 
-// decodeNameCompared follows the complete pointer chain in both messages, not
+// decodeNameChecked follows the complete pointer chain in both messages, not
 // just the first target. Canonical equality permits question case restoration
 // but disallows changed owner/target meaning, even if both names still parse.
-func decodeNameCompared(msg, reference []byte, off int, out *Name) error {
+func decodeNameChecked(msg, reference []byte, off int, out *Name, names *nameBoundaries) error {
 	if err := DecodeName(msg, off, out); err != nil {
 		return err
+	}
+	if names != nil {
+		if err := names.add(msg, off); err != nil {
+			return err
+		}
 	}
 	if reference != nil {
 		var before Name
