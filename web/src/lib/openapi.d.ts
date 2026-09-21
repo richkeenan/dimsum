@@ -4,6 +4,88 @@
  */
 
 export interface paths {
+  "/api/v1/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Change the administrator password
+     * @description Accepts 1–1024 UTF-8 bytes, including admin; no forced-change flow.
+     *     Browser requests require the session cookie, Origin and X-CSRF-Token.
+     *     The permission-protected Unix socket uses filesystem authentication.
+     *     Publishes an immutable credential generation through the configuration coordinator.
+     *     All previous browser sessions are revoked before success returns; log in again.
+     *     Pending external configuration edits or concurrent writes can return 409.
+     *     CLI equivalent is dimsum control password @- with the same JSON body.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["PasswordChange"];
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/catalog": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Inspect predefined subscription choices
+     * @description Availability describes parser support, not download state. Defaults are metadata and do not enable subscriptions. CLI equivalent is dimsum control catalog.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Predefined catalog metadata */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["Catalog"];
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/config/backups/{id}": {
     parameters: {
       query?: never;
@@ -1257,6 +1339,27 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    PasswordChange: {
+      /** @description Nonempty password, maximum 1024 UTF-8 bytes. Fresh installations initialize a salted hash of admin only when no credential exists. */
+      password: string;
+    };
+    Catalog: {
+      items: components["schemas"]["CatalogItem"][];
+    };
+    CatalogItem: {
+      id: string;
+      label: string;
+      description: string;
+      /** Format: uri */
+      url: string;
+      /** @enum {string} */
+      dialect: "hosts" | "domains" | "dns-adblock";
+      /** @enum {string} */
+      domain_kind: "exact" | "suffix";
+      available: boolean;
+      unavailable_reason: string;
+      default_enabled: boolean;
+    };
     UpstreamProbeInput: {
       /** @description Literal IP:port currently configured in the active primary or fallback pool; arbitrary destinations are rejected */
       endpoint: string;

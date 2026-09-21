@@ -1,7 +1,20 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useLive, useResource } from "./hooks";
-afterEach(() => vi.unstubAllGlobals());
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+let client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+afterEach(() => {
+  client.clear();
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
 it("aborts superseded query pages and never displays their late results", async () => {
   const responses: Array<{
     resolve: (r: Response) => void;
@@ -16,9 +29,9 @@ it("aborts superseded query pages and never displays their late results", async 
         ),
     ),
   );
-  const { result, rerender, unmount } = renderHook(
+  const { result, rerender } = renderHook(
     ({ path }) => useResource<{ items: string[] }>(path),
-    { initialProps: { path: "queries?name=first" } },
+    { wrapper, initialProps: { path: "queries?name=first" } },
   );
   rerender({ path: "queries?name=second" });
   expect(responses[0].signal.aborted).toBe(true);
@@ -30,41 +43,39 @@ it("aborts superseded query pages and never displays their late results", async 
     responses[0].resolve(new Response('{"items":["old"]}')),
   );
   expect(result.current.data?.items).toEqual(["new"]);
-  unmount();
-  expect(responses[1].signal.aborted).toBe(true);
 });
-it("bounds live invalidations, announces reconnect, and closes streams on pause", () => {
-  class Stream {
-    static current: Stream;
-    onopen = () => {};
-    onmessage = () => {};
-    onerror = () => {};
-    listeners: Record<string, () => void> = {};
-    close = vi.fn();
-    constructor() {
-      Stream.current = this;
-    }
-    addEventListener(name: string, fn: () => void) {
-      this.listeners[name] = fn;
-    }
-  }
-  vi.stubGlobal("EventSource", Stream);
+
+it("deduplicates shared settings and retains data during a background refresh", async () => {
+  const fetcher = vi.fn().mockResolvedValue(new Response('{"revision":"one"}'));
+  vi.stubGlobal("fetch", fetcher);
+  const { result, rerender } = renderHook(
+    ({ tick }) => [
+      useResource<{ revision: string }>("settings", tick),
+      useResource<{ revision: string }>("settings", tick),
+    ],
+    { wrapper, initialProps: { tick: 0 } },
+  );
+  await waitFor(() => expect(result.current[0].data?.revision).toBe("one"));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  fetcher.mockImplementation(() => new Promise(() => {}));
+  rerender({ tick: 1 });
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  expect(result.current[0].data?.revision).toBe("one");
+  expect(result.current[0].loading).toBe(false);
+});
+
+it("polls live results every two seconds and stops on pause", () => {
+  vi.useFakeTimers();
   const update = vi.fn();
   const { result, rerender } = renderHook(
     ({ enabled }) => useLive(enabled, update),
     { initialProps: { enabled: true } },
   );
-  act(() => Stream.current.onopen());
+  act(() => vi.advanceTimersByTime(6000));
+  expect(update).toHaveBeenCalledTimes(3);
   expect(result.current).toBe("Live");
-  expect(update).toHaveBeenCalledTimes(1);
-  act(() => {
-    for (let i = 0; i < 100; i++) Stream.current.listeners.status();
-  });
-  expect(update).toHaveBeenCalledTimes(1);
-  act(() => Stream.current.onerror());
-  expect(result.current).toContain("Reconnecting");
-  const stream = Stream.current;
   rerender({ enabled: false });
-  expect(stream.close).toHaveBeenCalledOnce();
+  act(() => vi.advanceTimersByTime(6000));
+  expect(update).toHaveBeenCalledTimes(3);
   expect(result.current).toBe("Paused");
 });

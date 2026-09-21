@@ -14,7 +14,10 @@ export function Revision({ value }: { value?: Settings }) {
   )
     return null;
   return (
-    <div className="notice warning" role={value?.error ? "alert" : "status"}>
+    <div
+      className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b69860] bg-muted px-3.5 py-3 text-xs text-[#996a26] [overflow-wrap:anywhere] dark:text-amber-300 [&>p]:mt-1 [&>p]:mb-2"
+      role={value?.error ? "alert" : "status"}
+    >
       {value?.error ? (
         <p>Changes could not be activated: {value.error}</p>
       ) : value?.pending ? (
@@ -130,6 +133,7 @@ function SettingsForm({
   }
   return (
     <form
+      className="mb-6 min-w-0"
       onSubmit={async (event) => {
         event.preventDefault();
         setBusy(true);
@@ -166,15 +170,24 @@ function SettingsForm({
       }}
     >
       {groups.map((group) => (
-        <section className="panel inset" key={group.title}>
-          <h2>{group.title}</h2>
-          <p className="muted">{group.description}</p>
-          <div className="form-grid">
+        <section
+          className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5"
+          key={group.title}
+        >
+          <h2 className="mb-3 text-sm font-semibold">{group.title}</h2>
+          <p className="mb-[18px] text-xs text-muted-foreground">
+            {group.description}
+          </p>
+          <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
             {group.fields.map((field) => (
-              <label key={field.path}>
+              <label
+                className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                key={field.path}
+              >
                 {field.label}
                 {field.options ? (
                   <select
+                    className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                     disabled={busy || !settings.revision}
                     value={
                       draft[field.path] ??
@@ -201,14 +214,18 @@ function SettingsForm({
                     onChange={(e) => change(field.path, e.target.value)}
                   />
                 )}
-                {field.help && <small>{field.help}</small>}
+                {field.help && (
+                  <small className="text-xs font-normal text-muted-foreground">
+                    {field.help}
+                  </small>
+                )}
               </label>
             ))}
           </div>
         </section>
       ))}
       {error && <ErrorNotice error={error} />}
-      <div className="actions">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           disabled={busy || !settings.revision || !Object.keys(draft).length}
         >
@@ -230,7 +247,11 @@ function SettingsForm({
           </Button>
         )}
       </div>
-      {saved && <p role="status">Settings saved.</p>}
+      {saved && (
+        <p className="mt-3 text-xs text-muted-foreground" role="status">
+          Settings saved.
+        </p>
+      )}
     </form>
   );
 }
@@ -241,9 +262,11 @@ export function PasswordForm() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   return (
-    <section className="panel inset">
-      <h2>Change password</h2>
-      <p>You will be signed out on all devices after changing your password.</p>
+    <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+      <h2 className="mb-3 text-sm font-semibold">Change password</h2>
+      <p className="mb-[18px] text-xs text-muted-foreground">
+        You will be signed out on all devices after changing your password.
+      </p>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
@@ -266,8 +289,8 @@ export function PasswordForm() {
           }
         }}
       >
-        <div className="form-grid">
-          <label>
+        <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             New password
             <Input
               type="password"
@@ -278,7 +301,7 @@ export function PasswordForm() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
-          <label>
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             Confirm new password
             <Input
               type="password"
@@ -303,7 +326,7 @@ export default function SettingsView() {
   const [tick, setTick] = useState(0);
   const state = useResource<Settings>("settings", tick);
   return (
-    <>
+    <div className="min-w-0 [&_p]:leading-relaxed">
       <Revision value={state.data} />
       {state.data ? (
         <>
@@ -324,18 +347,22 @@ export default function SettingsView() {
         </Resource>
       )}
       <PasswordForm />
-      <details className="panel inset">
-        <summary>Advanced configuration details</summary>
-        <p className="muted">
+      <details className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 text-xs">
+        <summary className="cursor-pointer text-muted-foreground">
+          Advanced configuration details
+        </summary>
+        <p className="mt-2.5 mb-[18px] max-w-[75ch] text-xs text-muted-foreground">
           Redacted configuration for troubleshooting. Use a backup to export the
           complete configuration.
         </p>
         {state.data?.source ? (
-          <pre className="source">{state.data.source}</pre>
+          <pre className="max-h-[600px] overflow-auto font-mono text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {state.data.source}
+          </pre>
         ) : (
           <Details value={state.data?.config} />
         )}
       </details>
-    </>
+    </div>
   );
 }

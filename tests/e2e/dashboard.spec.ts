@@ -2,6 +2,7 @@ import { test, expect } from "../../web/e2e";
 import { fixtureAPI, query, summary } from "./fixtures";
 test.beforeEach(async ({ page }) => fixtureAPI(page));
 test("loading, empty, and offline states are distinct", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-21T12:00:00Z"));
   let release!: () => void;
   const wait = new Promise<void>((resolve) => {
     release = resolve;
@@ -12,19 +13,23 @@ test("loading, empty, and offline states are distinct", async ({ page }) => {
   });
   await page.goto("/queries");
   await expect(
-    page.getByRole("status").filter({ hasText: "Loading from the service" }),
+    page.getByRole("status").filter({ hasText: "Loading…" }),
   ).toBeVisible();
   release();
+  await page.getByRole("button", { name: "Pause live" }).click();
   await expect(
     page.getByRole("cell", { name: "No results for this selection." }),
   ).toBeVisible();
   await page.route("**/api/v1/queries?**", (route) => route.abort());
   await page.getByRole("button", { name: "Refresh all data" }).click();
   await expect(
-    page.getByText("Cannot reach the administration service.", {
+    page.getByText("Unable to refresh. Showing the last available data.", {
       exact: false,
     }),
   ).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No results for this selection." })).toBeVisible();
+  await page.goto("/queries");
+  await expect(page.getByRole("alert")).toContainText("Cannot reach the administration service.");
 });
 test("desktop dashboard, range consistency, dark mode and small screen", async ({
   page,
@@ -88,7 +93,7 @@ test("filtered cursors preserve detail position and scope is explicit", async ({
   });
   await page.goto("/queries");
   await page.getByLabel("Filter name").fill("telemetry");
-  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("name"))
     .toBe("telemetry");
@@ -123,13 +128,13 @@ test("expired authentication returns to real data after login", async ({
   );
   await page.route("**/session", (route) => {
     authenticated = true;
-    return route.fulfill({ status: 204 });
+    return route.fulfill({ json: { csrf_token: "fixture-csrf" } });
   });
   await page.goto("/");
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to dimsum" })).toBeVisible();
   await page.getByLabel("Admin password").fill("fixture-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to dimsum" })).not.toBeVisible();
   await expect(page.getByText("48,216")).toBeVisible();
 });
 test("incomplete history and unavailable statistics do not imply DNS outage", async ({
@@ -146,8 +151,112 @@ test("incomplete history and unavailable statistics do not imply DNS outage", as
   );
   await page.goto("/");
   await expect(
-    page.getByText("Incomplete history.", { exact: false }).first(),
+    page.getByText("Some history is unavailable", { exact: true }).first(),
   ).toBeVisible();
   await expect(page.getByText("History storage unavailable")).toBeVisible();
   await expect(page.getByText("Ready", { exact: true })).toBeVisible();
+});
+
+test("live polling defaults on only for newest uninspected queries", async ({ page }) => {
+  await page.clock.install();
+  let requests = 0;
+  await page.route("**/api/v1/queries?**", (route) => {
+    requests++;
+    return route.fulfill({ json: { items: [query], next_cursor: "second-page" } });
+  });
+  await page.goto("/queries");
+  await expect(page.getByRole("button", { name: query.name, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pause live" })).toBeVisible();
+  let before = requests;
+  await page.clock.fastForward(2100);
+  await expect.poll(() => requests).toBeGreaterThan(before);
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 2 · up to 100 queries")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous" })).toBeEnabled();
+  await expect(page.getByRole("status")).toHaveText("Paused on older queries");
+  before = requests;
+  await page.clock.fastForward(6100);
+  expect(requests).toBe(before);
+  await page.getByRole("button", { name: "Previous" }).click();
+  await expect(page.getByText("Page 1 · up to 100 queries")).toBeVisible();
+  await page.getByRole("button", { name: query.name, exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(query.name);
+  before = requests;
+  await page.clock.fastForward(6100);
+  expect(requests).toBe(before);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  before = requests;
+  await page.clock.fastForward(2100);
+  await expect.poll(() => requests).toBeGreaterThan(before);
+});
+
+test("ordinary numeric URL filters preserve exact identities and round-trip edits", async ({ page }) => {
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/queries?")) requests.push(new URL(request.url()));
+  });
+  await page.goto("/queries?rule_id=9007199254740993&generation=2&qtype=1&boot_id=fixture-boot");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("rule_id")).toBe("9007199254740993");
+  expect(requests.at(-1)?.searchParams.get("generation")).toBe("2");
+  expect(requests.at(-1)?.searchParams.get("qtype")).toBe("1");
+  expect(requests.at(-1)?.searchParams.get("boot_id")).toBe("fixture-boot");
+  await page.getByText("Advanced filters", { exact: true }).click();
+  await expect(page.getByLabel("Filter rule_id")).toHaveValue("9007199254740993");
+  await page.getByLabel("Filter name").fill(query.name);
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("name")).toBe(query.name);
+  await page.reload();
+  await expect(page.getByLabel("Filter name")).toHaveValue(query.name);
+  await expect.poll(() => requests.at(-1)?.searchParams.get("rule_id")).toBe("9007199254740993");
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.has("rule_id")).toBe(false);
+  await expect.poll(() => requests.at(-1)?.searchParams.has("rule_id")).toBe(false);
+});
+
+test("changing the range on page two resets the cursor and frozen bounds", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-21T12:00:00Z"));
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/queries?")) requests.push(new URL(request.url()));
+  });
+  await page.goto("/queries?name=telemetry.example.test");
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("cursor")).toBe("second-page");
+  await page.getByLabel("Time range").selectOption("1h");
+  await expect(page.getByText("Page 1 · up to 100 queries")).toBeVisible();
+  await expect.poll(() => requests.at(-1)?.searchParams.get("from")).toBe("2026-09-21T11:00:00.000Z");
+  expect(requests.at(-1)?.searchParams.get("to")).toBe("2026-09-21T12:00:00.000Z");
+  expect(requests.at(-1)?.searchParams.get("cursor")).toBeNull();
+  expect(requests.at(-1)?.searchParams.get("name")).toBe(query.name);
+  await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+});
+
+test("custom range controls follow direct URLs, reload, and browser history", async ({ page }) => {
+  const from = "2026-09-20T12:00:00.000Z";
+  const to = "2026-09-21T12:00:00.000Z";
+  await page.goto(`/queries?range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const local = await page.evaluate(({ from, to }) => {
+    const input = (value: string) => {
+      const date = new Date(value);
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+    return { from: input(from), to: input(to) };
+  }, { from, to });
+  for (const reload of [false, true]) {
+    if (reload) await page.reload();
+    await expect(page.getByLabel("Time range")).toHaveValue("custom");
+    await expect(page.getByLabel("From", { exact: true })).toHaveValue(local.from);
+    await expect(page.getByLabel("To", { exact: true })).toHaveValue(local.to);
+    await expect(page.getByRole("status").filter({ hasText: "Fixed time range" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Pause live" })).toBeDisabled();
+  }
+  await page.getByLabel("Time range").selectOption("1h");
+  await expect(page.getByLabel("From", { exact: true })).not.toBeVisible();
+  await page.goBack();
+  await expect(page.getByLabel("Time range")).toHaveValue("custom");
+  await expect(page.getByLabel("From", { exact: true })).toHaveValue(local.from);
+  await expect(page.getByLabel("To", { exact: true })).toHaveValue(local.to);
+  await page.goForward();
+  await expect(page.getByLabel("Time range")).toHaveValue("1h");
+  await expect(page.getByLabel("From", { exact: true })).not.toBeVisible();
 });

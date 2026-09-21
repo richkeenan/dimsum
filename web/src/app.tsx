@@ -1,14 +1,28 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  Link,
+  useNavigate,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowDownUp,
-  ChevronRight,
   Database,
   FileText,
   Globe2,
   LayoutDashboard,
   ListFilter,
   LogOut,
+  Menu,
   Moon,
   Network,
   RefreshCw,
@@ -16,8 +30,11 @@ import {
   ShieldCheck,
   Sun,
   Users,
+  X,
 } from "lucide-react";
 import { api, historyWindow, type Row, type Settings } from "./lib/api";
+import { filterKeys, type ViewSearch } from "./lib/navigation";
+import { useLive } from "./lib/hooks";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import {
@@ -26,7 +43,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "./components/ui/dialog";
-import { Details, ErrorNotice } from "./components/data";
+import { ErrorNotice } from "./components/data";
 import Overview from "./features/overview";
 import Queries from "./features/queries";
 import Configuration from "./features/configuration";
@@ -36,106 +53,199 @@ const Jobs = lazy(() => import("./features/settings/jobs"));
 const navigation = [
   ["overview", "Overview", LayoutDashboard],
   ["queries", "Query log", ListFilter],
-  ["clients", "Clients", Users],
+  ["clients", "Devices", Users],
   ["lists", "Filter lists", ShieldCheck],
   ["rules", "Custom rules", FileText],
-  ["records", "DNS records", Globe2],
+  ["records", "Local DNS", Globe2],
   ["upstreams", "Upstreams", ArrowDownUp],
   ["settings", "Settings", Settings2],
-  ["jobs", "Backup & jobs", Database],
+  ["jobs", "Backups", Database],
   ["diagnostics", "Diagnostics", Activity],
 ] as const;
-function initialPage() {
-  const p = location.pathname.split("/")[1];
-  return navigation.some((n) => n[0] === p) ? p : "overview";
-}
+
 export default function App() {
-  const [page, setPage] = useState(initialPage);
-  const [range, setRange] = useState("24h");
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  const page = path.split("/")[1] || "overview";
+  const search = useSearch({ strict: false }) as ViewSearch;
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const range = search.range ?? "24h";
+  const custom =
+    range === "custom" && search.from && search.to
+      ? { from: search.from, to: search.to }
+      : undefined;
+  const filter = useMemo(
+    () =>
+      Object.fromEntries(
+        filterKeys.filter((k) => search[k]).map((k) => [k, search[k]!]),
+      ),
+    [search],
+  );
   const [anchor, setAnchor] = useState(() => Date.now());
+  const [refresh, setRefresh] = useState(0);
+  const [auth, setAuth] = useState(
+    () =>
+      typeof sessionStorage === "undefined" ||
+      !sessionStorage.getItem("dimsum-csrf"),
+  );
+  const [dark, setDark] = useState(
+    () =>
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem("theme") === "dark",
+  );
+  const [menu, setMenu] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [error, setError] = useState<Error>();
+  const [customOpen, setCustomOpen] = useState(range === "custom");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [custom, setCustom] = useState<{ from: string; to: string }>();
   const [rangeError, setRangeError] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const liveTick = useCallback(() => setAnchor(Date.now()), []);
-  const [filter, setFilter] = useState<Record<string, string>>({});
-  const [auth, setAuth] = useState(false);
-  const [dark, setDark] = useState(
-    () => localStorage.getItem("theme") === "dark",
-  );
-  const [error, setError] = useState<Error>();
-  const [blocking, setBlocking] = useState(false);
   useEffect(() => {
-    const expire = () => setAuth(true);
-    const pop = () => setPage(initialPage());
-    window.addEventListener("session-expired", expire);
-    window.addEventListener("popstate", pop);
-    return () => {
-      window.removeEventListener("session-expired", expire);
-      window.removeEventListener("popstate", pop);
+    const localInput = (value?: string) => {
+      if (!value) return "";
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return "";
+      return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+        .toISOString()
+        .slice(0, 16);
     };
-  }, []);
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-    localStorage.setItem("theme", dark ? "dark" : "light");
-  }, [dark]);
-  function navigate(p: string) {
-    setPage(p);
-    history.pushState({}, "", p === "overview" ? "/" : "/" + p);
-  }
+    setCustomOpen(range === "custom");
+    setFrom(localInput(search.from));
+    setTo(localInput(search.to));
+    setRangeError("");
+  }, [range, search.from, search.to]);
+  const liveTick = useCallback(() => setAnchor(Date.now()), []);
+  const live = useLive(
+    !auth && ["overview", "clients"].includes(page) && range !== "custom",
+    liveTick,
+    5000,
+  );
+  const historical = ["overview", "queries", "clients"].includes(page);
+  const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
   const { params: rangeParams, resolution } = historyWindow(
     range,
     anchor,
     custom,
   );
-  const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
+  const rangeSearch: ViewSearch = { range, ...(custom ?? {}) };
+  function go(p: string, next: ViewSearch = rangeSearch) {
+    setMenu(false);
+    void navigate({ to: "/$page", params: { page: p }, search: next });
+  }
+
+  useEffect(() => {
+    const expire = () => {
+      setAuth(true);
+      void queryClient.cancelQueries();
+      queryClient.clear();
+    };
+    const changed = () => {
+      void queryClient.invalidateQueries({ queryKey: ["api"] });
+    };
+    window.addEventListener("session-expired", expire);
+    window.addEventListener("configuration-changed", changed);
+    return () => {
+      window.removeEventListener("session-expired", expire);
+      window.removeEventListener("configuration-changed", changed);
+    };
+  }, [queryClient]);
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = "*,*::before,*::after{transition:none!important}";
+    document.head.append(style);
+    document.documentElement.classList.toggle("dark", dark);
+    localStorage.setItem("theme", dark ? "dark" : "light");
+    void document.documentElement.offsetHeight;
+    const frame = requestAnimationFrame(() => style.remove());
+    return () => {
+      cancelAnimationFrame(frame);
+      style.remove();
+    };
+  }, [dark]);
+  useEffect(() => {
+    document.title = `${title} · dimsum`;
+    setMenu(false);
+  }, [title]);
+
+  if (auth)
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-[#172e50] p-6">
+        <div className="mb-7 flex items-center gap-3 text-[28px] font-semibold text-white">
+          <Network size={27} />
+          <span>dimsum</span>
+        </div>
+        <section className="w-full max-w-100 rounded-[14px] bg-background p-6 sm:p-8 [&>h1]:text-2xl [&>h1]:font-semibold [&>p]:mt-2 [&>p]:text-muted-foreground [&>form]:my-6 [&>form>button]:w-full">
+          <h1>Welcome to dimsum</h1>
+          <p>Sign in to manage your network.</p>
+          <Login
+            onSuccess={() => {
+              queryClient.clear();
+              setAuth(false);
+              setAnchor(Date.now());
+            }}
+          />
+          <p className="text-xs leading-relaxed">
+            On a fresh installation, the password is <code>admin</code>. You can
+            change it in Settings.
+          </p>
+        </section>
+      </div>
+    );
+
   return (
-    <div className="app-shell">
-      <a className="skip" href="#main">
+    <div className="flex min-h-dvh">
+      <a
+        className="fixed -top-16 z-50 bg-background p-3 focus:top-0"
+        href="#main"
+      >
         Skip to content
       </a>
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate("overview");
-          }}
+      {menu && (
+        <button
+          className="fixed inset-0 z-20 bg-[#071326]/55 md:hidden"
+          aria-label="Close navigation"
+          onClick={() => setMenu(false)}
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 w-65 flex-col bg-[#172e50] px-4 py-6 text-[#edf3ff] md:flex md:w-54 ${menu ? "flex" : "hidden"}`}
+        aria-label="Application navigation"
+      >
+        <Link
+          to="/"
+          search={rangeSearch}
+          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-semibold tracking-tight [&_small]:block [&_small]:text-[10px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
         >
-          <span className="brand-mark">
-            <Network size={21} />
+          <span className="rounded-[11px] bg-primary p-2 text-white">
+            <Network size={22} />
           </span>
           <span>
             dimsum<small>DNS administration</small>
           </span>
-        </a>
-        <nav aria-label="Main navigation">
+        </Link>
+        <button
+          className="absolute right-3 top-4 p-2 md:hidden"
+          aria-label="Close navigation"
+          onClick={() => setMenu(false)}
+        >
+          <X size={20} />
+        </button>
+        <nav aria-label="Main navigation" className="flex flex-col gap-1">
           {navigation.map(([id, label, Icon], i) => (
-            <Button
+            <Link
               key={id}
-              variant="ghost"
-              className={
-                "nav-item " +
-                (page === id ? "selected " : "") +
-                (i === 3 || i === 7 ? "group-start" : "")
-              }
-              onClick={() => navigate(id)}
+              to="/$page"
+              params={{ page: id }}
+              search={rangeSearch}
+              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-semibold text-white" : "text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${i === 3 || i === 7 ? "mt-5" : ""}`}
               aria-current={page === id ? "page" : undefined}
             >
-              <Icon size={17} />
+              <Icon size={18} />
               <span>{label}</span>
-              {page === id && <ChevronRight size={14} />}
-            </Button>
+            </Link>
           ))}
         </nav>
-        <div className="sidebar-bottom">
-          <p>
-            One network.
-            <br />
-            One filtering policy.
-          </p>
+        <div className="mt-auto pt-8 [&>button]:w-full [&>button]:justify-start [&>button]:text-[#c2d0e5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
           <Button variant="ghost" onClick={() => setDark(!dark)}>
             {dark ? <Sun size={16} /> : <Moon size={16} />}{" "}
             {dark ? "Light" : "Dark"} appearance
@@ -145,92 +255,111 @@ export default function App() {
             onClick={async () => {
               try {
                 await api.logout();
+                queryClient.clear();
                 setAuth(true);
               } catch (e) {
                 setError(e as Error);
               }
             }}
           >
-            <LogOut size={16} /> Sign out
+            <LogOut size={16} />
+            Sign out
           </Button>
         </div>
       </aside>
-      <div className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="muted">Network</span>
-            <ChevronRight size={14} />
-            <span>{title}</span>
+      <div className="min-w-0 flex-1 md:ml-54">
+        <header className="flex h-16 items-center justify-between border-b border-border bg-background px-4 text-xs md:px-8">
+          <div className="flex items-center gap-3">
+            <Button
+              className="md:hidden"
+              variant="ghost"
+              aria-label="Open navigation"
+              onClick={() => setMenu(true)}
+            >
+              <Menu size={20} />
+            </Button>
+            <span className="text-muted-foreground">Your network</span>
           </div>
           <Button variant="outline" onClick={() => setBlocking(true)}>
-            <ShieldCheck size={15} /> Blocking controls
+            <ShieldCheck size={16} />
+            Blocking controls
           </Button>
         </header>
-        <main id="main">
-          <div className="page-heading">
-            <div>
+        <main id="main" className="mx-auto max-w-425 px-4 py-6 md:px-8 md:py-8">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="[&>h1]:text-[26px] [&>h1]:font-semibold [&>h1]:tracking-tight [&>p]:mt-1 [&>p]:text-xs [&>p]:text-muted-foreground">
               <h1>{title}</h1>
-              <p>
-                {page === "overview"
-                  ? "A clear view of your network’s DNS traffic."
-                  : page === "queries"
-                    ? "Inspect requests and understand each decision."
-                    : "Network-wide administration"}
-              </p>
+              {page === "overview" && <p>DNS activity across your network.</p>}
             </div>
-            <div className="actions">
-              <label className="sr-only" htmlFor="range">
-                Time range
-              </label>
-              <select
-                id="range"
-                value={range}
-                onChange={(e) => {
-                  setRange(e.target.value);
-                  setAnchor(Date.now());
-                }}
-              >
-                <option value="1h">Last hour</option>
-                <option value="24h">Last 24 hours</option>
-                <option value="7d">Last 7 days</option>
-                <option value="custom">Custom range</option>
-              </select>
+            <div className="flex items-center gap-2">
+              {historical && (
+                <>
+                  <label className="sr-only" htmlFor="range">
+                    Time range
+                  </label>
+                  <select
+                    className="min-h-9 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    id="range"
+                    value={customOpen ? "custom" : range}
+                    onChange={(e) => {
+                      setCustomOpen(e.target.value === "custom");
+                      if (e.target.value !== "custom") {
+                        setAnchor(Date.now());
+                        go(page, {
+                          ...search,
+                          range: e.target.value,
+                          from: undefined,
+                          to: undefined,
+                        });
+                      }
+                    }}
+                  >
+                    <option value="1h">Last hour</option>
+                    <option value="24h">Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="custom">Custom range</option>
+                  </select>
+                </>
+              )}
               <Button
                 variant="outline"
                 aria-label="Refresh all data"
                 onClick={() => {
                   setRefresh((v) => v + 1);
                   setAnchor(Date.now());
+                  void queryClient.invalidateQueries({ queryKey: ["api"] });
                 }}
               >
-                <RefreshCw size={15} />
+                <RefreshCw size={16} />
               </Button>
             </div>
           </div>
-          {range === "custom" && (
+          {historical && customOpen && (
             <form
-              className="inline-form custom-range"
+              className="mb-5 flex flex-wrap items-end gap-3 [&>label]:min-w-0 [&>label]:flex-1"
               onSubmit={(e) => {
                 e.preventDefault();
+                const start = Date.parse(from),
+                  end = Date.parse(to);
                 if (
-                  !from ||
-                  !to ||
-                  new Date(from) >= new Date(to) ||
-                  Date.parse(to) - Date.parse(from) > 366 * 86400000
+                  !Number.isFinite(start) ||
+                  !Number.isFinite(end) ||
+                  start >= end ||
+                  end - start > 366 * 86400000
                 ) {
-                  setRangeError(
-                    "Choose a positive range no longer than 366 days.",
-                  );
+                  setRangeError("Choose a range of up to one year.");
                   return;
                 }
-                setCustom({
-                  from: new Date(from).toISOString(),
-                  to: new Date(to).toISOString(),
-                });
                 setRangeError("");
+                go(page, {
+                  ...search,
+                  range: "custom",
+                  from: new Date(start).toISOString(),
+                  to: new Date(end).toISOString(),
+                });
               }}
             >
-              <label>
+              <label className="flex flex-col gap-1.5 text-xs font-medium">
                 From
                 <Input
                   type="datetime-local"
@@ -239,7 +368,7 @@ export default function App() {
                   onChange={(e) => setFrom(e.target.value)}
                 />
               </label>
-              <label>
+              <label className="flex flex-col gap-1.5 text-xs font-medium">
                 To
                 <Input
                   type="datetime-local"
@@ -252,79 +381,75 @@ export default function App() {
               {rangeError && <span role="alert">{rangeError}</span>}
             </form>
           )}
-          <div className="range-caption">
-            {new Date(
-              new URLSearchParams(rangeParams).get("from")!,
-            ).toLocaleString()}{" "}
-            –{" "}
-            {new Date(
-              new URLSearchParams(rangeParams).get("to")!,
-            ).toLocaleString()}
-            {" · Missing and partial intervals are marked"}
-          </div>
+          {historical && page !== "queries" && (
+            <div className="mb-5 text-xs text-muted-foreground">
+              {range === "custom" ? (
+                <span>
+                  {new Date(search.from!).toLocaleString()} –{" "}
+                  {new Date(search.to!).toLocaleString()}
+                </span>
+              ) : (
+                <span
+                  className={
+                    live === "Live"
+                      ? "before:mr-2 before:inline-block before:size-1.5 before:rounded-full before:bg-primary"
+                      : ""
+                  }
+                >
+                  {live === "Live" ? "Live · updates every 5 seconds" : live}
+                </span>
+              )}
+            </div>
+          )}
           {error && <ErrorNotice error={error} />}
-          <Suspense fallback={<p role="status">Loading view…</p>}>
+          <Suspense
+            fallback={
+              <p
+                className="my-4 rounded-lg bg-muted p-8 text-center text-muted-foreground"
+                role="status"
+              >
+                Loading…
+              </p>
+            }
+          >
             {page === "overview" ? (
               <Overview
                 resolution={resolution}
                 range={rangeParams}
                 refresh={refresh}
-                drill={(key, value) => {
-                  setFilter({ [key]: value });
-                  navigate("queries");
-                }}
+                drill={(key, value) =>
+                  go("queries", { ...rangeSearch, [key]: value })
+                }
               />
             ) : page === "queries" ? (
               <Queries
+                key={`${range}:${search.from ?? ""}:${search.to ?? ""}`}
                 onLiveTick={liveTick}
-                key={JSON.stringify(filter)}
                 range={rangeParams}
                 refresh={refresh}
                 initialFilter={filter}
+                onFilterChange={(next) =>
+                  go("queries", { ...rangeSearch, ...next })
+                }
+                liveAllowed={range !== "custom"}
               />
             ) : page === "settings" ? (
-              <SettingsView key={refresh} />
+              <SettingsView />
             ) : page === "diagnostics" ? (
-              <Diagnostics key={refresh} />
+              <Diagnostics />
             ) : page === "jobs" ? (
-              <Jobs key={refresh} />
+              <Jobs />
             ) : (
-              <Configuration
-                key={page + refresh}
-                kind={page}
-                range={rangeParams}
-              />
+              <Configuration key={page} kind={page} range={rangeParams} />
             )}
           </Suspense>
-          <footer>
-            dimsum{" "}
-            <span>Configuration is text. Changes are revision checked.</span>
-          </footer>
         </main>
       </div>
-      <Dialog open={auth}>
-        <DialogContent
-          showCloseButton={false}
-          onEscapeKeyDown={(e) => e.preventDefault()}
-          onPointerDownOutside={(e) => e.preventDefault()}
-        >
-          <DialogTitle>Sign in to dimsum</DialogTitle>
-          <DialogDescription>
-            Your session is required to inspect or change DNS administration.
-          </DialogDescription>
-          <Login
-            onSuccess={() => {
-              setAuth(false);
-              setRefresh((v) => v + 1);
-            }}
-          />
-        </DialogContent>
-      </Dialog>
       <Dialog open={blocking} onOpenChange={setBlocking}>
         <DialogContent>
-          <DialogTitle>Network-wide blocking</DialogTitle>
+          <DialogTitle>Blocking controls</DialogTitle>
           <DialogDescription>
-            A pause affects every client. Choose an explicit expiry.
+            Pause filtering for all devices, then resume automatically.
           </DialogDescription>
           <Blocking />
         </DialogContent>
@@ -332,12 +457,14 @@ export default function App() {
     </div>
   );
 }
+
 function Login({ onSuccess }: { onSuccess: () => void }) {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   return (
     <form
+      className="space-y-4"
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -346,14 +473,14 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
           await api.login(password);
           setPassword("");
           onSuccess();
-        } catch (err) {
-          setError(err as Error);
+        } catch (e) {
+          setError(e as Error);
         } finally {
           setBusy(false);
         }
       }}
     >
-      <label>
+      <label className="flex flex-col gap-1.5 text-xs font-medium">
         Admin password
         <Input
           autoFocus
@@ -369,6 +496,7 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
     </form>
   );
 }
+
 function Blocking() {
   const [minutes, setMinutes] = useState("5");
   const [result, setResult] = useState<Row>();
@@ -400,15 +528,19 @@ function Blocking() {
   }
   return (
     <>
-      <label>
+      <label className="flex flex-col gap-1.5 text-xs font-medium">
         Pause duration
-        <select value={minutes} onChange={(e) => setMinutes(e.target.value)}>
+        <select
+          className="min-h-9 rounded-md border border-input bg-background px-3 py-2 text-sm"
+          value={minutes}
+          onChange={(e) => setMinutes(e.target.value)}
+        >
           <option value="5">5 minutes</option>
           <option value="30">30 minutes</option>
           <option value="60">1 hour</option>
         </select>
       </label>
-      <div className="actions">
+      <div className="flex flex-wrap items-center gap-2">
         <Button disabled={busy} variant="outline" onClick={() => update(false)}>
           Pause blocking
         </Button>
@@ -417,7 +549,7 @@ function Blocking() {
         </Button>
       </div>
       {error && <ErrorNotice error={error} />}{" "}
-      {result && <Details value={result} />}
+      {result && <p role="status">Blocking settings updated.</p>}
     </>
   );
 }

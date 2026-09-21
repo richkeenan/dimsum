@@ -2,14 +2,21 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    !process.env.VITEST &&
+      tanstackStart({
+        spa: { enabled: true, prerender: { outputPath: "/index.html" } },
+      }),
+    react(),
+    tailwindcss(),
+  ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },
-  build: { outDir: "../internal/webassets/dist", emptyOutDir: true },
   server: {
     proxy: {
-      "/api": "http://127.0.0.1:8080",
-      "/session": "http://127.0.0.1:8080",
+      "/api": process.env.DIMSUM_API_URL || "http://127.0.0.1:18080",
+      "/session": process.env.DIMSUM_API_URL || "http://127.0.0.1:18080",
     },
   },
   test: {

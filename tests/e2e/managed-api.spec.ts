@@ -19,13 +19,15 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     .getByLabel("Admin password")
     .fill(process.env.DIMSUM_E2E_PASSWORD!);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Welcome to dimsum", exact: true }),
+  ).not.toBeVisible();
   await expect(async () => {
     await page.getByRole("button", { name: "Refresh all data" }).click();
     await expect(
       page
-        .locator(".metric")
-        .filter({ hasText: "Admitted queries" })
+        .getByText("Total queries", { exact: true })
+        .locator("..")
         .locator("strong"),
     ).toHaveText("122");
   }).toPass({ timeout: 10000 });
@@ -35,20 +37,22 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   await expect(page.getByRole("img", { name: /DNS outcomes/ })).toBeVisible();
   await page.getByText("View traffic as a table").click();
   await expect(
-    page.getByRole("columnheader", { name: "local", exact: true }),
+    page.getByRole("columnheader", { name: "Local answer", exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("managed-overview.png"),
     fullPage: true,
   });
-  await page.getByRole("button", { name: "Query log", exact: true }).click();
+  await page.getByRole("link", { name: "Query log", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Next", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByText("Page 2 · up to 100 queries")).toBeVisible();
   await page.getByLabel("Filter name").fill("ads.example.test");
-  await page.getByRole("button", { name: "Filter", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Apply filters", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "ads.example.test", exact: true }),
   ).toHaveCount(12);
@@ -62,26 +66,31 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   await expect(
     page
       .getByRole("dialog")
-      .getByText("custom:browser-block", { exact: false }),
+      .getByRole("paragraph")
+      .filter({ hasText: "custom:browser-block" }),
   ).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByText("Technical details", { exact: true })
+    .click();
   await expect(
     page
       .getByRole("dialog")
       .getByText("Upstream Attempts Available", { exact: false }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("button", { name: "Clients", exact: true }).click();
+  await page.getByRole("link", { name: "Devices", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Observed clients" }),
+    page.getByRole("heading", { name: "Devices", exact: true, level: 2 }),
   ).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "122", exact: true }),
   ).toBeVisible();
   expect(failures).toEqual([]);
+  await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page
-    .getByRole("button", { name: "Backup & jobs", exact: true })
+    .getByRole("button", { name: "Create backup", exact: true })
     .click();
-  await page.getByRole("button", { name: "Start job", exact: true }).click();
   const downloadLink = page.getByRole("link", {
     name: "Download backup",
     exact: true,
@@ -95,17 +104,15 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   const bytes = await readFile(archive);
   expect(bytes.length).toBeGreaterThan(512);
   expect(bytes.length).toBeLessThanOrEqual(2 * 1024 * 1024);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByLabel("Configuration path").fill("cache.max_stale_seconds");
-  await page.getByLabel("New value (JSON)").fill("180");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(
-    page.getByText("Saved. Review active generation", { exact: false }),
-  ).toBeVisible();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByLabel("Maximum expired-answer age (seconds)").fill("180");
   await page
-    .getByRole("button", { name: "Backup & jobs", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
-  await page.getByLabel("Operation", { exact: true }).selectOption("restore");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Settings saved." }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page
     .getByLabel("Configuration archive", { exact: false })
     .setInputFiles(archive);
@@ -135,6 +142,6 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     .poll(async () => readFile(file, "utf8"))
     .toContain("max_stale_seconds: 3600");
   await expect(
-    page.getByRole("status").filter({ hasText: /Job \d+: succeeded/ }),
+    page.getByRole("status").filter({ hasText: "Operation completed." }),
   ).toBeVisible();
 });

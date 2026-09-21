@@ -48,7 +48,7 @@ export default function Overview({
         }}
       />
       <Resource state={summary}>
-        <div className="metrics">
+        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[701px]:grid-cols-4">
           {[
             ["Total queries", count(s?.queries)],
             ["Blocked queries", count(s?.blocked)],
@@ -61,13 +61,18 @@ export default function Overview({
                 : "—",
             ],
           ].map(([label, value]) => (
-            <div className="metric" key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
+            <div
+              className="min-w-0 border-border px-4 py-4 max-[700px]:border-b max-[700px]:odd:border-r max-[700px]:nth-[n+3]:border-b-0 min-[701px]:border-r min-[701px]:last:border-r-0 min-[1051px]:px-5"
+              key={label}
+            >
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <strong className="block text-[25px] leading-[1.4] font-[550] tracking-[-0.6px] tabular-nums min-[1051px]:text-[30px]">
+                {value}
+              </strong>
             </div>
           ))}
         </div>
-        <div className="healthline">
+        <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-[11px] text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
           <span>
             Blocked <b>{percentage(s?.blocked, s?.queries)}</b>
           </span>
@@ -78,29 +83,42 @@ export default function Overview({
       </Resource>
       <Resource state={clients}>
         {clients.data?.observed?.truncated && (
-          <p className="muted">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             Client count shows the first 200 observed addresses.
           </p>
         )}
       </Resource>
       <Health refresh={refresh} />
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Query activity</h2>
-          <span className="muted">Outcomes over the selected range</span>
+      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
+          <h2 className="text-sm font-semibold">Query activity</h2>
+          <span className="text-[11px] text-muted-foreground">
+            Outcomes over the selected range
+          </span>
         </div>
         <Resource state={series}>
-          <Suspense fallback={<p role="status">Loading chart…</p>}>
+          <Suspense
+            fallback={
+              <p
+                className="p-5 text-sm leading-relaxed text-muted-foreground"
+                role="status"
+              >
+                Loading chart…
+              </p>
+            }
+          >
             <TrafficChart buckets={series.data?.points ?? []} />
           </Suspense>
         </Resource>
       </section>
       <Resource state={rankings}>
-        <div className="split">
-          <section className="panel">
-            <div className="panel-heading">
-              <h2>Top clients</h2>
-              <span>By requests · top 10</span>
+        <div className="grid min-w-0 grid-cols-1 gap-5 min-[1051px]:grid-cols-2">
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
+              <h2 className="text-sm font-semibold">Top clients</h2>
+              <span className="text-[11px] text-muted-foreground">
+                By requests · top 10
+              </span>
             </div>
             <DataTable
               items={rows(rankings.data, "clients").slice(0, 10)}
@@ -110,12 +128,14 @@ export default function Overview({
                   label: "Client",
                   render: (r) => (
                     <button
-                      className="text-button"
+                      className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                       onClick={() => drill("client", text(r.address))}
                     >
                       {text(r.name || r.address)}
                       {!!r.name && r.name !== r.address && (
-                        <small>{text(r.address)}</small>
+                        <small className="mt-0.5 block text-[10px] text-muted-foreground">
+                          {text(r.address)}
+                        </small>
                       )}
                     </button>
                   ),
@@ -130,10 +150,12 @@ export default function Overview({
               ]}
             />
           </section>
-          <section className="panel">
-            <div className="panel-heading">
-              <h2>Top blocked domains</h2>
-              <span>Exact names · top 10</span>
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
+              <h2 className="text-sm font-semibold">Top blocked domains</h2>
+              <span className="text-[11px] text-muted-foreground">
+                Exact names · top 10
+              </span>
             </div>
             <DataTable
               items={rows(rankings.data, "domains").slice(0, 10)}
@@ -143,7 +165,7 @@ export default function Overview({
                   label: "Domain",
                   render: (r) => (
                     <button
-                      className="text-button dns"
+                      className="border-0 bg-transparent p-0 text-left text-xs text-foreground hover:underline"
                       onClick={() => drill("name", text(r.name))}
                     >
                       {text(r.name)}
@@ -171,7 +193,7 @@ function Health({ refresh }: { refresh: number }) {
   const storage = diagnostics.data?.storage as Row | undefined;
   const writer = storage?.writer as Row | undefined;
   return (
-    <div className="healthline">
+    <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-[11px] text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
       <Resource state={diagnostics}>
         <span>
           DNS{" "}

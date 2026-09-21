@@ -134,9 +134,10 @@ function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
   const [selected, setSelected] = useState<Row>();
   return (
     <Resource state={catalog}>
-      <label>
+      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
         Start with a list
         <select
+          className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           defaultValue=""
           onChange={(e) => {
             const item = rows(catalog.data).find(
@@ -160,7 +161,7 @@ function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
             </option>
           ))}
         </select>
-        <small>
+        <small className="text-xs font-normal text-muted-foreground">
           {selected?.description
             ? text(selected.description)
             : "Choose a preset to fill in its URL and format, or enter your own below."}
@@ -285,16 +286,16 @@ export default function Configuration({
     }
   }
   return (
-    <>
-      <p className="page-description">{descriptions[kind]}</p>
+    <div className="min-w-0 [&_p]:leading-relaxed">
+      <p className="mb-5 text-xs text-muted-foreground">{descriptions[kind]}</p>
       <Resource state={settings}>
         <Revision value={settings.data} />
       </Resource>
       {kind === "clients" && (
         <Resource state={state}>
-          <section className="panel">
-            <div className="panel-heading">
-              <h2>Devices</h2>
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
+              <h2 className="text-sm font-semibold">Devices</h2>
               <Button disabled={!ready} onClick={() => open()}>
                 Name an address
               </Button>
@@ -302,7 +303,7 @@ export default function Configuration({
             {state.data?.observed_available === true || devices.length > 0 ? (
               <>
                 {(state.data?.observed as Row)?.truncated === true && (
-                  <p className="notice">
+                  <p className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b69860] bg-muted px-3.5 py-3 text-xs [overflow-wrap:anywhere]">
                     The observed client list is truncated. Narrow the time range
                     to inspect more identities.
                   </p>
@@ -317,7 +318,9 @@ export default function Configuration({
                         <span>
                           {text(r.name || r.address)}
                           {r.name && r.name !== r.address ? (
-                            <small>{text(r.address)}</small>
+                            <small className="mt-0.5 block text-[10px] text-muted-foreground">
+                              {text(r.address)}
+                            </small>
                           ) : null}
                         </span>
                       ),
@@ -356,7 +359,9 @@ export default function Configuration({
                 />
               </>
             ) : (
-              <p className="empty">Observed client history is unavailable.</p>
+              <p className="p-9 text-center text-muted-foreground">
+                Observed client history is unavailable.
+              </p>
             )}
           </section>
         </Resource>
@@ -365,14 +370,14 @@ export default function Configuration({
         <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />
       )}
       {kind !== "clients" && (
-        <section className="panel">
-          <div className="panel-heading">
-            <h2>
+        <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
+            <h2 className="text-sm font-semibold">
               {kind === "clients"
                 ? "Configured friendly names"
                 : "Configured " + kind}
             </h2>
-            <div className="actions">
+            <div className="flex flex-wrap items-center gap-2">
               {kind === "lists" && (
                 <Button
                   variant="outline"
@@ -450,7 +455,7 @@ export default function Configuration({
                   key: "actions",
                   label: "Actions",
                   render: (r) => (
-                    <div className="actions">
+                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                       <Button
                         size="sm"
                         variant="outline"
@@ -475,8 +480,10 @@ export default function Configuration({
                         </Button>
                       )}
                       {kind === "lists" && (
-                        <details>
-                          <summary>Details</summary>
+                        <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+                          <summary className="cursor-pointer text-muted-foreground">
+                            Details
+                          </summary>
                           <Details
                             value={{
                               URL: r.url,
@@ -496,7 +503,7 @@ export default function Configuration({
             />
             {kind === "lists" &&
               rows(state.data).some((r) => r.homepage || r.license) && (
-                <div className="inset">
+                <div className="p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground">
                   {rows(state.data).map((r) => (
                     <p key={text(r.id)}>
                       {text(r.id)} · {text(r.license)} · {text(r.homepage)}
@@ -508,14 +515,19 @@ export default function Configuration({
         </section>
       )}
       {notice && (
-        <section className="panel inset" role="status">
+        <section
+          className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground"
+          role="status"
+        >
           <p>
             {notice.kind
               ? "Operation started. View progress in Backups & jobs."
               : "Changes saved."}
           </p>
-          <details>
-            <summary>Technical details</summary>
+          <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">
+              Technical details
+            </summary>
             <Details value={notice} />
           </details>
         </section>
@@ -527,7 +539,7 @@ export default function Configuration({
           if (!open && !busy) setEditing(undefined);
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] min-w-0 overflow-y-auto [&>*]:min-w-0">
           <DialogTitle>
             {original ? "Edit" : "Add"}{" "}
             {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
@@ -535,12 +547,13 @@ export default function Configuration({
           <DialogDescription>{descriptions[kind]}</DialogDescription>
           {editing && (
             <form
+              className="min-w-0"
               onSubmit={(e) => {
                 e.preventDefault();
                 void mutate(original ? "PATCH" : "POST", editing);
               }}
             >
-              <div className="form-grid">
+              <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
                 {kind === "lists" && !original && (
                   <CatalogPicker
                     choose={(item) =>
@@ -555,10 +568,14 @@ export default function Configuration({
                   />
                 )}
                 {fields[kind].map((f) => (
-                  <label key={f.key}>
+                  <label
+                    className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                    key={f.key}
+                  >
                     {f.label}
                     {f.type === "boolean" ? (
                       <select
+                        className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         aria-label={f.label}
                         value={String(editing[f.key])}
                         onChange={(e) =>
@@ -573,6 +590,7 @@ export default function Configuration({
                       </select>
                     ) : f.options ? (
                       <select
+                        className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         aria-label={f.label}
                         value={text(editing[f.key])}
                         onChange={(e) =>
@@ -603,12 +621,16 @@ export default function Configuration({
                         }
                       />
                     )}
-                    {f.help && <small>{f.help}</small>}
+                    {f.help && (
+                      <small className="text-xs font-normal text-muted-foreground">
+                        {f.help}
+                      </small>
+                    )}
                   </label>
                 ))}
               </div>
               {kind === "rules" && (
-                <div className="notice">
+                <div className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b69860] bg-muted px-3.5 py-3 text-xs [overflow-wrap:anywhere]">
                   {editing.kind === "exact"
                     ? `Only ${editing.pattern || "the exact name"} matches; descendants do not.`
                     : editing.kind === "suffix"
@@ -626,7 +648,7 @@ export default function Configuration({
                   }}
                 />
               )}
-              <div className="actions">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button disabled={busy || !editRevision}>
                   {busy ? "Saving…" : "Save changes"}
                 </Button>
@@ -645,7 +667,7 @@ export default function Configuration({
           )}
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
 function RuleTester() {
@@ -655,13 +677,13 @@ function RuleTester() {
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   return (
-    <section className="panel inset">
-      <h2>Rule tester</h2>
-      <p>
+    <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+      <h2 className="mb-3 text-sm font-semibold">Rule tester</h2>
+      <p className="mb-[18px] text-xs text-muted-foreground">
         Evaluate the current active policy using the same matcher as live DNS.
       </p>
       <form
-        className="inline-form"
+        className="flex min-w-0 flex-wrap items-end gap-3 [&>*]:min-w-0"
         onSubmit={async (e) => {
           e.preventDefault();
           setBusy(true);
@@ -678,7 +700,7 @@ function RuleTester() {
           }
         }}
       >
-        <label>
+        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
           Domain
           <Input
             required
@@ -686,9 +708,13 @@ function RuleTester() {
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <label>
+        <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
           Type
-          <select value={qtype} onChange={(e) => setQtype(e.target.value)}>
+          <select
+            className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            value={qtype}
+            onChange={(e) => setQtype(e.target.value)}
+          >
             {["A", "AAAA", "HTTPS", "MX", "TXT", "PTR"].map((t) => (
               <option key={t}>{t}</option>
             ))}
@@ -698,7 +724,10 @@ function RuleTester() {
       </form>
       {error && <ErrorNotice error={error} />}{" "}
       {result && (
-        <div className="notice" role="status">
+        <div
+          className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b69860] bg-muted px-3.5 py-3 text-xs [overflow-wrap:anywhere]"
+          role="status"
+        >
           <strong>
             {(
               {
@@ -710,9 +739,11 @@ function RuleTester() {
               } as Record<string, string>
             )[String((result.decision as Row)?.result)] ?? "Test completed"}
           </strong>
-          <p>{text(result.normalized || result.name)}</p>
-          <details>
-            <summary>Match details</summary>
+          <p className="mt-1 mb-2">{text(result.normalized || result.name)}</p>
+          <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">
+              Match details
+            </summary>
             <Details value={result} />
           </details>
         </div>

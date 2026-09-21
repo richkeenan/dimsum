@@ -5,7 +5,7 @@ export type Mutation = components["schemas"]["Mutation"];
 export type Job = components["schemas"]["Job"];
 type LoginResult =
   paths["/session"]["post"]["responses"][200]["content"]["application/json"];
-let csrfToken = sessionStorage.getItem("dimsum-csrf") ?? "";
+let csrfToken = typeof sessionStorage === "undefined" ? "" : sessionStorage.getItem("dimsum-csrf") ?? "";
 export type Row = Record<string, unknown>;
 export interface Meta {
   range?: { from: string; to: string };
@@ -118,11 +118,14 @@ export const api = {
     const result = await request<unknown>("/api/v1/" + path, { signal });
     return (path === "settings" ? normalizeSettings(result) : result) as T;
   },
-  send: <T>(path: string, method: string, body?: unknown) =>
-    request<T>("/api/v1/" + path, {
+  send: async <T>(path: string, method: string, body?: unknown) => {
+    const result = await request<T>("/api/v1/" + path, {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
-    }),
+    });
+    if (["settings", "lists", "rules", "records", "clients", "upstreams", "blocking"].includes(path)) window.dispatchEvent(new Event("configuration-changed"));
+    return result;
+  },
   login: async (password: string) => {
     const result = await request<LoginResult>("/session", {
       method: "POST",

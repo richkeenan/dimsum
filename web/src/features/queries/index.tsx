@@ -99,14 +99,17 @@ export default function Queries({
   return (
     <>
       <form
-        className="filters"
+        className="mb-[18px] flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           applyFilters(draft);
         }}
       >
         {["name", "client", "outcome"].map((key) => (
-          <label key={key}>
+          <label
+            className="mb-4 flex min-w-[100px] max-w-[190px] flex-1 flex-col gap-1.5 text-xs font-medium"
+            key={key}
+          >
             {key === "name"
               ? "Domain (exact)"
               : key === "client"
@@ -114,6 +117,7 @@ export default function Queries({
                 : "Result"}
             {key === "outcome" ? (
               <select
+                className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 aria-label="Filter outcome"
                 value={draft[key] ?? ""}
                 onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
@@ -134,9 +138,11 @@ export default function Queries({
             )}
           </label>
         ))}
-        <details className="advanced-filters">
-          <summary>Advanced filters</summary>
-          <div className="form-grid">
+        <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            Advanced filters
+          </summary>
+          <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
             {Object.entries({
               qtype: "Type",
               source_id: "Source ID",
@@ -145,7 +151,10 @@ export default function Queries({
               boot_id: "Boot ID",
               generation: "Generation",
             }).map(([key, label]) => (
-              <label key={key}>
+              <label
+                className="flex min-w-0 flex-col gap-1.5 text-xs font-medium"
+                key={key}
+              >
                 {label}
                 <Input
                   aria-label={"Filter " + key}
@@ -157,13 +166,16 @@ export default function Queries({
               </label>
             ))}
           </div>
-          <p className="muted">
+          <p className="my-2.5 max-w-[75ch] text-xs leading-relaxed text-muted-foreground">
             Rule and upstream IDs need a boot ID and generation. Use query
             details to capture that scope. Source IDs match archived identities.
           </p>
         </details>
-        <Button type="submit">Apply filters</Button>
+        <Button className="mb-4" type="submit">
+          Apply filters
+        </Button>
         <Button
+          className="mb-4"
           type="button"
           variant="outline"
           onClick={() => {
@@ -173,7 +185,7 @@ export default function Queries({
           Clear
         </Button>
       </form>
-      <div className="toolbar">
+      <div className="my-[15px] flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
         <span role="status">
           {selected
             ? "Paused while inspecting"
@@ -192,8 +204,9 @@ export default function Queries({
         >
           {live ? "Pause live" : "Start live"}
         </Button>
-        <label>
+        <label className="flex flex-row items-center gap-1.5 text-xs font-medium">
           <input
+            className="size-4 accent-primary"
             type="checkbox"
             checked={technical}
             onChange={(e) => setTechnical(e.target.checked)}
@@ -203,7 +216,7 @@ export default function Queries({
       </div>
       <Resource state={state} retry={invalidate}>
         <Completeness meta={state.data} />
-        <section className="panel">
+        <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <DataTable
             items={rows(state.data)}
             columns={[
@@ -213,13 +226,9 @@ export default function Queries({
                 width: 100,
                 render: (r) => (
                   <button
-                    className="text-button"
+                    className="border-0 bg-transparent p-0 text-left whitespace-nowrap text-foreground tabular-nums hover:underline"
                     onClick={() => inspect(r)}
                     title={text(r.time)}
-                    style={{
-                      whiteSpace: "nowrap",
-                      fontVariantNumeric: "tabular-nums",
-                    }}
                   >
                     {shortTime(r.time)}
                   </button>
@@ -230,10 +239,10 @@ export default function Queries({
                 label: "Client",
                 width: 190,
                 render: (r) => (
-                  <span style={{ whiteSpace: "nowrap" }}>
+                  <span className="whitespace-nowrap">
                     {text(r.client_name || r.client)}
                     {!!r.client_name && (
-                      <small>
+                      <small className="mt-0.5 block text-[10px] text-muted-foreground">
                         {text(r.client)}
                         {r.client_name_fresh === false ? " · stale name" : ""}
                       </small>
@@ -247,9 +256,8 @@ export default function Queries({
                 width: 300,
                 render: (r) => (
                   <button
-                    className="text-button dns"
+                    className="border-0 bg-transparent p-0 text-left text-xs whitespace-nowrap text-foreground hover:underline"
                     onClick={() => inspect(r)}
-                    style={{ whiteSpace: "nowrap" }}
                   >
                     {text(r.name)}
                   </button>
@@ -261,7 +269,9 @@ export default function Queries({
                 label: "Result",
                 width: 140,
                 render: (r) => (
-                  <span className={"outcome " + text(r.outcome)}>
+                  <span
+                    className={`inline-block rounded px-[7px] py-[3px] text-[11px] ${r.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : r.outcome === "error" || r.outcome === "rejected" ? "bg-destructive/10 text-destructive" : r.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
+                  >
                     {resultLabel(r.outcome)}
                   </span>
                 ),
@@ -279,7 +289,7 @@ export default function Queries({
                 hidden: !technical,
                 render: (r) => (
                   <button
-                    className="text-button"
+                    className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                     onClick={() => filterIdentity(r, "rule_id")}
                   >
                     {text(r.rule_id)}
@@ -293,7 +303,7 @@ export default function Queries({
                 render: (r) =>
                   r.source_id ? (
                     <button
-                      className="text-button"
+                      className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                       onClick={() => filterIdentity(r, "source_id")}
                     >
                       {text(r.source_id)}
@@ -308,7 +318,7 @@ export default function Queries({
                 hidden: !technical,
                 render: (r) => (
                   <button
-                    className="text-button"
+                    className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                     onClick={() => filterIdentity(r, "upstream_id")}
                   >
                     {text(r.upstream_id)}
@@ -319,9 +329,9 @@ export default function Queries({
             ]}
           />
         </section>
-        <div className="toolbar">
+        <div className="my-[15px] flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>Page {cursors.length} · up to 100 queries</span>
-          <div className="actions">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               disabled={cursors.length === 1 || state.isFetching}
@@ -354,7 +364,10 @@ export default function Queries({
           }
         }}
       >
-        <DialogContent side>
+        <DialogContent
+          side
+          className="min-w-0 overflow-x-hidden [&>*]:min-w-0 [&_input]:min-w-0 [&_input]:w-full [&_select]:min-w-0 [&_select]:w-full"
+        >
           <DialogTitle>Query detail</DialogTitle>
           <DialogDescription>
             Historical explanation from the query’s policy generation.
@@ -439,8 +452,12 @@ function QueryDetail({
   }
   return (
     <Resource state={state}>
-      <h3 className="dns">{name || "Root domain"}</h3>
-      <span className={"outcome " + text(state.data?.outcome)}>
+      <h3 className="text-sm font-semibold wrap-anywhere">
+        {name || "Root domain"}
+      </h3>
+      <span
+        className={`inline-block w-fit rounded px-[7px] py-[3px] text-[11px] ${state.data?.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : state.data?.outcome === "error" || state.data?.outcome === "rejected" ? "bg-destructive/10 text-destructive" : state.data?.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
+      >
         {resultLabel(state.data?.outcome)}
       </span>
       <Details
@@ -453,14 +470,19 @@ function QueryDetail({
         }}
       />
       {!!state.data?.rule_description_available && (
-        <p>{text(state.data.rule_description)}</p>
-      )}
-      {!!state.data?.alias_available && (
-        <p>
-          Matched alias: <span className="dns">{text(state.data.alias)}</span>
+        <p className="text-sm leading-relaxed wrap-anywhere">
+          {text(state.data.rule_description)}
         </p>
       )}
-      <div className="actions">
+      {!!state.data?.alias_available && (
+        <p className="text-sm leading-relaxed wrap-anywhere">
+          Matched alias:{" "}
+          <span className="text-xs wrap-anywhere">
+            {text(state.data.alias)}
+          </span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-2">
         {(["rule_id", "source_id", "upstream_id"] as const).map((key) =>
           state.data?.[key] && text(state.data[key]) !== "0" ? (
             <Button
@@ -478,33 +500,47 @@ function QueryDetail({
           ) : null,
         )}
       </div>
-      {!!state.data?.source_id && <p>Source: {text(state.data.source_id)}</p>}
-      <details>
-        <summary>Technical details</summary>
-        <p className="muted">
+      {!!state.data?.source_id && (
+        <p className="text-sm leading-relaxed wrap-anywhere">
+          Source: {text(state.data.source_id)}
+        </p>
+      )}
+      <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+        <summary className="cursor-pointer text-muted-foreground">
+          Technical details
+        </summary>
+        <p className="my-2.5 max-w-[75ch] text-xs leading-relaxed text-muted-foreground">
           Historical policy scope. Unavailable fields were not retained.
         </p>
         <Details value={state.data} />
       </details>
-      <section className="panel inset">
-        <h3>Create a rule</h3>
-        <div className="form-grid">
-          <label>
+      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+        <h3 className="mb-3 text-sm font-semibold">Create a rule</h3>
+        <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             Action
-            <select value={action} onChange={(e) => setAction(e.target.value)}>
+            <select
+              className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+            >
               <option value="allow">Allow</option>
               <option value="deny">Block</option>
             </select>
           </label>
-          <label>
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             Match scope
-            <select value={scope} onChange={(e) => setScope(e.target.value)}>
+            <select
+              className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+            >
               <option value="exact">Exact name only</option>
               <option value="suffix">Name and descendants</option>
             </select>
           </label>
         </div>
-        <div className="notice">
+        <div className="my-3 rounded-[5px] border border-l-[3px] border-border border-l-primary bg-muted px-3.5 py-3 text-xs wrap-anywhere">
           {scope === "exact"
             ? `Matches only ${name}. Subdomains are not included.`
             : `Matches ${name} and every descendant, including child.${name}.`}
@@ -517,7 +553,12 @@ function QueryDetail({
         </Button>
         {result && (
           <>
-            <p role="status">Rule saved. Check activation below.</p>
+            <p
+              className="mt-3 text-xs leading-relaxed text-muted-foreground"
+              role="status"
+            >
+              Rule saved. Check activation below.
+            </p>
             <Details value={result} />
           </>
         )}

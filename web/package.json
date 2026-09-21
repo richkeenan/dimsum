@@ -7,12 +7,16 @@
     "api:generate": "openapi-typescript ../api/openapi.yaml -o src/lib/openapi.d.ts && prettier --write src/lib/openapi.d.ts",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "build": "npm run typecheck && vite build",
+    "build": "vite build && npm run typecheck && node scripts/embed.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@tanstack/react-query": "5.103.2",
+    "@tanstack/react-router": "1.170.38",
+    "@tanstack/react-start": "1.168.57",
+    "@tanstack/react-table": "9.2.4",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cn": "0.3.2",

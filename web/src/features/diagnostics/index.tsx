@@ -9,21 +9,21 @@ export default function Diagnostics() {
   const storage = state.data?.storage as Row | undefined;
   const upstreams = rows(state.data?.upstreams);
   return (
-    <section className="panel inset">
-      <div className="panel-heading">
-        <h2>Service diagnostics</h2>
+    <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 [&_p]:leading-relaxed">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2.5 border-b border-border pb-4">
+        <h2 className="text-sm font-semibold">Service diagnostics</h2>
         <Button variant="outline" onClick={() => setTick((t) => t + 1)}>
           Refresh measurements
         </Button>
       </div>
-      <p>
+      <p className="mb-[18px] text-xs text-muted-foreground">
         Check DNS availability and query-history storage. For a connection test,
         use Probe on the upstream servers page.
       </p>
       <Resource state={state} retry={() => setTick((t) => t + 1)}>
-        <div className="form-grid">
-          <section className="panel inset">
-            <h3>DNS service</h3>
+        <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+            <h3 className="mb-3 text-sm font-semibold">DNS service</h3>
             <strong>
               {state.data?.dns_ready === true
                 ? "Ready to answer queries"
@@ -32,8 +32,8 @@ export default function Diagnostics() {
                   : "Status unavailable"}
             </strong>
           </section>
-          <section className="panel inset">
-            <h3>Query history</h3>
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+            <h3 className="mb-3 text-sm font-semibold">Query history</h3>
             <strong>
               {storage?.available === true
                 ? "Storage available"
@@ -42,13 +42,18 @@ export default function Diagnostics() {
                   : "Status unavailable"}
             </strong>
             {storage?.error ? (
-              <p role="alert">{String(storage.error)}</p>
+              <p
+                className="mt-3 text-xs text-muted-foreground [overflow-wrap:anywhere]"
+                role="alert"
+              >
+                {String(storage.error)}
+              </p>
             ) : null}
           </section>
-          <section className="panel inset">
-            <h3>Upstream servers</h3>
+          <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+            <h3 className="mb-3 text-sm font-semibold">Upstream servers</h3>
             {upstreams.length ? (
-              <ul>
+              <ul className="space-y-2 text-xs [overflow-wrap:anywhere]">
                 {upstreams.map((server, index) => (
                   <li key={index}>
                     <strong>
@@ -70,12 +75,16 @@ export default function Diagnostics() {
                 ))}
               </ul>
             ) : (
-              <p>No upstream measurements available.</p>
+              <p className="mb-[18px] text-xs text-muted-foreground">
+                No upstream measurements available.
+              </p>
             )}
           </section>
         </div>
-        <details>
-          <summary>Technical measurements</summary>
+        <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            Technical measurements
+          </summary>
           <Details value={state.data} />
         </details>
       </Resource>

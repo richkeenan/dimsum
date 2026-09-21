@@ -62,6 +62,7 @@ export const query = {
   updated_at: summary.updated_at,
 } satisfies QueryDetail;
 export async function fixtureAPI(page: Page) {
+  await page.addInitScript(() => sessionStorage.setItem("dimsum-csrf", "fixture-csrf"));
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(
       "/api/v1/",
@@ -162,6 +163,11 @@ export async function fixtureAPI(page: Page) {
         ],
       } satisfies ClientsResponse,
       lists: { status: activation, items: [] },
+      catalog: { items: [
+        { id: "privacy", label: "Fixture privacy", url: "https://example.test/list", dialect: "domains", domain_kind: "exact", available: true, default_enabled: true, description: "Fixture domain blocklist." },
+        { id: "unavailable", label: "Unavailable fixture", available: false, unavailable_reason: "Not available on this installation" },
+      ] },
+      password: {},
       rules: { status: activation, items: [] },
       records: { status: activation, items: [] },
       upstreams: { status: activation, items: [] },

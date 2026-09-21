@@ -1,54 +1,92 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import { useEffect, useRef, useState } from "react";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { api, APIError } from "./api";
+
 export function useResource<T>(path: string, refresh = 0) {
-  const [state, setState] = useState<{
-    data?: T;
-    error?: Error;
-    loading: boolean;
-  }>({ loading: true });
+  const client = useQueryClient();
+  const previousRefresh = useRef(refresh);
+  const resource = path.split("?")[0];
+  const query = useQuery({
+    queryKey: ["api", resource, path],
+    queryFn: ({ signal }) => api.get<T>(path, signal),
+    staleTime: 1000,
+    gcTime: 60_000,
+    placeholderData: keepPreviousData,
+    refetchInterval: ["jobs", "diagnostics", "settings", "blocking"].includes(
+      resource,
+    )
+      ? 5000
+      : false,
+    refetchIntervalInBackground: false,
+    retry: (count, error) =>
+      !(
+        error instanceof APIError &&
+        error.status >= 400 &&
+        error.status < 500
+      ) && count < 1,
+  });
   useEffect(() => {
-    const controller = new AbortController();
-    setState({ loading: true });
-    api
-      .get<T>(path, controller.signal)
-      .then((data) => {
-        if (!controller.signal.aborted) setState({ data, loading: false });
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setState({ error, loading: false });
-      });
-    return () => controller.abort();
-  }, [path, refresh]);
-  return state;
-}
-// Events carry invalidations only. Never accumulate history in browser memory.
-export function useLive(enabled: boolean, invalidate: () => void) {
-  const [connection, setConnection] = useState("Paused");
-  useEffect(() => {
-    if (!enabled) {
-      setConnection("Paused");
-      return;
+    if (previousRefresh.current !== refresh) {
+      previousRefresh.current = refresh;
+      void client.invalidateQueries(
+        { queryKey: ["api", resource, path], exact: true },
+        { cancelRefetch: false },
+      );
     }
-    setConnection("Connecting");
-    const source = new EventSource("/api/v1/events", { withCredentials: true });
-    let last = 0;
-    const update = () => {
-      const now = Date.now();
-      if (now - last >= 1000) {
-        last = now;
-        invalidate();
-      }
+  }, [client, refresh, resource, path]);
+  return {
+    data: query.data,
+    error: query.error ?? undefined,
+    loading: query.isPending,
+    isFetching: query.isFetching,
+    updatedAt: query.dataUpdatedAt,
+  };
+}
+
+// UI invalidation only: Query deduplicates/cancels the actual resource requests.
+// Historic pages and open details disable this hook at the calling view.
+export function useLive(
+  enabled: boolean,
+  invalidate: () => void,
+  interval = 2000,
+) {
+  const callback = useRef(invalidate);
+  callback.current = invalidate;
+  const [visible, setVisible] = useState(
+    () =>
+      typeof document === "undefined" || document.visibilityState !== "hidden",
+  );
+  const [online, setOnline] = useState(
+    () => typeof navigator === "undefined" || navigator.onLine,
+  );
+  useEffect(() => {
+    const visibility = () => {
+      setVisible(document.visibilityState !== "hidden");
     };
-    source.onopen = () => {
-      setConnection("Live");
-      update();
+    const connection = () => setOnline(navigator.onLine);
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("online", connection);
+    window.addEventListener("offline", connection);
+    return () => {
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("online", connection);
+      window.removeEventListener("offline", connection);
     };
-    source.onmessage = update;
-    for (const event of ["summary", "generation", "job", "reset", "status"])
-      source.addEventListener(event, update);
-    source.onerror = () =>
-      setConnection("Reconnecting; displayed data may be stale");
-    return () => source.close();
-  }, [enabled, invalidate]);
-  return connection;
+  }, []);
+  useEffect(() => {
+    if (!enabled || !visible || !online) return;
+    const timer = window.setInterval(() => callback.current(), interval);
+    return () => window.clearInterval(timer);
+  }, [enabled, visible, online, interval]);
+  return !enabled
+    ? "Paused"
+    : !online
+      ? "Offline"
+      : !visible
+        ? "Paused in background"
+        : "Live";
 }

@@ -79,10 +79,12 @@ export default function Jobs() {
     }
   }
   return (
-    <>
-      <section className="panel inset">
-        <h2>Back up your configuration</h2>
-        <p>
+    <div className="min-w-0 [&_p]:leading-relaxed">
+      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+        <h2 className="mb-3 text-sm font-semibold">
+          Back up your configuration
+        </h2>
+        <p className="mb-[18px] text-xs text-muted-foreground">
           Archives contain authoritative configuration and required secrets.
           Query history and downloaded lists are excluded. Downloads remain
           available until the next backup or service restart.
@@ -91,9 +93,9 @@ export default function Jobs() {
           {busy ? "Working…" : "Create backup"}
         </Button>
         {downloadable && (
-          <p>
+          <p className="mt-3 text-xs">
             <a
-              className="text-button"
+              className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
               href={backupURL(jobs.find((j) => j.id === downloadable)?.result)}
               download="dimsum-config.tar"
             >
@@ -102,20 +104,20 @@ export default function Jobs() {
           </p>
         )}
       </section>
-      <section className="panel inset">
-        <h2>Restore a backup</h2>
-        <p>
+      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
+        <h2 className="mb-3 text-sm font-semibold">Restore a backup</h2>
+        <p className="mb-[18px] text-xs text-muted-foreground">
           Replace the saved configuration with a dimsum archive. The archive is
           checked before it is applied.
         </p>
         <form
-          className="inline-form"
+          className="flex min-w-0 flex-wrap items-end gap-3 [&>*]:min-w-0"
           onSubmit={(e) => {
             e.preventDefault();
             void start("restore");
           }}
         >
-          <label>
+          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
             Configuration archive (.tar, up to 2 MiB)
             <Input
               type="file"
@@ -132,20 +134,27 @@ export default function Jobs() {
             {busy ? "Working…" : "Validate and restore"}
           </Button>
         </form>
-        {archive && <p>{archive.name} is ready to restore.</p>}
+        {archive && (
+          <p className="mt-3 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+            {archive.name} is ready to restore.
+          </p>
+        )}
       </section>
-      <details className="panel inset">
-        <summary>Diagnostics and maintenance</summary>
+      <details className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 text-xs">
+        <summary className="cursor-pointer text-muted-foreground">
+          Diagnostics and maintenance
+        </summary>
         <form
-          className="inline-form"
+          className="mt-4 flex min-w-0 flex-wrap items-end gap-3 [&>*]:min-w-0"
           onSubmit={(e) => {
             e.preventDefault();
             void start();
           }}
         >
-          <label>
+          <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
             Operation
             <select
+              className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
               aria-label="Operation"
               value={kind}
               onChange={(e) => {
@@ -162,7 +171,7 @@ export default function Jobs() {
             </select>
           </label>
           {kind === "upstream-probe" && (
-            <label>
+            <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-medium">
               Configured upstream (IP:port)
               <Input
                 value={endpoint}
@@ -186,7 +195,7 @@ export default function Jobs() {
       </details>
       {error && <ErrorNotice error={error} />}
       {started && (
-        <p role="status">
+        <p className="my-3 text-xs text-muted-foreground" role="status">
           {latest?.state === "succeeded"
             ? "Operation completed."
             : latest?.state === "failed"
@@ -195,7 +204,10 @@ export default function Jobs() {
         </p>
       )}
       {latest?.state === "failed" && (
-        <div className="notice danger" role="alert">
+        <div
+          className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b76763] bg-muted px-3.5 py-3 text-xs [overflow-wrap:anywhere] [&>p]:mt-1 [&>p]:mb-2"
+          role="alert"
+        >
           {latest.error ?? "Job failed. Review the job result."}
           {latest.kind === "restore" && (
             <p>
@@ -205,9 +217,9 @@ export default function Jobs() {
           )}
         </div>
       )}
-      <section className="panel">
-        <div className="panel-heading">
-          <h2>Background jobs</h2>
+      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
+          <h2 className="text-sm font-semibold">Background jobs</h2>
           <Button variant="outline" onClick={() => setTick((t) => t + 1)}>
             Refresh
           </Button>
@@ -249,15 +261,17 @@ export default function Jobs() {
                     return "Superseded by a newer backup";
                   return url ? (
                     <a
-                      className="text-button"
+                      className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                       href={url}
                       download="dimsum-config.tar"
                     >
                       Download backup
                     </a>
                   ) : (
-                    <details>
-                      <summary>{r.error ? "View error" : "Details"}</summary>
+                    <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
+                      <summary className="cursor-pointer text-muted-foreground">
+                        {r.error ? "View error" : "Details"}
+                      </summary>
                       <Details
                         value={{ id: r.id, error: r.error, result: r.result }}
                       />
@@ -270,6 +284,6 @@ export default function Jobs() {
           />
         </Resource>
       </section>
-    </>
+    </div>
   );
 }

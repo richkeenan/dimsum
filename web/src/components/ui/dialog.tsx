@@ -75,9 +75,9 @@ function DialogContent({
         }}
         data-slot="dialog-content"
         className={cn(
-          "fixed z-50 grid w-full max-h-[calc(100dvh-2rem)] overflow-y-auto gap-4 border bg-background p-6 shadow-lg outline-none",
+          "fixed z-50 grid w-full min-w-0 max-h-[calc(100dvh-2rem)] overflow-y-auto gap-4 border border-border bg-background p-6 shadow-lg outline-none [&>*]:min-w-0 [&_input]:min-w-0 [&_select]:min-w-0 [&_select]:w-full",
           side
-            ? "inset-y-0 right-0 drawer"
+            ? "inset-y-0 right-0 h-dvh max-h-dvh max-w-152.5 content-start rounded-none"
             : "top-[50%] left-[50%] max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] rounded-lg sm:max-w-lg",
           className,
         )}
