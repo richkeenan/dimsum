@@ -19,14 +19,16 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		if n := r.URL.Query().Get("limit"); n != "" {
 			v, e := strconv.Atoi(n)
 			if e != nil || v < 1 || v > 200 {
-				s.fail(w, r, 400, "invalid_request", "limit must be 1–200")
+				s.fail(w, r, 400, "bad_request", "limit must be 1–200")
 				return
 			}
 		}
 		var v any
 		var e error
 		switch resource {
-		case "settings", "lists", "rules", "records", "clients", "upstreams", "blocking":
+		case "clients":
+			v, e = s.service.Clients(r.Context(), r.URL.Query())
+		case "settings", "lists", "rules", "records", "upstreams", "blocking":
 			v, e = s.service.Inspect(resource)
 		case "summary", "queries", "rankings", "timeseries":
 			v, e = s.service.Data(r.Context(), resource, r.URL.Query())

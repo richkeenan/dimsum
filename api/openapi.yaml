@@ -9,6 +9,12 @@ info:
     schema field names. PATCH paths are relative to the collection (including index),
     or absolute configuration paths for settings. Unsupported comment-preserving edits
     fail explicitly. Successful saves include saved and active configuration identities.
+    History windows are half-open [from,to), positive, and at most 366 days. Timestamps
+    use UTC with at most microsecond precision. Defaults end at the current UTC minute
+    and start one hour earlier; when only to is provided, from defaults to to minus
+    one hour. All endpoints share these defaults. updated_at is the response computation
+    time, not a promise of durable observation coverage; complete carries that meaning.
+    Reuse explicit range values across requests for a fixed dashboard window.
 security:
   - session: []
 paths:
@@ -54,29 +60,85 @@ paths:
         '200': {description: Active configuration available}
         '503': {description: No active configuration}
   /api/v1/summary:
-    get: &dataGet
-      description: Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider.
+    get:
+      description: Retained admitted-query totals; rejected admissions are separate. Missing history is 503.
+      parameters: &rangeParameters
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
       responses:
         '200':
-          description: Provider result; counters and identifiers use decimal strings
+          description: Retained totals and observation completeness
           content:
             application/json:
-              schema: {type: object, additionalProperties: true}
+              schema: {$ref: '#/components/schemas/HistorySummary'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/timeseries:
-    get: *dataGet
+    get:
+      description: |
+        At most 1500 buckets. Auto resolution is 60, then 3600, then 86400 seconds
+        according to the point budget. Full buckets use retained rollups; partial
+        first/last buckets aggregate retained detail without expanding the requested
+        window. Partial edges can therefore be incomplete after detail retention.
+        In incomplete windows empty buckets are gaps with null counters, not zero
+        traffic. Populated buckets retain actual counts but are marked incomplete.
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {name: resolution_seconds, in: query, schema: {type: integer, enum: [60, 3600, 86400]}}
+      responses:
+        '200':
+          description: Bounded history buckets
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistorySeries'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/rankings:
-    get: *dataGet
+    get:
+      description: Top ten clients by admitted requests and exact domains by blocks; stable identity ties.
+      parameters: *rangeParameters
+      responses:
+        '200':
+          description: Exact retained rankings
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoryRankings'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/queries:
     get:
-      <<: *dataGet
+      description: |
+        Descending timestamp and ID keyset page with a fixed insertion ceiling.
+        Cursor binds normalized filters and window. With a cursor, omitted from/to
+        reuse its original window; repeat the same filters on every page. Malformed
+        cursors and changed filters/range return 400 bad_request. Unknown or repeated
+        parameters are rejected. No offset pagination or substring-name search.
       parameters:
-        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
-        - {name: cursor, in: query, schema: {type: string}}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {name: cursor, in: query, schema: {type: string, maxLength: 2048}}
+        - {name: name, in: query, description: 'Exact name; accepts canonical DNS decimal escapes from displayed names, or dot for root.', schema: {type: string}}
+        - {name: client, in: query, description: Literal observed IPv4 or IPv6 address without zone, schema: {type: string}}
+        - {name: outcome, in: query, schema: {$ref: '#/components/schemas/Outcome'}}
+        - {name: qtype, in: query, description: 'DNS type mnemonic, decimal 1–65535, or TYPE<number>', schema: {type: string}}
+      responses:
+        '200':
+          description: Retained query page
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoryQueries'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/queries/{id}:
     parameters:
-      - {name: id, in: path, required: true, schema: {type: string}}
-    get: *dataGet
+      - {name: id, in: path, required: true, schema: {type: string, pattern: '^[1-9][0-9]*$'}}
+    get:
+      description: One retained event with boot-scoped historical rule metadata; 404 if absent or expired.
+      responses:
+        '200':
+          description: Available historical fields, explicitly distinguishing missing metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoryDetail'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/settings:
     get:
       responses:
@@ -123,10 +185,31 @@ paths:
       description: Remove item using revision and zero-based index
   /api/v1/rules: *collection
   /api/v1/records: *collection
-  /api/v1/clients: *collection
+  /api/v1/clients:
+    <<: *collection
+    get:
+      description: Configured overrides in items, plus optional bounded retained observations and cached names.
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        '200':
+          description: DNS-observed address identities, not a physical-device inventory
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientsResponse'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/upstreams: *collection
   /api/v1/diagnostics:
-    get: *dataGet
+    get:
+      responses:
+        '200':
+          description: Configuration and installed diagnostic measurements
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/blocking:
     get:
       responses:
@@ -216,9 +299,202 @@ paths:
               schema: {type: string}
         default: {$ref: '#/components/responses/Error'}
 components:
+  parameters:
+    From:
+      name: from
+      in: query
+      description: Inclusive UTC RFC3339 timestamp; default is to minus one hour.
+      schema: {type: string, format: date-time}
+    To:
+      name: to
+      in: query
+      description: Exclusive UTC RFC3339 timestamp; default is current UTC minute.
+      schema: {type: string, format: date-time}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, default: 100, minimum: 1, maximum: 200}
   securitySchemes:
     session: {type: apiKey, in: cookie, name: dimsum_session}
   schemas:
+    Decimal:
+      type: string
+      pattern: '^(0|[1-9][0-9]*)$'
+      description: Unsigned integer encoded as a decimal string, including values beyond JavaScript exact integers.
+    HistoryRange:
+      type: object
+      required: [from, to]
+      properties:
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+    Outcome:
+      type: string
+      enum: [local, blocked, cache, stale, forwarded, error, rejected]
+    HistorySummary:
+      type: object
+      required: [range, queries, blocked, fresh, stale, rejected, duration_us, complete, updated_at]
+      properties:
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        queries: {$ref: '#/components/schemas/Decimal', description: Admitted terminal query count, excluding rejected admissions}
+        blocked: {$ref: '#/components/schemas/Decimal'}
+        fresh: {$ref: '#/components/schemas/Decimal'}
+        stale: {$ref: '#/components/schemas/Decimal'}
+        rejected: {$ref: '#/components/schemas/Decimal'}
+        duration_us: {$ref: '#/components/schemas/Decimal', description: Sum of admitted query durations in microseconds}
+        complete: {type: boolean}
+        updated_at: {type: string, format: date-time}
+    HistoryQuery:
+      type: object
+      required: [id, boot_id, sequence, time, client, client_name, client_name_source, client_name_fresh, name, qtype, qtype_code, qclass, outcome, rcode, duration_us, generation, rule_id, upstream_id, flags]
+      properties:
+        id: {$ref: '#/components/schemas/Decimal'}
+        boot_id: {type: string, description: Boot scope for generation and rule identifiers}
+        sequence: {$ref: '#/components/schemas/Decimal'}
+        time: {type: string, format: date-time}
+        client: {type: string, description: Observed address, always present independently of its friendly name}
+        client_name: {type: string, description: Current cached friendly name; empty when unknown, not a historical identity claim}
+        client_name_source: {type: string}
+        client_name_fresh: {type: boolean}
+        name: {type: string, description: Lowercase byte-safe DNS presentation with decimal escapes; root is empty}
+        qtype: {type: string, description: DNS type mnemonic or TYPE<number>}
+        qtype_code: {type: integer, minimum: 0, maximum: 65535}
+        qclass: {type: integer, minimum: 0, maximum: 65535}
+        outcome: {$ref: '#/components/schemas/Outcome'}
+        rcode: {type: integer, minimum: 0, maximum: 65535}
+        duration_us: {$ref: '#/components/schemas/Decimal'}
+        generation: {$ref: '#/components/schemas/Decimal'}
+        rule_id: {$ref: '#/components/schemas/Decimal'}
+        upstream_id: {$ref: '#/components/schemas/Decimal'}
+        flags: {type: integer, minimum: 0, maximum: 4294967295, description: 'Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block'}
+    HistoryQueries:
+      type: object
+      required: [items, complete, range, updated_at]
+      properties:
+        items: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/HistoryQuery'}}
+        next_cursor: {type: string, description: Omitted on the last page; opaque base64url value}
+        complete: {type: boolean, description: Observation/retention completeness, not whether there are more pages}
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        updated_at: {type: string, format: date-time}
+    HistoryDetail:
+      allOf:
+        - {$ref: '#/components/schemas/HistoryQuery'}
+        - type: object
+          required: [alias_available, rule_description_available, alias_chain_available, upstream_attempts_available, cache_age_available, ad_trust_available, updated_at]
+          properties:
+            alias: {type: string, description: One retained matched alias, not a reconstructed chain}
+            alias_available: {type: boolean}
+            rule_description: {type: string}
+            rule_description_available: {type: boolean}
+            alias_chain_available: {type: boolean, const: false}
+            upstream_attempts_available: {type: boolean, const: false}
+            cache_age_available: {type: boolean, const: false}
+            ad_trust_available: {type: boolean, const: false}
+            updated_at: {type: string, format: date-time}
+    HistoryRankings:
+      type: object
+      required: [clients, domains, complete, range, updated_at]
+      properties:
+        clients:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [address, name, count]
+            properties:
+              address: {type: string}
+              name: {type: string}
+              count: {$ref: '#/components/schemas/Decimal'}
+        domains:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [name, count]
+            properties:
+              name: {type: string}
+              count: {$ref: '#/components/schemas/Decimal'}
+        complete: {type: boolean}
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        updated_at: {type: string, format: date-time}
+    OutcomeCounts:
+      type: object
+      required: [local, blocked, cache, stale, forwarded, error, rejected]
+      properties:
+        local: {$ref: '#/components/schemas/Decimal'}
+        blocked: {$ref: '#/components/schemas/Decimal'}
+        cache: {$ref: '#/components/schemas/Decimal'}
+        stale: {$ref: '#/components/schemas/Decimal'}
+        forwarded: {$ref: '#/components/schemas/Decimal'}
+        error: {$ref: '#/components/schemas/Decimal'}
+        rejected: {$ref: '#/components/schemas/Decimal'}
+    HistoryPoint:
+      type: object
+      required: [time, outcomes, duration_us, histogram, complete, gap]
+      properties:
+        time: {type: string, format: date-time, description: Bucket start clipped to from for a partial first bucket; ends at the next point or range.to}
+        outcomes:
+          oneOf:
+            - {$ref: '#/components/schemas/OutcomeCounts'}
+            - {type: 'null'}
+        duration_us:
+          oneOf:
+            - {$ref: '#/components/schemas/Decimal'}
+            - {type: 'null'}
+        histogram:
+          type: [array, 'null']
+          minItems: 8
+          maxItems: 8
+          items: {$ref: '#/components/schemas/Decimal'}
+          description: 'Exclusive microsecond upper bounds: 100, 500, 1000, 5000, 10000, 100000, 1000000, infinity; all terminal outcomes'
+        complete: {type: boolean, description: Conservative coverage status for the aligned interior or individual partial edge}
+        gap: {type: boolean, description: No observed counts in an incomplete window; null counters must not be graphed as zero}
+    HistorySeries:
+      type: object
+      required: [points, resolution_seconds, complete, range, updated_at]
+      properties:
+        points: {type: array, maxItems: 1500, items: {$ref: '#/components/schemas/HistoryPoint'}}
+        resolution_seconds: {type: integer, enum: [60, 3600, 86400]}
+        complete: {type: boolean}
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        updated_at: {type: string, format: date-time}
+    ObservedClients:
+      type: object
+      required: [items, complete, truncated, range, updated_at]
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required: [address, name, name_source, name_fresh, count, blocked, last_seen]
+            properties:
+              address: {type: string}
+              name: {type: string}
+              name_source: {type: string}
+              name_fresh: {type: boolean}
+              count: {$ref: '#/components/schemas/Decimal'}
+              blocked: {$ref: '#/components/schemas/Decimal'}
+              last_seen: {type: string, format: date-time}
+        complete: {type: boolean}
+        truncated: {type: boolean, description: More than limit observed addresses; distinct from missing observation coverage}
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        updated_at: {type: string, format: date-time}
+    ClientsResponse:
+      type: object
+      required: [status, observed_available]
+      properties:
+        status: {$ref: '#/components/schemas/Activation'}
+        items:
+          type: array
+          items:
+            type: object
+            required: [address, name]
+            properties:
+              address: {type: string}
+              name: {type: string}
+        configuration_error: {type: string}
+        observed_available: {type: boolean}
+        observed: {$ref: '#/components/schemas/ObservedClients'}
     Activation:
       type: object
       required: [saved_revision, active_revision, active_generation, pending, recovered, restart_required, sources]
@@ -276,7 +552,7 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Activation'}
     Error:
-      description: '400 malformed, 401 auth, 403 CSRF/Host/Origin, 409 revision/generation conflict, 422 validation, 429 capacity, 503 unavailable'
+      description: '400 malformed/bad_request, 401 auth, 403 CSRF/Host/Origin, 404 missing or expired detail, 409 revision/generation conflict, 422 validation, 429 capacity, 503 unavailable'
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}

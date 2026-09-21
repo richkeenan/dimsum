@@ -274,6 +274,9 @@ func (s *Service) candidate(resource, method string, m Mutation) (*config.Docume
 				m.Edits[i].Path = append(path(resource), m.Edits[i].Path...)
 			}
 		}
+		if resource == "settings" {
+			return d.Upsert(m.Edits)
+		}
 		return d.Edit(m.Edits)
 	case "POST":
 		if m.Item == nil {
