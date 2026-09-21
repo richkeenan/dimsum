@@ -33,6 +33,11 @@ func Build(zones []Zone, records []Record) (*Zones, error) {
 		z.exists[n] = true
 	}
 	sort.Slice(z.zones, func(i, j int) bool { return len(z.zones[i].Name) > len(z.zones[j].Name) })
+	// Generated apex records imply ancestor existence just like explicit data.
+	// All owned zones must be known before determining which ancestors we own.
+	for _, zone := range z.zones {
+		z.markAncestors(zone.Name)
+	}
 	records = append([]Record(nil), records...)
 	for i := 0; i < len(records); i++ {
 		r := records[i]
@@ -83,12 +88,7 @@ func Build(zones []Zone, records []Record) (*Zones, error) {
 		}
 		z.records[r.Name] = append(z.records[r.Name], r)
 		z.exists[r.Name] = true
-		for parent := r.Name; strings.Contains(parent, "."); {
-			parent = parent[strings.IndexByte(parent, '.')+1:]
-			if z.zone(parent) != nil {
-				z.exists[parent] = true
-			}
-		}
+		z.markAncestors(r.Name)
 	}
 	for name := range z.records {
 		seen := map[string]bool{}
@@ -106,6 +106,16 @@ func Build(zones []Zone, records []Record) (*Zones, error) {
 	}
 	return z, nil
 }
+
+func (z *Zones) markAncestors(name string) {
+	for strings.Contains(name, ".") {
+		name = name[strings.IndexByte(name, '.')+1:]
+		if z.zone(name) != nil {
+			z.exists[name] = true
+		}
+	}
+}
+
 func (z *Zones) zone(name string) *Zone {
 	for i := range z.zones {
 		v := &z.zones[i]

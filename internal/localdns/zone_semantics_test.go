@@ -53,3 +53,39 @@ func TestLocalCNAMEToGeneratedApexSOA(t *testing.T) {
 		})
 	}
 }
+
+func TestOwnedZoneApexCreatesEmptyNonterminals(t *testing.T) {
+	parent := localdns.Zone{Name: "home.arpa", NegativeTTL: 42}
+	child := localdns.Zone{Name: "leaf.branch.home.arpa", NegativeTTL: 17}
+	for _, tc := range []struct {
+		name  string
+		zones []localdns.Zone
+	}{
+		{"parent-first", []localdns.Zone{parent, child}},
+		{"child-first", []localdns.Zone{child, parent}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			z, err := localdns.Build(tc.zones, nil)
+			require.NoError(t, err)
+			for _, query := range []struct {
+				name string
+				code int
+				zone string
+				ttl  uint32
+			}{
+				{"branch.home.arpa.", dns.RcodeSuccess, "home.arpa.", 42},
+				{"absent.home.arpa.", dns.RcodeNameError, "home.arpa.", 42},
+				{"leaf.branch.home.arpa.", dns.RcodeSuccess, "leaf.branch.home.arpa.", 17},
+			} {
+				got := localReply(t, z, query.name, dns.TypeA)
+				assert.Equal(t, query.code, got.Rcode, query.name)
+				assert.Empty(t, got.Answer)
+				require.Len(t, got.Ns, 1)
+				soa, ok := got.Ns[0].(*dns.SOA)
+				require.True(t, ok)
+				assert.Equal(t, query.zone, soa.Hdr.Name)
+				assert.Equal(t, query.ttl, soa.Minttl)
+			}
+		})
+	}
+}
