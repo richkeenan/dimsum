@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -76,6 +77,7 @@ type Upstream struct {
 	mu       sync.Mutex
 	conn     net.Conn
 	closed   bool
+	err      error
 	once     sync.Once
 }
 
@@ -107,6 +109,15 @@ func (u *Upstream) Address() string { return u.tcp.Addr().String() }
 // Receiving a request guarantees its delay timer has been registered, so a test
 // may immediately Advance. Consume notifications to avoid filling the queue.
 func (u *Upstream) Requests() <-chan Request { return u.requests }
+
+// Err reports an unexpected fixture UDP-write failure. Tests can inspect it
+// while the fixture is running; Close also returns it after workers stop.
+func (u *Upstream) Err() error {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.err
+}
+
 func (u *Upstream) respond(network string, wire []byte) (Response, bool) {
 	r := Request{Network: network, Wire: append([]byte(nil), wire...), At: u.clock.Now()}
 	response := u.handler(r)
@@ -137,7 +148,15 @@ func (u *Upstream) serveUDP() {
 			return
 		}
 		if !response.Drop {
-			u.udp.WriteTo(response.Wire, peer)
+			if _, err := u.udp.WriteTo(response.Wire, peer); err != nil {
+				if u.ctx.Err() != nil && errors.Is(err, net.ErrClosed) {
+					return
+				}
+				u.mu.Lock()
+				u.err = fmt.Errorf("fixture UDP response: %w", err)
+				u.mu.Unlock()
+				return
+			}
 		}
 	}
 }
@@ -203,5 +222,5 @@ func (u *Upstream) Close() error {
 		u.mu.Unlock()
 	})
 	u.wg.Wait()
-	return nil
+	return u.Err()
 }

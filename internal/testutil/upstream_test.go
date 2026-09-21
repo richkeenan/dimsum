@@ -9,7 +9,20 @@ import (
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func awaitRequest(t *testing.T, u *testutil.Upstream) testutil.Request {
+	t.Helper()
+	select {
+	case r := <-u.Requests():
+		return r
+	case <-time.After(time.Second):
+		require.FailNow(t, "no request notification")
+		return testutil.Request{}
+	}
+}
 
 func TestUpstreamScriptedUDPAndTCP(t *testing.T) {
 	clock := testutil.NewClock(time.Unix(100, 0))
@@ -19,94 +32,95 @@ func TestUpstreamScriptedUDPAndTCP(t *testing.T) {
 		}
 		return testutil.Response{Wire: []byte("answer"), Delay: time.Minute}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer u.Close()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, u.Close()) })
 	for _, network := range []string{"udp", "tcp"} {
 		c, err := net.Dial(network, u.Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-		c.SetDeadline(time.Now().Add(time.Second))
+		require.NoError(t, err)
+		t.Cleanup(func() { c.Close() })
+		require.NoError(t, c.SetDeadline(time.Now().Add(time.Second)))
 		wire := []byte("query")
 		if network == "tcp" {
 			wire = append([]byte{0, 5}, wire...)
 		}
-		if _, err = c.Write(wire); err != nil {
-			t.Fatal(err)
-		}
-		select {
-		case r := <-u.Requests():
-			if r.Network != network || string(r.Wire) != "query" {
-				t.Fatalf("unexpected request: %+v", r)
-			}
-		case <-time.After(time.Second):
-			t.Fatal("no request")
-		}
+		_, err = c.Write(wire)
+		require.NoError(t, err)
+		r := awaitRequest(t, u)
+		assert.Equal(t, network, r.Network)
+		assert.Equal(t, []byte("query"), r.Wire)
 		clock.Advance(time.Minute)
 		buf := make([]byte, 6)
 		if network == "tcp" {
 			var size [2]byte
-			if _, err = io.ReadFull(c, size[:]); err != nil {
-				t.Fatal(err)
-			}
-			if binary.BigEndian.Uint16(size[:]) != 6 {
-				t.Fatal("bad framing")
-			}
+			_, err = io.ReadFull(c, size[:])
+			require.NoError(t, err)
+			require.Equal(t, uint16(6), binary.BigEndian.Uint16(size[:]), "bad framing")
 			_, err = io.ReadFull(c, buf)
 		} else {
 			_, err = c.Read(buf)
 		}
-		if err != nil || string(buf) != "answer" {
-			t.Fatalf("response %q: %v", buf, err)
-		}
-		c.Close()
+		require.NoError(t, err)
+		assert.Equal(t, "answer", string(buf))
+		assert.NoError(t, c.Close())
 	}
-	if !clock.Now().Equal(time.Unix(220, 0)) {
-		t.Fatal("time not controlled")
-	}
+	assert.True(t, clock.Now().Equal(time.Unix(220, 0)), "time not controlled")
 	c, err := net.Dial("udp", u.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer c.Close()
-	c.Write([]byte("drop"))
-	<-u.Requests()
-	c.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+	_, err = c.Write([]byte("drop"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("drop"), awaitRequest(t, u).Wire)
+	require.NoError(t, c.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
 	var b [1]byte
-	if _, err = c.Read(b[:]); err == nil {
-		t.Fatal("drop returned data")
-	}
+	_, err = c.Read(b[:])
+	require.Error(t, err, "drop returned data")
+	var timeout net.Error
+	require.ErrorAs(t, err, &timeout)
+	assert.True(t, timeout.Timeout(), "drop should time out")
 }
 
 func TestUpstreamCloseCancelsDelayAndIdleTCP(t *testing.T) {
 	clock := testutil.NewClock(time.Unix(0, 0))
 	u, err := testutil.NewUpstream(clock, func(testutil.Request) testutil.Response { return testutil.Response{Delay: time.Hour} })
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer u.Close()
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, u.Close()) })
 	udp, err := net.Dial("udp", u.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer udp.Close()
 	tcp, err := net.Dial("tcp", u.Address())
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer tcp.Close()
-	udp.Write([]byte("query"))
-	<-u.Requests()
-	done := make(chan struct{})
-	go func() { u.Close(); close(done) }()
+	_, err = udp.Write([]byte("query"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("query"), awaitRequest(t, u).Wire)
+	done := make(chan error, 1)
+	go func() { done <- u.Close() }()
 	select {
-	case <-done:
+	case err := <-done:
+		assert.NoError(t, err)
 	case <-time.After(time.Second):
-		t.Fatal("fixture leaked goroutine")
+		require.FailNow(t, "fixture leaked goroutine")
 	}
-	if clock.Pending() != 0 {
-		t.Fatal("fixture leaked timer")
-	}
+	assert.Zero(t, clock.Pending(), "fixture leaked timer")
+}
+
+func TestUpstreamReportsUDPWriteFailure(t *testing.T) {
+	u, err := testutil.NewUpstream(testutil.NewClock(time.Unix(0, 0)), func(testutil.Request) testutil.Response {
+		// Larger than any UDP datagram: the local write must fail.
+		return testutil.Response{Wire: make([]byte, 65536)}
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { u.Close() })
+	c, err := net.Dial("udp", u.Address())
+	require.NoError(t, err)
+	defer c.Close()
+	_, err = c.Write([]byte("query"))
+	require.NoError(t, err)
+	awaitRequest(t, u)
+	require.Eventually(t, func() bool { return u.Err() != nil }, time.Second, time.Millisecond)
+	err = u.Close()
+	require.ErrorContains(t, err, "fixture UDP response")
+	var opErr *net.OpError
+	assert.ErrorAs(t, err, &opErr)
+	assert.Equal(t, err, u.Close(), "repeated close retains worker failure")
 }
