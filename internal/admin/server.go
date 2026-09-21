@@ -31,6 +31,10 @@ type Options struct {
 	RequestTimeout time.Duration
 	Now            func() time.Time
 	DownloadBackup func(context.Context, string) (io.ReadCloser, int64, error)
+	Tokens         *TokenStore
+	MCP            http.Handler
+	OpenAPIJSON    []byte
+	OpenAPIYAML    []byte
 }
 type Server struct {
 	service   *control.Service
@@ -116,7 +120,15 @@ func (s *Server) handler(local bool) http.Handler {
 			writeJSON(w, code, map[string]bool{"ready": ready})
 			return
 		}
-		if !local && !(r.URL.Path == "/session" && r.Method == "POST") {
+		bearer := false
+		if r.URL.Path == "/mcp" || (!local && len(r.Header.Values("Authorization")) > 0) {
+			if !s.bearer(r) {
+				s.fail(w, r, 401, "unauthorized", "valid bearer token required")
+				return
+			}
+			bearer = true
+		}
+		if !local && !(r.URL.Path == "/session" && r.Method == "POST") && !(bearer && (strings.HasPrefix(r.URL.Path, "/api/v1/") || r.URL.Path == "/mcp")) {
 			sess, ok := s.session(r)
 			if !ok {
 				s.fail(w, r, 401, "unauthorized", "login required")
@@ -130,7 +142,11 @@ func (s *Server) handler(local bool) http.Handler {
 			}
 		}
 		if r.URL.Path == "/api/v1/events" && r.Method == "GET" {
-			s.stream(w, r, local)
+			if bearer {
+				s.tokenStream(w, r)
+			} else {
+				s.stream(w, r, local)
+			}
 			return
 		}
 		select {
@@ -147,6 +163,30 @@ func (s *Server) handler(local bool) http.Handler {
 		_ = rc.SetWriteDeadline(time.Now().Add(s.options.RequestTimeout))
 		_ = rc.SetReadDeadline(time.Now().Add(s.options.RequestTimeout))
 		defer func() { _ = rc.SetWriteDeadline(time.Time{}); _ = rc.SetReadDeadline(time.Time{}) }()
+		if r.URL.Path == "/mcp" {
+			if s.options.MCP == nil {
+				s.fail(w, r, 503, "unavailable", "MCP unavailable")
+			} else {
+				s.options.MCP.ServeHTTP(w, r)
+			}
+			return
+		}
+		if s.tokenRoute(w, r) {
+			return
+		}
+		if r.Method == "GET" && (r.URL.Path == "/api/v1/openapi.json" || r.URL.Path == "/api/v1/openapi.yaml") {
+			data, contentType := s.options.OpenAPIJSON, "application/json"
+			if r.URL.Path == "/api/v1/openapi.yaml" {
+				data, contentType = s.options.OpenAPIYAML, "application/yaml"
+			}
+			if len(data) == 0 {
+				s.fail(w, r, 503, "unavailable", "OpenAPI document unavailable")
+				return
+			}
+			w.Header().Set("Content-Type", contentType)
+			_, _ = w.Write(data)
+			return
+		}
 		if r.URL.Path == "/session" {
 			switch r.Method {
 			case "POST":

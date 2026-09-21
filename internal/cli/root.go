@@ -17,10 +17,12 @@ const Help = `dimsum control [--socket PATH] COMMAND
 
 Read operations (JSON):
   summary | timeseries | queries | rankings [--query 'from=...&to=...&limit=...']
-  settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog
+  settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
   query ID
 Mutation operations:
   password JSON             {"password":"..."} (use @- for standard input)
+  token-create JSON         {"name":"automation"} (secret returned only once)
+  token-revoke ID            revoke an API token immediately
   patch RESOURCE JSON       {"revision":"...","edits":[{"path":["..."],"value":...}]}
   add RESOURCE JSON         {"revision":"...","item":{...}}
   delete RESOURCE JSON      {"revision":"...","index":0}
@@ -76,13 +78,19 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		} else if len(args) != 1 {
 			return bad()
 		}
-	case "rules-test", "stage", "job", "password":
+	case "rules-test", "stage", "job", "password", "token-create":
 		if len(args) != 2 {
 			return bad()
 		}
 		method = "POST"
-		path = map[string]string{"rules-test": "/api/v1/rules/test", "stage": "/api/v1/config/transactions", "job": "/api/v1/jobs", "password": "/api/v1/password"}[args[0]]
+		path = map[string]string{"rules-test": "/api/v1/rules/test", "stage": "/api/v1/config/transactions", "job": "/api/v1/jobs", "password": "/api/v1/password", "token-create": "/api/v1/tokens"}[args[0]]
 		body = args[1]
+	case "token-revoke":
+		if len(args) != 2 || args[1] == "" {
+			return bad()
+		}
+		method = "DELETE"
+		path = "/api/v1/tokens/" + url.PathEscape(args[1])
 	case "commit":
 		if len(args) != 2 {
 			return bad()
@@ -102,7 +110,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if len(args) == 4 {
 			body = args[3]
 		}
-	case "summary", "timeseries", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog":
+	case "summary", "timeseries", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
 		if len(args) != 1 {
 			return bad()
 		}
