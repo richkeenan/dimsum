@@ -6,9 +6,27 @@ import "strings"
 // duplicate owners share an index key, never lose their independent sources.
 type textRef struct{ off, size uint32 }
 type ruleMeta struct {
-	id, source, text, pattern, dialect textRef
+	// ID, pattern, and optional source text occupy one consecutive arena span.
+	// Full 32-bit lengths preserve long IDs and original diagnostic text.
+	off, idSize, patternSize, textSize uint32
+	source, dialect                    uint32 // indexes into shared text references
 	next                               uint32 // index+1, zero terminates a duplicate-key membership chain
-	class, kind, score                 uint8
+	class, kind, score, flags          uint8
+}
+
+const sourceTextIsPattern uint8 = 1
+
+func (r ruleMeta) idRef() textRef      { return textRef{r.off, r.idSize} }
+func (r ruleMeta) patternRef() textRef { return textRef{r.off + r.idSize, r.patternSize} }
+func (r ruleMeta) textRef() textRef {
+	if r.flags&sourceTextIsPattern != 0 {
+		return r.patternRef()
+	}
+	return textRef{r.off + r.idSize + r.patternSize, r.textSize}
+}
+
+func (s *PolicySnapshot) rule(r ruleMeta) Rule {
+	return Rule{ID: s.text(r.idRef()), SourceID: s.text(s.sharedText[r.source]), SourceText: s.text(r.textRef()), Pattern: s.text(r.patternRef()), Dialect: s.text(s.sharedText[r.dialect]), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}
 }
 
 var snapshotClasses = [...]Class{CustomAllow, CustomDeny, SubscriptionAllow, SubscriptionDeny, SpecialDeny}
@@ -27,8 +45,8 @@ func (s *PolicySnapshot) text(r textRef) string {
 // compact IDs rather than retaining another million-entry diagnostic hash map.
 func (s *PolicySnapshot) Rule(id string) (Rule, bool) {
 	for _, r := range s.rules {
-		if s.text(r.id) == id {
-			return Rule{ID: id, SourceID: s.text(r.source), SourceText: s.text(r.text), Pattern: s.text(r.pattern), Dialect: s.text(r.dialect), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}, true
+		if s.text(r.idRef()) == id {
+			return s.rule(r), true
 		}
 	}
 	return Rule{}, false
@@ -41,5 +59,5 @@ func (s *PolicySnapshot) RuleAt(number uint32) (Rule, bool) {
 		return Rule{}, false
 	}
 	r := s.rules[number-1]
-	return Rule{ID: s.text(r.id), SourceID: s.text(r.source), SourceText: s.text(r.text), Pattern: s.text(r.pattern), Dialect: s.text(r.dialect), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}, true
+	return s.rule(r), true
 }

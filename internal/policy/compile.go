@@ -33,6 +33,7 @@ type PolicySnapshot struct {
 	generation  uint64
 	rules       []ruleMeta
 	provenance  string
+	sharedText  []textRef
 	exact       exactIndex
 	suffix      suffixIndex
 	fallback    []compiledRule
@@ -57,7 +58,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	count, exactCount, suffixCount := 0, 0, 0
 	var suffixReserve uint64
 	var textBytes, storedTextBytes uint64
-	sources := make(map[string]textRef)
+	shared := map[string]uint32{"": 0}
 	for _, r := range input {
 		if !o.DisabledSources[r.SourceID] {
 			count++
@@ -74,13 +75,15 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			if count > o.MaxRules || uint64(count) > math.MaxUint32-1 || textBytes > o.MaxBytes {
 				return nil, fmt.Errorf("policy: snapshot input budget exceeded")
 			}
-			storedTextBytes += uint64(len(r.ID)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect))
+			storedTextBytes += uint64(len(r.ID)) + uint64(len(r.Pattern))
 			if r.SourceText != r.Pattern {
 				storedTextBytes += uint64(len(r.SourceText))
 			}
-			if _, ok := sources[r.SourceID]; !ok {
-				storedTextBytes += uint64(len(r.SourceID))
-				sources[r.SourceID] = textRef{}
+			for _, value := range []string{r.SourceID, r.Dialect} {
+				if _, ok := shared[value]; !ok {
+					storedTextBytes += uint64(len(value))
+					shared[value] = 0
+				}
 			}
 		}
 	}
@@ -88,6 +91,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		return nil, fmt.Errorf("policy: snapshot input budget exceeded")
 	}
 	s := &PolicySnapshot{generation: g, rules: make([]ruleMeta, 0, count)}
+	s.sharedText = make([]textRef, 1, len(shared))
 	s.exact.seed = maphash.MakeSeed()
 	if exactCount > 0 {
 		s.exact.slots = make([]exactSlot, (uint64(exactCount)*100+uint64(load)-1)/uint64(load))
@@ -97,13 +101,24 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	// source IDs are interned and SourceText often shares its Pattern. Growing
 	// this arena repeatedly otherwise leaves large copied buffers for GC.
 	text.Grow(int(storedTextBytes))
-	clear(sources)
+	clear(shared)
+	shared[""] = 0
+	intern := func(value string) uint32 {
+		if index, ok := shared[value]; ok {
+			return index
+		}
+		index := uint32(len(s.sharedText))
+		s.sharedText = append(s.sharedText, putText(&text, value))
+		shared[value] = index
+		return index
+	}
 	seen := make(map[string]bool, count)
 	suffixes := suffixBuild{
 		entries: make([]suffixEntry, 0, suffixCount),
 		keys:    make([]byte, 0, min(suffixReserve, o.MaxBytes)),
 	}
 	var suffixKeyBytes uint64
+	var exactKeys exactBuildArena
 	var fallback []Rule
 	for _, r := range input {
 		if o.DisabledSources[r.SourceID] {
@@ -121,20 +136,19 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			return nil, fmt.Errorf("policy: unsupported rule form %q", r.Kind)
 		}
 		m := ruleMeta{class: uint8(rank(r.Class)), kind: uint8(kind)}
-		m.id = putText(&text, r.ID)
-		m.pattern = putText(&text, r.Pattern)
+		m.off = uint32(text.Len())
+		m.idSize = uint32(len(r.ID))
+		m.patternSize = uint32(len(r.Pattern))
+		text.WriteString(r.ID)
+		text.WriteString(r.Pattern)
 		if r.SourceText == r.Pattern {
-			m.text = m.pattern
+			m.flags |= sourceTextIsPattern
 		} else {
-			m.text = putText(&text, r.SourceText)
+			m.textSize = uint32(len(r.SourceText))
+			text.WriteString(r.SourceText)
 		}
-		m.dialect = putText(&text, r.Dialect)
-		var ok bool
-		m.source, ok = sources[r.SourceID]
-		if !ok {
-			m.source = putText(&text, r.SourceID)
-			sources[r.SourceID] = m.source
-		}
+		m.source = intern(r.SourceID)
+		m.dialect = intern(r.Dialect)
 		head := uint32(len(s.rules) + 1)
 		if r.Kind == Exact || r.Kind == Suffix {
 			if r.Dialect != "" {
@@ -149,7 +163,10 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			}
 			if r.Kind == Exact {
 				m.score++
-				m.next = s.exact.insert(n.wire, maphash.String(s.exact.seed, n.wire), head)
+				m.next, err = s.exact.insertStaged(n.wire, maphash.String(s.exact.seed, n.wire), head, &exactKeys, o.MaxBytes)
+				if err != nil {
+					return nil, err
+				}
 			} else {
 				var buf [255]byte
 				suffixKeyBytes += uint64(len(n.wire) + 1)
@@ -168,10 +185,12 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		s.rules = append(s.rules, m)
 		// Bound key/provenance offsets before another append. Input text preflight
 		// above prevents uint32 conversion overflow in putText.
-		if uint64(text.Cap())+uint64(cap(s.exact.keys))+uint64(len(s.exact.slots))*16+uint64(cap(s.rules))*uint64(unsafe.Sizeof(ruleMeta{})) > o.MaxBytes {
+		if uint64(text.Cap())+uint64(cap(s.sharedText))*8+exactKeys.size()+uint64(len(s.exact.slots))*16+uint64(cap(s.rules))*uint64(unsafe.Sizeof(ruleMeta{})) > o.MaxBytes {
 			return nil, fmt.Errorf("policy: snapshot byte budget exceeded")
 		}
 	}
+	s.exact.keys = exactKeys.finish()
+	exactKeys = exactBuildArena{}
 	s.suffix.build(suffixes, s.rules)
 	m, err := Compile(g, fallback, limits)
 	if err != nil {
@@ -198,7 +217,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		r.rule = Rule{}
 	}
 	s.provenance = text.String()
-	s.memory = SnapshotMemory{Rules: count, ProvenanceBytes: uint64(text.Cap()) + uint64(cap(s.rules))*uint64(unsafe.Sizeof(ruleMeta{})), ExactBytes: uint64(cap(s.exact.slots))*16 + uint64(cap(s.exact.keys)), SuffixBytes: uint64(cap(s.suffix.entries))*8 + uint64(cap(s.suffix.keys)), FallbackBytes: uint64(cap(s.fallback))*uint64(unsafe.Sizeof(compiledRule{})) + uint64(cap(s.fallbackIDs))*4 + fallbackCharge}
+	s.memory = SnapshotMemory{Rules: count, ProvenanceBytes: uint64(text.Cap()) + uint64(cap(s.sharedText))*8 + uint64(cap(s.rules))*uint64(unsafe.Sizeof(ruleMeta{})), ExactBytes: uint64(cap(s.exact.slots))*16 + uint64(cap(s.exact.keys)), SuffixBytes: uint64(cap(s.suffix.entries))*8 + uint64(cap(s.suffix.keys)), FallbackBytes: uint64(cap(s.fallback))*uint64(unsafe.Sizeof(compiledRule{})) + uint64(cap(s.fallbackIDs))*4 + fallbackCharge}
 	s.memory.TotalBytes = s.memory.ProvenanceBytes + s.memory.ExactBytes + s.memory.SuffixBytes + s.memory.FallbackBytes + uint64(unsafe.Sizeof(*s))
 	if s.memory.TotalBytes > o.MaxBytes {
 		return nil, fmt.Errorf("policy: snapshot byte budget exceeded")
@@ -219,13 +238,13 @@ func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
 	visit := func(head uint32) {
 		for head != 0 {
 			r := s.rules[head-1]
-			if explain && r.source.size > 0 {
-				d.SourceIDs = append(d.SourceIDs, s.text(r.source))
+			if explain && r.source != 0 {
+				d.SourceIDs = append(d.SourceIDs, s.text(s.sharedText[r.source]))
 			}
 			better := winner == 0
 			if !better {
 				w := s.rules[winner-1]
-				better = r.class < w.class || r.class == w.class && (r.score > w.score || r.score == w.score && s.text(r.id) < s.text(w.id))
+				better = r.class < w.class || r.class == w.class && (r.score > w.score || r.score == w.score && s.text(r.idRef()) < s.text(w.idRef()))
 			}
 			if better {
 				winner = head
@@ -252,7 +271,7 @@ func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
 	}
 	if winner != 0 {
 		r := s.rules[winner-1]
-		d.RuleID = s.text(r.id)
+		d.RuleID = s.text(r.idRef())
 		d.Result = Block
 		if r.class == 0 || r.class == 2 {
 			d.Result = Allow

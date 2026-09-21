@@ -176,7 +176,7 @@ func TestIndexLookupAllocation(t *testing.T) {
 func TestCompileWideProvenanceAndDNSBounds(t *testing.T) {
 	assert.Equal(t, uintptr(16), unsafe.Sizeof(exactSlot{}))
 	assert.Equal(t, uintptr(8), unsafe.Sizeof(suffixEntry{}))
-	assert.Equal(t, uintptr(48), unsafe.Sizeof(ruleMeta{}))
+	assert.Equal(t, uintptr(32), unsafe.Sizeof(ruleMeta{}))
 	rules := make([]Rule, 65537)
 	for i := range rules {
 		rules[i] = Rule{ID: fmt.Sprintf("r%06d", i), SourceID: fmt.Sprintf("s%06d", i), Kind: Exact, Class: SubscriptionDeny, Pattern: "duplicate.test"}
