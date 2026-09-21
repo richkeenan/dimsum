@@ -50,8 +50,8 @@ it("creates once, copies generic connection fields, and forgets the secret on Do
     window.location.origin + "/mcp",
   );
   expect(
-    screen.getByRole("link", { name: "OpenAPI specification" }),
-  ).toHaveAttribute("href", "/api/v1/openapi.json");
+    screen.queryByRole("link", { name: "OpenAPI specification" }),
+  ).not.toBeInTheDocument();
   create();
   expect(await screen.findByLabelText("New token")).toHaveValue(secret);
   expect(send).toHaveBeenCalledExactlyOnceWith("tokens", "POST", {
@@ -88,7 +88,7 @@ it("keeps selectable text when clipboard access fails and clears the secret on u
   await screen.findByLabelText("New token");
   fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
   await screen.findByText(
-    "Could not copy. Select the text below and copy it manually.",
+    "Copy was blocked. Copy the selected text manually.",
   );
   const field = screen.getByLabelText("New token") as HTMLInputElement;
   fireEvent.focus(field);
@@ -100,6 +100,26 @@ it("keeps selectable text when clipboard access fails and clears the secret on u
   view.unmount();
   mount();
   expect(screen.queryByLabelText("New token")).not.toBeInTheDocument();
+});
+
+it("copies both fields on HTTP without the modern clipboard API", async () => {
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  const copied: string[] = [];
+  Object.defineProperty(document, "execCommand", { configurable: true, value: (command: string) => {
+    if (command !== "copy") return false;
+    const field = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+    copied.push(field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0));
+    return true;
+  }});
+  vi.spyOn(api, "send").mockResolvedValue({ ...metadata, token: secret });
+  mount();
+  create();
+  await screen.findByLabelText("New token");
+  fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
+  await screen.findByText("Copied to clipboard.");
+  fireEvent.click(screen.getByRole("button", { name: "Copy connection fields" }));
+  expect(copied).toEqual([secret, `URL: ${window.location.origin}/mcp\nAuthorization: Bearer ${secret}`]);
+  Reflect.deleteProperty(document, "execCommand");
 });
 
 it("revokes a token, disables pending actions, and refreshes the token list", async () => {

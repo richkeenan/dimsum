@@ -29,6 +29,15 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(tokenField).toBeVisible();
   const agentToken = await tokenField.inputValue();
   expect(agentToken.length).toBeGreaterThan(32);
+  await expect(page.getByRole("link", { name: "OpenAPI specification" })).toHaveCount(0);
+  // Localhost is a secure context; remove the modern API to exercise LAN HTTP copying.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+  });
+  for (const name of ["Copy token", "Copy connection fields"]) {
+    await page.getByRole("button", { name, exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Copied to clipboard." })).toBeVisible();
+  }
   const compatibility = await checkMCP(new URL("/mcp", page.url()).href, agentToken);
   expect(compatibility.tools).toBeGreaterThan(0);
   const agentHeaders = {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { ErrorNotice } from "@/components/data";
@@ -24,16 +24,31 @@ export function AgentAccess() {
   const [error, setError] = useState<Error>();
   const [copyStatus, setCopyStatus] = useState("");
   const url = window.location.origin + "/mcp";
+  const tokenField = useRef<HTMLInputElement>(null);
+  const connectionField = useRef<HTMLTextAreaElement>(null);
 
-  async function copy(value: string) {
+  async function copy(field: HTMLInputElement | HTMLTextAreaElement | null) {
+    if (!field) return;
     try {
-      await navigator.clipboard.writeText(value);
-      setCopyStatus("Copied to clipboard.");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(field.value);
+        setCopyStatus("Copied to clipboard.");
+        return;
+      }
     } catch {
-      setCopyStatus(
-        "Could not copy. Select the text below and copy it manually.",
-      );
+      // Fall back to selecting the visible field when clipboard access is denied.
     }
+    field.focus();
+    field.select();
+    try {
+      if (document.execCommand?.("copy")) {
+        setCopyStatus("Copied to clipboard.");
+        return;
+      }
+    } catch {
+      // Keep the field selected for manual copying.
+    }
+    setCopyStatus("Copy was blocked. Copy the selected text manually.");
   }
 
   return (
@@ -58,12 +73,6 @@ export function AgentAccess() {
           className="font-mono"
         />
       </label>
-      <a
-        href="/api/v1/openapi.json"
-        className="text-xs text-primary underline underline-offset-4"
-      >
-        OpenAPI specification
-      </a>
 
       <form
         className="mt-5 flex flex-wrap items-end gap-3"
@@ -115,6 +124,7 @@ export function AgentAccess() {
           <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             New token
             <Input
+              ref={tokenField}
               readOnly
               autoComplete="off"
               value={created.token}
@@ -125,6 +135,7 @@ export function AgentAccess() {
           <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-medium">
             Connection fields
             <textarea
+              ref={connectionField}
               readOnly
               rows={3}
               value={`URL: ${url}\nAuthorization: Bearer ${created.token}`}
@@ -133,14 +144,14 @@ export function AgentAccess() {
             />
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void copy(created.token)}>
+            <Button type="button" onClick={() => void copy(tokenField.current)}>
               Copy token
             </Button>
             <Button
               type="button"
               variant="outline"
               onClick={() =>
-                void copy(`URL: ${url}\nAuthorization: Bearer ${created.token}`)
+                void copy(connectionField.current)
               }
             >
               Copy connection fields
