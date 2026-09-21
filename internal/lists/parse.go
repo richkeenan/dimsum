@@ -47,8 +47,9 @@ type Result struct {
 	SHA256                             string
 }
 
-// Parse returns no Rules on any error, including unsupported exceptions. Counts
-// and diagnostics describe the quarantined candidate, never an active source.
+// Parse skips invalid-domain lines with diagnostics. Unsupported syntax and
+// exceptions still reject the candidate and return no Rules. Rejected counts
+// rejected lines, including recoverable invalid domains in a successful result.
 // SHA256 covers original bytes and is set only after a complete bounded read.
 // SourceText excludes CR/LF terminators but preserves other original line bytes.
 // IDs encode source ID, physical line, and alias index; stable for identical
@@ -72,6 +73,7 @@ func Parse(r io.Reader, s Source, l Limits) (out Result, err error) {
 	bounded := &io.LimitedReader{R: r, N: l.MaxBytes + 1}
 	scanner := bufio.NewScanner(io.TeeReader(bounded, h))
 	scanner.Buffer(make([]byte, min(4096, l.MaxLineBytes+2)), l.MaxLineBytes+2)
+	fatal := 0
 	for scanner.Scan() {
 		out.Lines++
 		raw := scanner.Text()
@@ -95,6 +97,9 @@ func Parse(r io.Reader, s Source, l Limits) (out Result, err error) {
 		}
 		if code != "" {
 			out.Rejected++
+			if code != "invalid-domain" {
+				fatal++
+			}
 			if len(out.Diagnostics) < l.MaxDiagnostics {
 				out.Diagnostics = append(out.Diagnostics, Diagnostic{out.Lines, raw, code})
 			}
@@ -122,8 +127,8 @@ func Parse(r io.Reader, s Source, l Limits) (out Result, err error) {
 		return out, fmt.Errorf("lists: byte limit exceeded")
 	}
 	out.SHA256 = hex.EncodeToString(h.Sum(nil))
-	if out.Rejected > 0 {
-		return out, fmt.Errorf("lists: %d unsupported or invalid lines", out.Rejected)
+	if fatal > 0 {
+		return out, fmt.Errorf("lists: %d unsupported or invalid lines", fatal)
 	}
 	if out.Accepted == 0 {
 		return out, fmt.Errorf("lists: empty source")

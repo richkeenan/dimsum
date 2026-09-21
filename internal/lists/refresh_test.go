@@ -16,7 +16,7 @@ import (
 )
 
 func TestRefreshRetentionConditionalOffline(t *testing.T) {
-	body, status := "ads.test\nother.test\n", 200
+	body, status := "ads.test\nbad..test\nother.test\n", 200
 	conditional := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conditional = r.Header.Get("If-None-Match") == "v1"
@@ -31,11 +31,13 @@ func TestRefreshRetentionConditionalOffline(t *testing.T) {
 	first, err := f.Refresh(context.Background(), dir, spec, false)
 	require.NoError(t, err)
 	require.Len(t, first.Rules, 2)
+	assert.Contains(t, first.Warning, "skipped 1 invalid domain")
 	status = 304
 	second, err := f.Refresh(context.Background(), dir, spec, false)
 	require.NoError(t, err)
 	assert.True(t, conditional)
 	assert.Equal(t, first.Rules, second.Rules)
+	assert.Equal(t, first.Warning, second.Warning)
 	for _, bad := range []string{"", "@@||ads.test^$bad\n", "ads.test\n"} {
 		status = 200
 		body = bad
@@ -48,6 +50,7 @@ func TestRefreshRetentionConditionalOffline(t *testing.T) {
 	offline, err := f.Refresh(context.Background(), dir, spec, true)
 	require.NoError(t, err)
 	assert.Equal(t, first.Rules, offline.Rules)
+	assert.Contains(t, offline.Warning, "skipped 1 invalid domain")
 	spec.URL += "/different"
 	_, err = f.Refresh(context.Background(), dir, spec, true)
 	assert.Error(t, err, "identity changes must not reuse old rules")

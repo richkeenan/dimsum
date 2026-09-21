@@ -21,7 +21,15 @@ regressions, not complete protective lists. URLs are in `internal/catalog/catalo
   [AdGuardSDNSFilter](https://github.com/AdguardTeam/AdGuardSDNSFilter),
   [GPL-3.0](https://github.com/AdguardTeam/AdGuardSDNSFilter/blob/master/LICENSE).
 
-## Full input audit
+## Full input audit (original strict policy)
+
+The counts below record the original strict audit. The current parser skips
+malformed domain blocking entries with diagnostics rather than rejecting the
+whole feed. HaGeZi TIF Mini and OISD Big are now available: their one and three
+invalid-domain lines respectively can be omitted. Their checked-in excerpts pass
+with these warnings. AdGuard DNS remains unavailable because unsupported syntax
+and exceptions still reject the entire candidate. No fresh full-feed download
+is implied by this policy update.
 
 All eight catalog URLs returned HTTP 200. Downloads used a 120-second timeout
 and 128 MiB expanded-body limit, into local temporary files. The final parser
@@ -51,7 +59,7 @@ lines (wildcards, unanchored/partial patterns, regex and resource syntax).
 Classification gives modifiers priority over other syntax on the same line.
 
 StevenBlack is the **enabled compatibility default**. All other entries ship off;
-HaGeZi Light/Normal/Pro and OISD Small can be selected explicitly.
+HaGeZi Light/Normal/Pro, TIF Mini, OISD Small and OISD Big can be selected explicitly.
 Availability records this audit only: every
 future version must pass the parser again before publication. Download failure,
 truncation detection beyond syntax/empty/size checks, deletion review, refresh,

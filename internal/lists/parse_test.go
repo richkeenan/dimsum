@@ -15,15 +15,34 @@ import (
 
 type brokenReader struct{}
 
-func TestBidiSourceQuarantine(t *testing.T) {
+func TestInvalidDomainSkipped(t *testing.T) {
 	for _, text := range []string{"123.א.example", "123.xn--4db.example", "123.a_b.א.example", "123_abc.xn--4db.example"} {
 		r, err := Parse(strings.NewReader("valid.example\n"+text), Source{"s", Domains, policy.Suffix}, DefaultLimits())
-		require.Error(t, err)
-		assert.Empty(t, r.Rules)
+		require.NoError(t, err)
+		require.Len(t, r.Rules, 1)
+		assert.Equal(t, "valid.example", r.Rules[0].Pattern)
+		assert.Equal(t, 1, r.Rejected)
 		require.Len(t, r.Diagnostics, 1)
 		assert.Equal(t, 2, r.Diagnostics[0].Line)
 		assert.Equal(t, "invalid-domain", r.Diagnostics[0].Code)
 	}
+}
+
+func TestInvalidDomainDoesNotHideFatalSyntax(t *testing.T) {
+	for _, aliases := range []string{"bad..example *.example", "*.example bad..example"} {
+		r, err := Parse(strings.NewReader("0.0.0.0 valid.example\n0.0.0.0 "+aliases), Source{ID: "s", Dialect: Hosts}, DefaultLimits())
+		require.Error(t, err)
+		assert.Empty(t, r.Rules)
+	}
+	l := DefaultLimits()
+	l.MaxDiagnostics = 1
+	for _, tail := range []string{"||ads.example^$bad", "@@||bad..example^"} {
+		r, err := Parse(strings.NewReader("||good.example^\n||bad..example^\n"+tail), Source{"s", Adblock, policy.Suffix}, l)
+		require.Error(t, err)
+		assert.Empty(t, r.Rules)
+	}
+	_, err := Parse(strings.NewReader("bad..example\n"), Source{"s", Domains, policy.Suffix}, l)
+	require.Error(t, err)
 }
 
 func TestUnderscoreParserCompileInvariant(t *testing.T) {

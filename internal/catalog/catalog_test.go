@@ -21,6 +21,10 @@ func TestAttributedFixtures(t *testing.T) {
 			if e.Available {
 				require.NoError(t, err)
 				assert.NotEmpty(t, r.Rules)
+				if e.ID == "hagezi-tif-mini" || e.ID == "oisd-big" {
+					assert.Positive(t, r.Rejected)
+					assert.NotEmpty(t, r.Diagnostics)
+				}
 			} else {
 				require.Error(t, err)
 				assert.Empty(t, r.Rules)
@@ -36,6 +40,11 @@ func TestCatalog(t *testing.T) {
 	seen := map[string]bool{}
 	enabled := 0
 	for _, e := range entries {
+		if e.ID == "hagezi-tif-mini" || e.ID == "oisd-big" {
+			assert.True(t, e.Available)
+			_, err := e.Subscription(true)
+			require.NoError(t, err)
+		}
 		source := e.Source()
 		assert.Equal(t, e.ID, source.ID)
 		assert.Equal(t, e.Dialect, source.Dialect)

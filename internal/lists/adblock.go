@@ -28,6 +28,9 @@ func parseAdblock(text string, kind policy.Kind) ([]policy.Rule, string) {
 	}
 	rule, code := domainRule(text, kind)
 	if code != "" {
+		if allow && code == "invalid-domain" {
+			return nil, "invalid-exception"
+		}
 		return nil, code
 	}
 	if allow {

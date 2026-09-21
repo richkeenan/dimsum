@@ -61,16 +61,5 @@ func Entries() []Entry {
 			e.Available = true
 		}
 	}
-	for i := range entries {
-		e := &entries[i]
-		switch e.ID {
-		case "hagezi-tif-mini":
-			e.Available = false
-			e.UnavailableReason = "Audited feed contains invalid IDNA hostname xn--ildcard-0c2c.facture-rapide.fr"
-		case "oisd-big":
-			e.Available = false
-			e.UnavailableReason = "Audited feed contains three hostnames rejected by strict IDNA validation"
-		}
-	}
 	return entries
 }

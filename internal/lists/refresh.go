@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/richkeenan/dimsum/internal/policy"
 )
@@ -28,6 +29,14 @@ type sourceArtifact struct {
 	Source              Source
 	URL, ETag, Modified string
 	Text                []byte
+}
+
+func parseWarning(r Result) string {
+	if r.Rejected == 0 {
+		return ""
+	}
+	first := r.Diagnostics[0]
+	return fmt.Sprintf("skipped %d invalid domain line(s); line %d: %s (%s)", r.Rejected, first.Line, first.Text, first.Code)
 }
 
 // Refresh retains source-level LKG on every failed candidate. The coordinator
@@ -53,7 +62,7 @@ func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offli
 	}
 	fallback := func(err error) (Version, error) {
 		if old != nil {
-			return Version{Rules: previous.Rules, SHA256: previous.SHA256, Warning: err.Error()}, nil
+			return Version{Rules: previous.Rules, SHA256: previous.SHA256, Warning: strings.TrimSuffix(err.Error()+"; "+parseWarning(previous), "; ")}, nil
 		}
 		return Version{}, fmt.Errorf("source %s: %w", s.ID, err)
 	}
@@ -65,7 +74,7 @@ func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offli
 		return fallback(err)
 	}
 	if unchanged {
-		return Version{Rules: previous.Rules, SHA256: previous.SHA256}, nil
+		return Version{Rules: previous.Rules, SHA256: previous.SHA256, Warning: parseWarning(previous)}, nil
 	}
 	parsed, err := Parse(bytes.NewReader(body), source, DefaultLimits())
 	if err != nil {
@@ -86,5 +95,5 @@ func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offli
 	if err = WriteArtifact(path, b); err != nil {
 		return fallback(err)
 	}
-	return Version{Rules: parsed.Rules, SHA256: parsed.SHA256}, nil
+	return Version{Rules: parsed.Rules, SHA256: parsed.SHA256, Warning: parseWarning(parsed)}, nil
 }

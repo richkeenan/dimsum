@@ -34,8 +34,13 @@ func parseHosts(text string) ([]policy.Rule, string) {
 		return nil, "non-sinkhole-mapping"
 	}
 	var rules []policy.Rule
+	invalidDomain := false
 	for _, field := range fields[1:] {
 		rule, code := domainRule(field, policy.Exact)
+		if code == "invalid-domain" {
+			invalidDomain = true
+			continue // Inspect remaining aliases for unsupported syntax.
+		}
 		if code != "" {
 			return nil, code
 		}
@@ -44,6 +49,9 @@ func parseHosts(text string) ([]policy.Rule, string) {
 			continue
 		}
 		rules = append(rules, rule)
+	}
+	if invalidDomain {
+		return nil, "invalid-domain"
 	}
 	return rules, ""
 }
