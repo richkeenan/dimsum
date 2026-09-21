@@ -67,3 +67,28 @@ func TestTemplateRejectsMutableNameDependencies(t *testing.T) {
 		assert.Error(t, err)
 	}
 }
+
+func TestNegativeSOALifetimeMinimum(t *testing.T) {
+	for _, tc := range []struct{ ttl, minimum, cap, want uint32 }{
+		{200, 60, 300, 60}, {20, 60, 300, 20}, {200, 60, 30, 30}, {200, 0, 300, 0},
+	} {
+		m := new(dns.Msg)
+		m.SetQuestion("example.org.", dns.TypeAAAA)
+		m.Response = true
+		m.Rcode = dns.RcodeNameError
+		m.Ns = []dns.RR{&dns.SOA{Hdr: dns.RR_Header{Name: "example.org.", Rrtype: 6, Class: 1, Ttl: tc.ttl}, Ns: ".", Mbox: ".", Minttl: tc.minimum}}
+		w, err := m.Pack()
+		require.NoError(t, err)
+		var patches [8]byte
+		info, err := dnswire.PrepareTemplate(w, patches[:], tc.cap)
+		if tc.want == 0 {
+			assert.Error(t, err)
+			continue
+		}
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, info.Lifetime)
+		assert.Equal(t, tc.want, binary.BigEndian.Uint32(patches[4:]))
+		_, err = dnswire.PrepareTemplate(w, patches[:7], tc.cap)
+		assert.ErrorIs(t, err, dnswire.ErrBounds)
+	}
+}
