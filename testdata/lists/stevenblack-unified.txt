@@ -1,0 +1,8 @@
+# StevenBlack/hosts; excerpt downloaded 2026-09-21; see README.md
+255.255.255.255 broadcasthost
+fe80::1%lo0 localhost
+ff00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::3 ip6-allhosts
+0.0.0.0 0.0.0.0
+0.0.0.0 philadelphia_cbslocal.us.intellitxt.com

@@ -1,0 +1,4 @@
+[Adblock Plus]
+! HaGeZi Multi NORMAL; see README.md
+||ad.001zb.com^
+||analytics.004gmbh.de^

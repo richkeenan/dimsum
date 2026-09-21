@@ -1,0 +1,4 @@
+[Adblock Plus]
+! HaGeZi Multi PRO; see README.md
+||d-p-d-0027912.0013484922656.com^
+||ad.001zb.com^

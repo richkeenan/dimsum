@@ -1,0 +1,4 @@
+[Adblock Plus]
+! OISD Small; see README.md
+||0-02.net^
+||0.myikas.com^

@@ -1,0 +1,6 @@
+[Adblock Plus]
+! OISD Big; see README.md
+||0--foodwarez.da.ru^
+||en--start-tr-zor-cdn.typedream.app^
+||us--start-en-trazor-io-com-cdn--en.typedream.app^
+||xs--ee.blogspot.de^

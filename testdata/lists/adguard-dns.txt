@@ -1,0 +1,5 @@
+! AdGuard DNS filter; see README.md
+||rudimentarytheoreticalrome.com^
+@@||ad.10010.com^
+||adsrvmedia.adk2.co^$important
+@@/\.(gif|jpe?g|png|webp)#(\/?.+)?(\/(ad)s?\/|\/ad-)/
