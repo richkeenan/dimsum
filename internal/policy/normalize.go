@@ -17,9 +17,11 @@ var hostnameProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
 	idna.StrictDomainName(true), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
 
 // Used only after the narrow per-label checks below. Disabling STD3 permits
-// underscores, but retains whole-domain Bidi, A-label and length validation.
+// underscores. Interior hyphens in underscore labels are DNS-safe; strict
+// per-label checks enforce ordinary IDNA/A-label and underscore edge-hyphen rules.
+// Whole-domain Bidi and length validation remain enabled.
 var underscoreDomainProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
-	idna.StrictDomainName(false), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
+	idna.StrictDomainName(false), idna.ValidateLabels(true), idna.CheckHyphens(false), idna.BidiRule(), idna.VerifyDNSLength(true))
 
 // NormalizeName validates a configuration DNS name. ASCII underscore labels use
 // the DNS-safe letters/digits/hyphen/underscore alphabet; other labels retain

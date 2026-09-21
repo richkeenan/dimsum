@@ -50,3 +50,34 @@ func TestDNSUnderscorePolicyForms(t *testing.T) {
 		})
 	}
 }
+
+func TestUnderscoreInteriorHyphens(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"AB--CD_ef.example", "ab--cd_ef.example"},
+		{"ab--cd_ef.א.example", "ab--cd_ef.xn--4db.example"},
+		{"ab--cd_ef.xn--4db.example", "ab--cd_ef.xn--4db.example"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			n, err := policy.NormalizeName(tc.input)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, n.Display())
+			for _, kind := range []policy.Kind{policy.Exact, policy.Suffix} {
+				m, err := policy.Compile(1, []policy.Rule{{ID: "r", Kind: kind, Class: policy.SubscriptionDeny, Pattern: tc.input}}, policy.DefaultLimits())
+				require.NoError(t, err)
+				assert.Equal(t, policy.Block, m.Match(n).Result)
+			}
+		})
+	}
+	for _, input := range []string{
+		"ab--cd.example", "ab--cd.a_b.example",
+		"-ab--cd_ef.example", "ab--cd_ef-.example",
+		"xn--bad_.example", "xn--.a_b.example",
+		"xn--ildcard-0c2c.a_b.example",
+		"123.ab--cd_ef.א.example", "123.ab--cd_ef.xn--4db.example",
+	} {
+		t.Run("reject/"+input, func(t *testing.T) {
+			_, err := policy.NormalizeName(input)
+			assert.Error(t, err)
+		})
+	}
+}
