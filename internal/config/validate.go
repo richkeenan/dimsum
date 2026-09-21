@@ -28,6 +28,15 @@ func Validate(c Config) error {
 	if err := address("admin.listen", c.Admin.Listen); err != nil {
 		return err
 	}
+	if len(c.DNS.Upstreams) > 16 {
+		return fmt.Errorf("dns.upstreams: at most 16 endpoints")
+	}
+	for i, a := range c.DNS.Upstreams {
+		endpoint, err := netip.ParseAddrPort(a)
+		if err != nil || endpoint.Port() == 0 || endpoint.Addr().IsUnspecified() || endpoint.Addr().IsMulticast() {
+			return fmt.Errorf("dns.upstreams[%d]: expected unicast literal IP and nonzero port", i)
+		}
+	}
 	if strings.TrimSpace(c.Paths.DataDir) == "" || strings.TrimSpace(c.Paths.SecretsDir) == "" {
 		return fmt.Errorf("paths: data_dir and secrets_dir are required")
 	}

@@ -107,3 +107,30 @@ func TestLifecycleCancelledBeforeStart(t *testing.T) {
 	t.Cleanup(func() { s.Close() })
 	assert.Error(t, s.Start(ctx, testConfig()), "cancelled context opened listeners")
 }
+
+func TestForwardStartupRollbackAndUnexpectedExit(t *testing.T) {
+	c := testConfig()
+	s := new(app.Service)
+	assert.Error(t, s.StartForwarding(context.Background(), c), "missing upstream accepted")
+	assert.False(t, s.Ready())
+	c.DNS.Upstreams = []string{"127.0.0.1:9"}
+	busy, e := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, e)
+	defer busy.Close()
+	c.Admin.Listen = busy.Addr().String()
+	require.Error(t, s.StartForwarding(context.Background(), c))
+	assert.False(t, s.Ready())
+	c.Admin.Listen = "127.0.0.1:0"
+	require.NoError(t, s.StartForwarding(context.Background(), c))
+	defer s.Close()
+	assert.True(t, s.Ready())
+	assert.ErrorIs(t, s.StartForwarding(context.Background(), c), app.ErrStarted)
+	require.NoError(t, s.Listeners().TCP[0].Close())
+	select {
+	case <-s.Done():
+	case <-time.After(time.Second):
+		require.FailNow(t, "unexpected transport exit did not stop service")
+	}
+	assert.False(t, s.Ready())
+	assert.Error(t, s.Err())
+}

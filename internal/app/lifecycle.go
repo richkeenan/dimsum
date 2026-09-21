@@ -5,14 +5,18 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/resolve"
+	"github.com/richkeenan/dimsum/internal/transport"
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
-// Service is a single-start owner of sockets. DNS and administration handlers
-// attach in subsequent tasks; opening sockets does not yet imply DNS readiness.
+// Service is a single-start owner of sockets. StartForwarding attaches DNS;
+// Start only binds sockets for custom handlers. Administration is still a listener.
 type Service struct {
 	mu        sync.Mutex
 	started   bool
@@ -21,6 +25,8 @@ type Service struct {
 	done      chan struct{}
 	listeners Listeners
 	addresses Addresses
+	ready     bool
+	err       error
 }
 type Addresses struct {
 	DNS   []string
@@ -37,6 +43,31 @@ type Listeners struct {
 var ErrStarted = errors.New("service already started")
 
 func (s *Service) Start(ctx context.Context, c config.Config) error {
+	return s.start(ctx, c, nil)
+}
+
+// StartForwarding binds all sockets transactionally and attaches the DNS pipeline.
+// Start remains available for callers that attach their own transport handlers.
+func (s *Service) StartForwarding(ctx context.Context, c config.Config) error {
+	if err := config.Validate(c); err != nil {
+		return err
+	}
+	endpoints := make([]netip.AddrPort, len(c.DNS.Upstreams))
+	for i, a := range c.DNS.Upstreams {
+		endpoints[i] = netip.MustParseAddrPort(a)
+	}
+	u, err := upstream.New(upstream.Options{Endpoints: endpoints})
+	if err != nil {
+		return err
+	}
+	server, err := transport.New(transport.Options{}, resolve.New(u))
+	if err != nil {
+		return err
+	}
+	return s.start(ctx, c, server)
+}
+
+func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
@@ -85,17 +116,58 @@ func (s *Service) Start(ctx context.Context, c config.Config) error {
 	s.started = true
 	s.stop = make(chan struct{})
 	s.done = make(chan struct{})
+	runCtx, cancel := context.WithCancel(ctx)
+	var workers sync.WaitGroup
+	failures := make(chan error, 1)
+	serve := func(fn func() error) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			err := fn()
+			if runCtx.Err() == nil {
+				if err == nil {
+					err = errors.New("DNS transport stopped unexpectedly")
+				}
+				select {
+				case failures <- err:
+				default:
+				}
+			}
+		}()
+	}
+	if server != nil {
+		for _, listener := range sockets.TCP {
+			serve(func() error { return server.ServeTCP(runCtx, listener) })
+		}
+		for _, packet := range sockets.UDP {
+			serve(func() error { return server.ServeUDP(runCtx, packet.(*net.UDPConn)) })
+		}
+		s.ready = true
+	}
 	success = true
 	go func() {
+		var failure error
 		select {
 		case <-ctx.Done():
 		case <-s.stop:
+		case failure = <-failures:
 		}
+		s.mu.Lock()
+		s.ready = false
+		s.err = failure
+		s.mu.Unlock()
+		cancel()
 		closeListeners(sockets)
+		workers.Wait()
 		close(s.done)
 	}()
 	return nil
 }
+
+// Ready means DNS handlers are attached; it does not assert upstream health or
+// administration API availability. Err reports an unexpected DNS serving exit.
+func (s *Service) Ready() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.ready }
+func (s *Service) Err() error  { s.mu.Lock(); defer s.mu.Unlock(); return s.err }
 
 func closeListeners(l Listeners) {
 	for _, v := range l.TCP {

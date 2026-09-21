@@ -16,7 +16,7 @@ import (
 )
 
 func run(ctx context.Context, args []string, out, stderr io.Writer) int {
-	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml\n\nserve opens lifecycle skeleton listeners (DNS handlers not yet implemented).\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
+	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml\n\nserve forwards DNS using explicit dns.upstreams (literal IP:port endpoints).\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprint(out, usage)
 		return 0
@@ -59,7 +59,7 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		return 0
 	}
 	s := new(app.Service)
-	if err := s.Start(ctx, d.Config()); err != nil {
+	if err := s.StartForwarding(ctx, d.Config()); err != nil {
 		return fail(err)
 	}
 	defer s.Close()
@@ -69,10 +69,13 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		Ready bool     `json:"ready"`
 		DNS   []string `json:"dns"`
 		Admin string   `json:"admin"`
-	}{"listeners_open", false, a.DNS, a.Admin}); err != nil {
+	}{"dns_serving", s.Ready(), a.DNS, a.Admin}); err != nil {
 		return fail(err)
 	}
 	<-s.Done()
+	if err := s.Err(); err != nil {
+		return fail(err)
+	}
 	return 0
 }
 

@@ -18,7 +18,8 @@ type Config struct {
 	Cache   Cache `yaml:"cache"`
 }
 type DNS struct {
-	Listen []string `yaml:"listen"`
+	Listen    []string `yaml:"listen"`
+	Upstreams []string `yaml:"upstreams,omitempty"`
 }
 type Admin struct {
 	Listen string `yaml:"listen"`
@@ -93,6 +94,7 @@ func checkNodes(n *yaml.Node) error {
 func (d *Document) Config() Config {
 	c := d.value
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)
+	c.DNS.Upstreams = append([]string(nil), c.DNS.Upstreams...)
 	return c
 }
 func (d *Document) Bytes() []byte    { return bytes.Clone(d.source) }
