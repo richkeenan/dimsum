@@ -1,0 +1,12 @@
+# Isolated local skeleton; port zero asks the OS for unused test ports.
+version: 1
+dns:
+  listen: ["127.0.0.1:0"]
+admin:
+  listen: "127.0.0.1:0"
+paths:
+  data_dir: "./data"
+  secrets_dir: "./secrets"
+cache:
+  stale_mode: immediate
+  max_stale_seconds: 3600
