@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	apispec "github.com/richkeenan/dimsum/api"
 	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/control"
+	"github.com/richkeenan/dimsum/internal/mcpserver"
 	"github.com/richkeenan/dimsum/internal/webassets"
 	"github.com/stretchr/testify/require"
 )
@@ -41,9 +43,20 @@ func TestBrowserAgainstGoAPI(t *testing.T) {
 	hash, err := admin.HashPassword(password)
 	require.NoError(t, err)
 	server := httptest.NewUnstartedServer(nil)
-	adapter := admin.New(service, admin.Options{PasswordHash: hash, AllowedHosts: []string{server.Listener.Addr().String()}})
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "secrets"), 0700))
+	tokens, err := admin.OpenTokenStore(filepath.Join(dir, "secrets", "api-tokens.json"))
+	require.NoError(t, err)
+	openAPI, err := apispec.JSON()
+	require.NoError(t, err)
+	var adapter *admin.Server
+	mcp, err := mcpserver.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		adapter.LocalHandler().ServeHTTP(w, r)
+	}))
+	require.NoError(t, err)
+	adapter = admin.New(service, admin.Options{Tokens: tokens, MCP: mcp, OpenAPIJSON: openAPI, OpenAPIYAML: apispec.YAML, PasswordHash: hash, AllowedHosts: []string{server.Listener.Addr().String()}})
 	mux := http.NewServeMux()
 	mux.Handle("/api/", adapter.Handler())
+	mux.Handle("/mcp", adapter.Handler())
 	mux.Handle("/session", adapter.Handler())
 	mux.Handle("/health/", adapter.Handler())
 	mux.Handle("/", webassets.Handler())

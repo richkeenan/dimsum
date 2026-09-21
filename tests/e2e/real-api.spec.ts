@@ -20,6 +20,64 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(
     page.getByLabel("Maximum expired-answer age (seconds)"),
   ).toBeEnabled();
+  await page
+    .getByLabel("Token name", { exact: true })
+    .fill("Browser test agent");
+  await page.getByRole("button", { name: "Create token", exact: true }).click();
+  const tokenField = page.getByLabel("New token", { exact: true });
+  await expect(tokenField).toBeVisible();
+  const agentToken = await tokenField.inputValue();
+  expect(agentToken.length).toBeGreaterThan(32);
+  const agentHeaders = {
+    Authorization: `Bearer ${agentToken}`,
+    Accept: "application/json, text/event-stream",
+  };
+  const initialized = await page.request.post("/mcp", {
+    headers: agentHeaders,
+    data: {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "browser-acceptance", version: "1" },
+      },
+    },
+  });
+  expect(initialized.status()).toBe(200);
+  expect((await initialized.json()).result.serverInfo).toBeTruthy();
+  const tools = await page.request.post("/mcp", {
+    headers: agentHeaders,
+    data: { jsonrpc: "2.0", id: 2, method: "tools/list" },
+  });
+  expect(tools.status()).toBe(200);
+  expect(
+    (await tools.json()).result.tools.some(
+      (tool: { name: string }) => tool.name === "get_summary",
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(tokenField).not.toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Revoke Browser test agent" }),
+  ).toBeVisible();
+  await expect(tokenField).not.toBeVisible();
+  const spec = await page.request.get("/api/v1/openapi.json", {
+    headers: agentHeaders,
+  });
+  expect(spec.status()).toBe(200);
+  expect((await spec.json()).openapi).toBe("3.1.0");
+  await page.getByRole("button", { name: "Revoke Browser test agent" }).click();
+  await expect(
+    page.getByRole("button", { name: "Revoke Browser test agent" }),
+  ).not.toBeVisible();
+  const revoked = await page.request.post("/mcp", {
+    headers: agentHeaders,
+    data: { jsonrpc: "2.0", id: 3, method: "tools/list" },
+  });
+  expect(revoked.status()).toBe(401);
   await page.getByLabel("Maximum expired-answer age (seconds)").fill("120");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(

@@ -4,6 +4,196 @@
  */
 
 export interface paths {
+  "/api/v1/openapi.json": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the authenticated OpenAPI document as JSON */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Authoritative OpenAPI document */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": Record<string, never>;
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/openapi.yaml": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the authenticated OpenAPI document as YAML */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Authoritative OpenAPI document */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/yaml": string;
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tokens": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List active full-administrator bearer tokens */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Metadata only; plaintext tokens cannot be retrieved */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              items: components["schemas"]["Token"][];
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    /**
+     * Create an opaque full-administrator bearer token
+     * @description At most 32 active tokens. Store the returned plaintext token; it is shown only once. Token management is not an MCP tool.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            name: string;
+          };
+        };
+      };
+      responses: {
+        /** @description Created token and one-time plaintext credential */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["Token"] & {
+              /** @description Opaque full-administrator bearer credential returned only at creation */
+              readonly token: string;
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tokens/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke a bearer token immediately */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Token revoked; subsequent requests with it are unauthorized */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              /** @constant */
+              revoked: true;
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/password": {
     parameters: {
       query?: never;
@@ -16,10 +206,12 @@ export interface paths {
     /**
      * Change the administrator password
      * @description Accepts 1–1024 UTF-8 bytes, including admin; no forced-change flow.
-     *     Browser requests require the session cookie, Origin and X-CSRF-Token.
+     *     Browser-session requests require the session cookie, Origin and X-CSRF-Token;
+     *     bearer-authenticated requests do not require browser Origin/CSRF credentials.
      *     The permission-protected Unix socket uses filesystem authentication.
      *     Publishes an immutable credential generation through the configuration coordinator.
      *     All previous browser sessions are revoked before success returns; log in again.
+     *     Bearer tokens have a separate lifetime and are revoked explicitly through token management.
      *     Pending external configuration edits or concurrent writes can return 409.
      *     CLI equivalent is dimsum control password @- with the same JSON body.
      */
@@ -1339,6 +1531,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    Token: {
+      /** @description Opaque token metadata identifier; never a credential */
+      id: string;
+      name: string;
+      /** Format: date-time */
+      created_at: string;
+    };
     PasswordChange: {
       /** @description Nonempty password, maximum 1024 UTF-8 bytes. Fresh installations initialize a salted hash of admin only when no credential exists. */
       password: string;

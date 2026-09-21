@@ -15,7 +15,7 @@ application; you don't need Node.js to run it.
 - View query history, client activity, blocking statistics and upstream health.
 - Use a bounded DNS cache with optional stale answers and background refresh.
 - Back up and restore configuration and credentials, or import a Pi-hole setup.
-- Manage the same server through the browser, JSON CLI or an LLM agent with shell access.
+- Manage the same server through the browser, JSON API/CLI or an HTTP MCP agent.
 
 Configuration lives in a comment-preserving YAML file. The UI and CLI update that
 file through the running server. Statistics, cached lists and recovery state live
@@ -172,12 +172,28 @@ for that configuration, use `-L 8080:127.0.0.1:8080` and open port 8080 instead.
 See [Pi-hole migration](docs/operations/migration.md) if you want to bring across
 an existing setup.
 
-## Command-line and LLM/agent control
+## Connect your agent
 
-An LLM agent can control dimsum with ordinary shell commands, locally or over SSH.
-Give it access to the CLI as the operating-system user that runs dimsum. The CLI
-uses an owner-only Unix socket and returns JSON; it does not require the browser
-password. dimsum does not require an LLM API key or an MCP server.
+1. Open **Settings → Agent access** and create a named token.
+2. Add an **HTTP / Streamable HTTP MCP server** in your agent client using the
+   displayed URL, such as `http://dns-server:18080/mcp`.
+3. Set the connection header to `Authorization: Bearer YOUR_TOKEN`.
+
+The agent discovers typed tools for traffic, devices, query details, blocking
+explanations, settings and configuration changes. Ask “Which devices made the
+most DNS requests in the last hour?” or “Why is this domain blocked?” No SSH,
+shell setup, model API key or separate MCP process is required. Your agent client
+must be able to reach the server's network address and support custom auth headers.
+
+Tokens grant administrator access, are shown only when created, and remain valid
+until revoked in Settings. They also authenticate the regular HTTP API. The
+OpenAPI 3.1 contract is available at `/api/v1/openapi.json` and
+`/api/v1/openapi.yaml` using a token or signed-in browser session.
+
+## Command-line control
+
+The CLI remains available for local administration and automation. It uses an
+owner-only Unix socket and returns JSON without a browser password.
 
 For the local quick start, copy the `control` path from the server's startup JSON:
 
@@ -191,15 +207,7 @@ export DIMSUM_CONTROL_SOCKET='/actual/path/from/startup/control'
 ./dist/dimsum control queries --query 'limit=25'
 ```
 
-For the native service, the default socket is `/run/dimsum/control.sock`:
-
-```sh
-ssh user@dns-server 'sudo -u dimsum /usr/bin/dimsum control help'
-ssh user@dns-server 'sudo -u dimsum /usr/bin/dimsum control diagnostics'
-```
-
-The SSH user needs permission to run those commands as `dimsum`. For unattended
-agents, arrange that access through your existing SSH/sudo setup.
+For the native service, the default socket is `/run/dimsum/control.sock`.
 
 ### Make a configuration change
 
@@ -215,14 +223,6 @@ Use `control help` to discover list management, records, clients, blocking contr
 backup/restore jobs and diagnostics. Commands accept JSON inline, from `@FILE`,
 or from standard input with `@-`. Exit code **5** means a revision conflict: read
 the current settings and reconsider the change before retrying.
-
-Example prompt for your agent:
-
-> Manage my dimsum server over SSH at `user@dns-server`. Run
-> `sudo -u dimsum /usr/bin/dimsum control help` to discover the CLI. Inspect the
-> current settings and recent queries, then add an exact deny rule for
-> `ads.example.org`. Use the current saved revision when making the edit, verify
-> it with the rule tester, and summarize the resulting configuration change.
 
 See the [control reference](docs/operations/agent-control.md) for grouped edits,
 job handling, API access and structured response details.

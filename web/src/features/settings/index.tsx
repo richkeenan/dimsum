@@ -4,6 +4,7 @@ import { useResource } from "@/lib/hooks";
 import { Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AgentAccess } from "./agents";
 
 export function Revision({ value }: { value?: Settings }) {
   if (
@@ -347,6 +348,7 @@ export default function SettingsView() {
         </Resource>
       )}
       <PasswordForm />
+      <AgentAccess />
       <details className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 text-xs">
         <summary className="cursor-pointer text-muted-foreground">
           Advanced configuration details
