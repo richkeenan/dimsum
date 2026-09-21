@@ -35,12 +35,13 @@ jobs:
           go test ./internal/dnscache -run '^$' -fuzz '^FuzzReconstruction$' -fuzztime=5s -parallel=2
           go test ./internal/lists -run '^$' -fuzz '^FuzzParse$' -fuzztime=5s -parallel=2
           go test ./internal/policy -run '^$' -fuzz '^FuzzIndexReference$' -fuzztime=5s -parallel=2
-      - run: go build -trimpath -o dist/dimsum ./cmd/dimsum
-      - run: python3 scripts/qualification.py dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: v2.18.2
           args: check
+      - run: sh tests/deploy-service.sh
+      - run: goreleaser build --snapshot --clean --single-target --output dist/dimsum
+      - run: python3 scripts/qualification.py dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
       - run: goreleaser release --snapshot --clean --skip=publish,docker
       - uses: actions/upload-artifact@v4
         with:

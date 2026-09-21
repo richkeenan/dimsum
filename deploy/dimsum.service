@@ -1,6 +1,8 @@
 [Unit]
 Description=dimsum DNS and administration
-After=network.target
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
 Documentation=https://github.com/richkeenan/dimsum
 
 [Service]
@@ -27,11 +29,12 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 ReadWritePaths=/etc/dimsum /var/lib/dimsum
 TimeoutStopSec=30
 KillSignal=SIGTERM
-Restart=no
+Restart=on-failure
+RestartSec=2
 MemoryAccounting=yes
 CPUAccounting=yes
 TasksAccounting=yes

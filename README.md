@@ -40,13 +40,13 @@ git clone https://github.com/richkeenan/dimsum.git
 cd dimsum
 ```
 
-For a source build, use **Go 1.26.8** and **Node.js 24.21.0 with npm**. Build the
-web assets first, then the executable for your machine:
+For source builds, install **Go 1.26.8**, **Node.js 24.21.0 with npm**,
+**GoReleaser 2.18.2**, and **Python 3** (dependency/provenance metadata).
+GoReleaser is the single build entry point; `.goreleaser.yaml` owns the build
+flags and version information. For an executable for your current machine:
 
 ```sh
-sh scripts/build-web.sh
-mkdir -p dist
-go build -trimpath -o dist/dimsum ./cmd/dimsum
+goreleaser build --snapshot --clean --single-target --output dist/dimsum
 ./dist/dimsum version
 ```
 
@@ -56,9 +56,16 @@ locally on macOS for development. The frontend is a TanStack Start static SPA.
 `internal/webassets/dist/` through `web/scripts/embed.mjs`. Rebuild the Go
 executable after frontend changes to update its embedded UI; no Node runtime is needed.
 
-For cross-built Linux binaries, run `sh scripts/build-local.sh` (also requires
-Python 3). For tarballs, Debian packages and container builds, see the
-[installation guide](docs/operations/install.md).
+For Linux amd64/arm64 binaries, tarballs, Debian packages, and checksums:
+
+```sh
+sh scripts/build-local.sh
+# Runs: goreleaser release --snapshot --clean --skip=publish,docker
+```
+
+Artifacts are written to `dist/`. Both commands run the frontend build through
+GoReleaser's hooks. See the [installation guide](docs/operations/install.md)
+for container builds and build provenance.
 
 ## Quick start: run locally
 
@@ -147,21 +154,100 @@ Open **Query log** to inspect the results.
 
 ## Install on a server or Raspberry Pi
 
-Use a 64-bit Linux installation. Native systemd installation is the primary
-deployment path; the repository also includes Linux Docker Compose support.
+Use a 64-bit Linux installation with systemd. Build the artifacts above and copy
+the matching archive and `dist/checksums.txt` to the server. Raspberry Pi OS
+64-bit uses `linux_arm64`; an Intel/AMD server uses `linux_amd64`.
 
-- **Native service:** follow the [systemd installation steps](docs/operations/install.md#native-systemd-installation)
-  to create the service user, install the executable and unit, and start the service.
-- **Debian package:** build a local `.deb` using the
-  [packaging instructions](docs/operations/install.md#standalone-and-native-service-packages).
-  Installing the package does not create your configuration or start the service.
-- **Docker Compose:** follow the [container setup](docs/operations/install.md#dockercompose-on-linux)
-  for configuration/state mounts, directory ownership and optional password setup.
+### Fresh systemd installation
+
+Run these commands on the server, in the directory containing the archive:
+
+```sh
+sha256sum --check --ignore-missing checksums.txt
+mkdir -p /tmp/dimsum-install
+tar -xzf dimsum_*_linux_arm64.tar.gz -C /tmp/dimsum-install
+cd /tmp/dimsum-install
+sudo install -m 0755 dimsum /usr/bin/dimsum
+sudo install -m 0644 deploy/dimsum.sysusers /usr/lib/sysusers.d/dimsum.conf
+sudo systemd-sysusers /usr/lib/sysusers.d/dimsum.conf
+sudo install -d -o dimsum -g dimsum -m 0750 /etc/dimsum /var/lib/dimsum
+sudo install -d -o dimsum -g dimsum -m 0700 /etc/dimsum/secrets
+sudo install -o dimsum -g dimsum -m 0600 deploy/dimsum.example.yaml /etc/dimsum/dimsum.yaml
+sudo install -m 0644 deploy/dimsum.service /usr/lib/systemd/system/dimsum.service
+sudoedit /etc/dimsum/dimsum.yaml
+sudo -u dimsum /usr/bin/dimsum validate -config /etc/dimsum/dimsum.yaml
+sudo systemctl daemon-reload
+sudo systemctl enable --now dimsum
+```
+
+The example initially listens on loopback DNS port **5353** and admin port
+**8080**. Set the intended listeners before starting it. These configuration
+creation commands are for a fresh installation; upgrades use the existing files.
+
+`enable --now` starts dimsum immediately **and at every boot**. The service runs
+as a dedicated nonroot user, waits for network-online startup, and restarts after
+a crash with a two-second delay. Logs go to the system journal:
+
+```sh
+systemctl is-enabled dimsum
+systemctl status dimsum
+journalctl -u dimsum -f
+sudo systemctl restart dimsum
+```
+
+To verify boot startup, reboot the server, reconnect, and check `systemctl
+is-active dimsum` plus a DNS lookup against its configured address. Explicitly
+stopping the service with `systemctl stop dimsum` leaves it stopped until you
+start it again or reboot.
+
+### Upgrading a Pi
+
+From a clean, committed checkout on your build machine:
+
+```sh
+sh scripts/deploy-pi.sh pi@dns-server http://dns-server:18080/health/ready
+```
+
+Use the actual health URL reachable **from the Pi**, including its configured
+admin port. The script builds with GoReleaser, transfers the arm64 archive,
+verifies its checksum, replaces `/usr/bin/dimsum`, restarts `dimsum.service`,
+and waits for readiness. It retains `/usr/bin/dimsum.previous` and restores it
+if startup or the health check fails. Configuration, credentials, and history
+stay in place. SSH access and passwordless sudo for the upgrade are required.
+
+The script upgrades an existing permanent service; it does not perform the
+first installation or switch the network from another resolver.
+
+### Debian package installation
+
+On a fresh server, the GoReleaser `.deb` installs the binary, service unit, and
+example configuration. Create the service account and configuration, then enable
+the service explicitly:
+
+```sh
+sudo apt install ./dimsum_*_arm64.deb
+sudo systemd-sysusers /usr/lib/sysusers.d/dimsum.conf
+sudo install -d -o dimsum -g dimsum -m 0750 /etc/dimsum /var/lib/dimsum
+sudo install -d -o dimsum -g dimsum -m 0700 /etc/dimsum/secrets
+sudo install -o dimsum -g dimsum -m 0600 /usr/share/doc/dimsum/dimsum.example.yaml /etc/dimsum/dimsum.yaml
+sudoedit /etc/dimsum/dimsum.yaml
+sudo -u dimsum /usr/bin/dimsum validate -config /etc/dimsum/dimsum.yaml
+sudo systemctl daemon-reload
+sudo systemctl enable --now dimsum
+```
+
+Use the `amd64.deb` package for Intel/AMD servers. [Docker Compose](docs/operations/install.md#dockercompose-on-linux)
+is also available.
 
 For devices on your network, configure `dns.listen` with the server's LAN address
 and port `53`, then set that address as their DNS server, usually through your
 router's DHCP settings. Both UDP and TCP port 53 must be available. The supplied
 systemd unit grants the nonroot service permission to bind that port.
+
+When deliberately replacing Pi-hole, disable its boot startup as part of the
+cutover (`sudo systemctl disable --now pihole-FTL`). Otherwise both services may
+try to bind port 53 after a reboot. Keep its installation and configuration for
+rollback. See the [migration guide](docs/operations/migration.md).
 
 For remote web access to a loopback-only admin listener, use an SSH tunnel:
 
