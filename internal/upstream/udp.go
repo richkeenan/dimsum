@@ -158,6 +158,14 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 		if e == nil && m.Question.Header.Flags&dnswire.FlagTC != 0 {
 			e = ErrResponse
 		}
+		if errors.Is(e, ErrOverloaded) {
+			// Local admission failed before sending this attempt. The shared ID
+			// table cannot be relieved by trying another endpoint. Release any
+			// half-open lease without recording an endpoint outcome or backoff.
+			attempts--
+			c.record(index, epoch, time.Since(started), nil, 0, true)
+			return result, e
+		}
 		c.record(index, epoch, time.Since(started), e, m.RCode, parent.Err() != nil)
 		if e != nil {
 			last = e
