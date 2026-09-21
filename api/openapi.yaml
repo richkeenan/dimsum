@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: dimsum control API
+  version: 1.0.0
+  description: |
+    All generation and job IDs are decimal strings. Content revisions and transaction IDs
+    are opaque SHA256 strings. No unconfigured statistics dependency returns fabricated data.
+    Mutations require Origin and X-CSRF-Token obtained at login. Collections use YAML
+    schema field names. PATCH paths are relative to the collection (including index),
+    or absolute configuration paths for settings. Unsupported comment-preserving edits
+    fail explicitly. Successful saves include saved and active configuration identities.
+security:
+  - session: []
+paths:
+  /session:
+    post:
+      security: []
+      summary: Authenticate the single administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string}
+      responses:
+        '200':
+          description: HttpOnly SameSite=Strict cookie and CSRF token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token, expires_at]
+                properties:
+                  csrf_token: {type: string}
+                  expires_at: {type: string, format: date-time}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      summary: Revoke current session
+      responses:
+        '200': {description: Logged out}
+        default: {$ref: '#/components/responses/Error'}
+  /health/live:
+    get:
+      security: []
+      responses:
+        '200': {description: Process live}
+  /health/ready:
+    get:
+      security: []
+      responses:
+        '200': {description: Active configuration available}
+        '503': {description: No active configuration}
+  /api/v1/summary:
+    get: &dataGet
+      description: Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider.
+      responses:
+        '200':
+          description: Provider result; counters and identifiers use decimal strings
+          content:
+            application/json:
+              schema: {type: object, additionalProperties: true}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/timeseries:
+    get: *dataGet
+  /api/v1/rankings:
+    get: *dataGet
+  /api/v1/queries:
+    get:
+      <<: *dataGet
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200}}
+        - {name: cursor, in: query, schema: {type: string}}
+  /api/v1/queries/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get: *dataGet
+  /api/v1/settings:
+    get:
+      responses:
+        '200':
+          description: Authoritative parsed configuration (no secret file contents), status, or configuration_error for invalid disk text
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  config: {type: object}
+                  configuration_error: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+    patch: &patch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Mutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/lists: &collection
+    get:
+      responses:
+        '200':
+          description: Configured items, not discovered statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  items: {type: array, items: {}}
+                  configuration_error: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      <<: *patch
+      description: Append one item using revision and item
+    patch: *patch
+    delete:
+      <<: *patch
+      description: Remove item using revision and zero-based index
+  /api/v1/rules: *collection
+  /api/v1/records: *collection
+  /api/v1/clients: *collection
+  /api/v1/upstreams: *collection
+  /api/v1/diagnostics:
+    get: *dataGet
+  /api/v1/blocking:
+    get:
+      responses:
+        '200': {description: 'Object with status, enabled, pause_until (RFC3339 UTC)'}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, enabled]
+              properties:
+                revision: {type: string}
+                enabled: {type: boolean}
+                pause_until: {type: string, format: date-time, description: Absolute future expiry required when enabled is false}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/rules/test:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+                qtype: {type: string, description: Name-policy matcher is QTYPE independent}
+                generation: {type: string, pattern: '^[0-9]+$'}
+      responses:
+        '200': {description: 'name, normalized, generation, decision from active policy matcher; not a DNS lookup'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/config/transactions:
+    post:
+      <<: *patch
+      description: Validate/stage settings edits without activation
+      responses:
+        '200': {description: 'id (opaque content hash) and revision; commit explicitly'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/config/transactions/{id}/commit:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/jobs:
+    get:
+      responses:
+        '200':
+          description: Last 32 jobs, process lifetime only
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/Job'}}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: {type: string, enum: [refresh, backup, restore]}
+                input: {}
+      responses:
+        '202':
+          description: Accepted; one running job maximum
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/events:
+    get:
+      responses:
+        '200':
+          description: 'SSE: reset requires summary refetch; status includes configuration and jobs, at most once/second. Eight clients, two-second write deadline. No replay history.'
+          content:
+            text/event-stream:
+              schema: {type: string}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    session: {type: apiKey, in: cookie, name: dimsum_session}
+  schemas:
+    Activation:
+      type: object
+      required: [saved_revision, active_revision, active_generation, pending, recovered, restart_required, sources]
+      properties:
+        saved_revision: {type: string}
+        active_revision: {type: string}
+        active_generation: {type: string, pattern: '^[0-9]+$'}
+        pending: {type: boolean}
+        recovered: {type: boolean}
+        restart_required: {type: boolean}
+        error: {type: string}
+        sources: {type: array, items: {type: object}}
+    Mutation:
+      type: object
+      required: [revision]
+      properties:
+        revision: {type: string}
+        edits:
+          type: array
+          items:
+            type: object
+            required: [path, value]
+            properties:
+              path: {type: array, items: {type: string}}
+              value: {type: [string, integer, boolean]}
+        item: {}
+        index: {type: integer, minimum: 0}
+    Job:
+      type: object
+      required: [id, kind, state, created]
+      properties:
+        id: {type: string, pattern: '^[0-9]+$'}
+        kind: {type: string}
+        state: {type: string, enum: [running, succeeded, failed]}
+        created: {type: string, format: date-time}
+        result: {}
+        error: {type: string}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id, field_errors]
+          properties:
+            code: {type: string}
+            message: {type: string}
+            request_id: {type: string}
+            active_generation: {type: string, pattern: '^[0-9]+$'}
+            field_errors: {type: array, items: {type: object}}
+  responses:
+    Activation:
+      description: Validated and activated configuration
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Activation'}
+    Error:
+      description: '400 malformed, 401 auth, 403 CSRF/Host/Origin, 409 revision/generation conflict, 422 validation, 429 capacity, 503 unavailable'
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

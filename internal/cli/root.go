@@ -1,0 +1,157 @@
+// Package cli is a lightweight JSON client for the running coordinator.
+package cli
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+)
+
+const Help = `dimsum control [--socket PATH] COMMAND
+
+Read operations (JSON):
+  summary | timeseries | queries | rankings [--query 'from=...&to=...&limit=...']
+  settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs
+  query ID
+Mutation operations:
+  patch RESOURCE JSON       {"revision":"...","edits":[{"path":["..."],"value":...}]}
+  add RESOURCE JSON         {"revision":"...","item":{...}}
+  delete RESOURCE JSON      {"revision":"...","index":0}
+  blocking JSON             {"revision":"...","enabled":false,"pause_until":"RFC3339"}
+  rules-test JSON            {"name":"example.org","generation":"1"}
+  stage JSON                 revision and grouped scalar edits
+  commit ID
+  job JSON                   {"kind":"refresh|backup|restore","input":{...}}
+  events                     SSE stream; reconnect requires a fresh summary fetch
+  request METHOD PATH [JSON] complete HTTP parity, including future operations
+
+Use --query with GET commands for server-side filtering. JSON is a literal argument.
+Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
+Exit: 0 success, 2 usage, 3 connection/I/O, 4 rejected request, 5 conflict, 6 unavailable.
+`
+
+func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
+	socket := os.Getenv("DIMSUM_CONTROL_SOCKET")
+	if socket == "" {
+		socket = "/run/dimsum/control.sock"
+	}
+	if len(args) > 0 && args[0] == "control" {
+		args = args[1:]
+	}
+	if len(args) >= 2 && args[0] == "--socket" {
+		socket = args[1]
+		args = args[2:]
+	}
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
+		fmt.Fprint(out, Help)
+		return 0
+	}
+	method, path, body := "GET", "/api/v1/"+args[0], ""
+	query := ""
+	if len(args) >= 3 && args[len(args)-2] == "--query" {
+		query = args[len(args)-1]
+		args = args[:len(args)-2]
+	}
+	bad := func() int { fmt.Fprintln(stderr, "invalid arguments; run dimsum control help"); return 2 }
+	switch args[0] {
+	case "patch", "add", "delete":
+		if len(args) != 3 {
+			return bad()
+		}
+		method = map[string]string{"patch": "PATCH", "add": "POST", "delete": "DELETE"}[args[0]]
+		path = "/api/v1/" + args[1]
+		body = args[2]
+	case "blocking":
+		if len(args) == 2 {
+			method = "PUT"
+			body = args[1]
+		} else if len(args) != 1 {
+			return bad()
+		}
+	case "rules-test", "stage", "job":
+		if len(args) != 2 {
+			return bad()
+		}
+		method = "POST"
+		path = map[string]string{"rules-test": "/api/v1/rules/test", "stage": "/api/v1/config/transactions", "job": "/api/v1/jobs"}[args[0]]
+		body = args[1]
+	case "commit":
+		if len(args) != 2 {
+			return bad()
+		}
+		method = "POST"
+		path = "/api/v1/config/transactions/" + url.PathEscape(args[1]) + "/commit"
+	case "query":
+		if len(args) != 2 {
+			return bad()
+		}
+		path = "/api/v1/queries/" + url.PathEscape(args[1])
+	case "request":
+		if len(args) < 3 || len(args) > 4 {
+			return bad()
+		}
+		method, path = args[1], args[2]
+		if len(args) == 4 {
+			body = args[3]
+		}
+	case "summary", "timeseries", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events":
+		if len(args) != 1 {
+			return bad()
+		}
+	default:
+		return bad()
+	}
+	if !strings.HasPrefix(path, "/api/v1/") && !strings.HasPrefix(path, "/health/") {
+		return bad()
+	}
+	if query != "" {
+		if strings.Contains(path, "?") {
+			return bad()
+		}
+		path += "?" + query
+	}
+	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)
+	}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	if strings.HasPrefix(path, "/api/v1/events") {
+		client.Timeout = 0
+	}
+	req, e := http.NewRequestWithContext(ctx, method, "http://local"+path, strings.NewReader(body))
+	if e != nil {
+		fmt.Fprintln(stderr, e)
+		return 2
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, e := client.Do(req)
+	if e != nil {
+		fmt.Fprintln(stderr, e)
+		return 3
+	}
+	defer resp.Body.Close()
+	dst := out
+	if resp.StatusCode >= 400 {
+		dst = stderr
+	}
+	if _, e = io.Copy(dst, resp.Body); e != nil {
+		fmt.Fprintln(stderr, e)
+		return 3
+	}
+	switch resp.StatusCode {
+	case 409:
+		return 5
+	case 503:
+		return 6
+	}
+	if resp.StatusCode >= 400 {
+		return 4
+	}
+	return 0
+}
