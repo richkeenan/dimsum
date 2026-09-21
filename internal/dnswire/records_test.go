@@ -69,7 +69,7 @@ func opt(size uint16, ttl uint32, data []byte) []byte {
 }
 
 func TestEDNS(t *testing.T) {
-	for _, size := range []uint16{512, 1232, 4096} {
+	for _, size := range []uint16{0, 511, 512, 1232, 4096} {
 		p := query()
 		p[11] = 1
 		// ECS, COOKIE, padding, EDE and an unknown option; only TLV syntax is

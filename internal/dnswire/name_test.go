@@ -88,3 +88,32 @@ func TestNameBoundariesAndOwnership(t *testing.T) {
 		t.Fatal("name borrowed input")
 	}
 }
+
+func TestCompressionAndMessageLimits(t *testing.T) {
+	// Exercise both pointer target octets and the exact traversal boundary.
+	p := make([]byte, 300)
+	p[256], p[257], p[258] = 1, 'Z', 0
+	p[298], p[299] = 0xc1, 0
+	var n Name
+	if err := DecodeName(p, 298, &n); err != nil || n.End != 300 || !bytes.Equal(n.Canonical[:n.Length], []byte{1, 'z', 0}) {
+		t.Fatalf("14-bit pointer: %v %+v", err, n)
+	}
+	p = []byte{0}
+	for i := 0; i < 32; i++ {
+		target := len(p) - 2
+		if i == 0 {
+			target = 0
+		}
+		p = append(p, 0xc0, byte(target))
+	}
+	if err := DecodeName(p, 63, &n); err != nil || n.Length != 1 || n.End != 65 {
+		t.Fatalf("32 pointers: %v", err)
+	}
+	p = make([]byte, 65535)
+	if err := DecodeName(p, 65534, &n); err != nil || n.End != 65535 {
+		t.Fatalf("last legal byte: %v", err)
+	}
+	if err := DecodeName(append(p, 0), 0, &n); !errors.Is(err, ErrBounds) {
+		t.Fatalf("oversize: %v", err)
+	}
+}

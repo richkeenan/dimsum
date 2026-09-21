@@ -1,7 +1,9 @@
 // Package dnswire parses DNS messages without retaining or mutating caller storage
 // except for explicitly documented borrowed slices. Callers must keep borrowed
-// messages immutable and alive until all consumers finish. Outputs are usable
-// only on success. Names are copied values; no wire labels are treated as UTF-8.
+// messages immutable and alive until all consumers finish. Output pointers must
+// be nonnil and output storage must not overlap input storage. Outputs are usable
+// only on success unless explicitly documented otherwise. Names are copied
+// values; no wire labels are treated as UTF-8.
 package dnswire
 
 import "errors"

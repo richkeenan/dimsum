@@ -82,6 +82,10 @@ func TestQuestionValidation(t *testing.T) {
 			if err := q.RequestError(); !errors.Is(err, tt.want) {
 				t.Fatalf("%v want %v", err, tt.want)
 			}
+			var m Message
+			if err := ParseRequest(p, &m); !errors.Is(err, tt.want) {
+				t.Fatalf("whole request: %v want %v", err, tt.want)
+			}
 		})
 	}
 	var q Question
