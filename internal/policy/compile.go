@@ -134,6 +134,9 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 				suffixes = append(suffixes, suffixBuild{string(reverseName(n, &buf)), head})
 			}
 		} else {
+			// regexp and wildcard-bearing glob labels can retain their input
+			// strings. Detach a short pattern from a possibly huge feed buffer.
+			r.Pattern = strings.Clone(r.Pattern)
 			fallback = append(fallback, r)
 			s.fallbackIDs = append(s.fallbackIDs, head)
 		}

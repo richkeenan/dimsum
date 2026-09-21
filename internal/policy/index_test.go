@@ -3,6 +3,9 @@ package policy
 import (
 	"fmt"
 	"math/rand"
+	"regexp"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +34,17 @@ func TestIndexDifferential(t *testing.T) {
 		rules = append(rules, Rule{ID: fmt.Sprintf("rule%04d", i), SourceID: fmt.Sprintf("source%d", i%7), SourceText: pattern, Kind: kind, Class: classes[rng.Intn(len(classes))], Pattern: pattern})
 	}
 	rules = append(rules, Rule{ID: "idna", SourceID: "unicode", Kind: Suffix, Class: SubscriptionDeny, Pattern: "BÜCHER。Example。"})
+	for i := range 80 {
+		pattern := fmt.Sprintf("%s%d.zone%d.example", []string{"bücher", "faß", "א", "例子"}[i%4], i, rng.Intn(5))
+		kind := []Kind{Exact, Suffix}[i%2]
+		rules = append(rules, Rule{ID: fmt.Sprintf("unicode%d", i), SourceID: fmt.Sprintf("source%d", i%7), Kind: kind, Class: classes[rng.Intn(len(classes))], Pattern: pattern})
+		n, err := NormalizeName(pattern)
+		require.NoError(t, err)
+		names = append(names, n)
+		n, err = NormalizeName("child." + pattern)
+		require.NoError(t, err)
+		names = append(names, n)
+	}
 	for i := range 400 {
 		n, err := NormalizeName(fmt.Sprintf("n%d.zone%d.example", rng.Intn(80), rng.Intn(5)))
 		require.NoError(t, err)
@@ -58,10 +72,15 @@ func TestIndexDifferential(t *testing.T) {
 		}
 		ref, err := Compile(42, enabled, DefaultLimits())
 		require.NoError(t, err)
+		reordered := slices.Clone(enabled)
+		rng.Shuffle(len(reordered), func(i, j int) { reordered[i], reordered[j] = reordered[j], reordered[i] })
+		shuffled, err := CompileSnapshot(42, reordered, DefaultLimits())
+		require.NoError(t, err)
 		for i, n := range names {
 			assert.Equal(t, ref.Match(n), got.Match(n))
 			q := Query{Original: names[(i+3)%len(names)], Name: n, Explain: true, Local: i%19 == 0, Paused: i%23 == 0}
 			assert.Equal(t, ref.Evaluate(q), got.Evaluate(q))
+			assert.Equal(t, ref.Evaluate(q), shuffled.Evaluate(q), "stable winner independent of input order")
 		}
 		for _, r := range enabled {
 			actual, ok := got.Rule(r.ID)
@@ -181,5 +200,66 @@ func TestCompileWideProvenanceAndDNSBounds(t *testing.T) {
 		n, err := NormalizeName(pattern)
 		require.NoError(t, err)
 		assert.Equal(t, ref.Match(n), got.Match(n))
+	}
+}
+
+func FuzzIndexReference(f *testing.F) {
+	f.Add("bücher.example", []byte{'A', '.', 0, 255}, false)
+	f.Add("example.test", []byte("child"), true)
+	f.Add("א.example", []byte{'*', '?'}, false)
+	f.Fuzz(func(t *testing.T, domain string, label []byte, disabled bool) {
+		n, err := NormalizeName(domain)
+		if err != nil || len(n.wire) > 189 || len(label) == 0 || len(label) > 63 {
+			t.Skip()
+		}
+		wire := append([]byte{byte(len(label))}, label...)
+		wire = append(wire, n.wire...)
+		wire = append(wire, 0)
+		query, err := NameFromWire(wire)
+		require.NoError(t, err)
+		rules := []Rule{
+			{ID: "exact", SourceID: "one", Kind: Exact, Class: CustomDeny, Pattern: domain},
+			{ID: "suffix", SourceID: "one", Kind: Suffix, Class: SubscriptionDeny, Pattern: domain},
+			{ID: "duplicate", SourceID: "two", Kind: Suffix, Class: SubscriptionDeny, Pattern: domain},
+			{ID: "wildcard", SourceID: "three", Kind: Wildcard, Class: SubscriptionAllow, Pattern: "*." + domain},
+			{ID: "regex", SourceID: "four", Kind: Regex, Class: CustomAllow, Pattern: `(^|\.)` + regexp.QuoteMeta(n.Display()) + `$`},
+		}
+		opts := DefaultSnapshotOptions()
+		opts.DisabledSources = map[string]bool{"four": disabled}
+		s, err := CompileSnapshotWithOptions(9, rules, DefaultLimits(), opts)
+		require.NoError(t, err)
+		if disabled {
+			rules = rules[:len(rules)-1]
+		}
+		ref, err := Compile(9, rules, DefaultLimits())
+		require.NoError(t, err)
+		for _, q := range []Query{{Original: query, Name: query, Explain: true}, {Original: n, Name: query, Explain: true}, {Original: query, Name: n, Explain: true}, {Original: n, Name: query, Paused: true, Explain: true}, {Original: n, Name: query, Local: true, Explain: true}} {
+			assert.Equal(t, ref.Evaluate(q), s.Evaluate(q))
+		}
+	})
+}
+
+func TestCompileFallbackDoesNotPinSourceBuffer(t *testing.T) {
+	// Feed parsers may hand out short substrings of a large source buffer. The
+	// immutable snapshot must retain only the admitted pattern, not that buffer.
+	for _, kind := range []Kind{Regex, Glob} {
+		t.Run(string(kind), func(t *testing.T) {
+			runtime.GC()
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			build := func() (*PolicySnapshot, error) {
+				pattern := "ads?.example"
+				large := pattern + strings.Repeat("x", 32<<20)
+				return CompileSnapshot(1, []Rule{{ID: "fallback", Kind: kind, Class: SubscriptionDeny, Pattern: large[:len(pattern)]}}, DefaultLimits())
+			}
+			s, err := build()
+			require.NoError(t, err)
+			runtime.GC()
+			runtime.ReadMemStats(&after)
+			// Wide slack tolerates runtime/test bookkeeping; a pinned 32 MiB source
+			// is unambiguously outside this tiny snapshot's retained memory budget.
+			assert.Less(t, int64(after.HeapAlloc)-int64(before.HeapAlloc), int64(8<<20))
+			runtime.KeepAlive(s)
+		})
 	}
 }
