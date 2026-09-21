@@ -47,8 +47,10 @@ go build -trimpath -o dist/dimsum ./cmd/dimsum
 ```
 
 Linux amd64 and arm64 are the deployment targets. You can also build and run
-locally on macOS for development. The executable embeds the assets produced by
-the web build; rebuild it after changing the frontend for the embedded UI to update.
+locally on macOS for development. The frontend is a TanStack Start static SPA.
+`npm --prefix web run build` produces `web/dist/client/` and copies it into
+`internal/webassets/dist/` through `web/scripts/embed.mjs`. Rebuild the Go
+executable after frontend changes to update its embedded UI; no Node runtime is needed.
 
 For cross-built Linux binaries, run `sh scripts/build-local.sh` (also requires
 Python 3). For tarballs, Debian packages and container builds, see the
@@ -89,10 +91,13 @@ Data and secret paths are relative to the configuration file. This setup stores
 them under `artifacts/dev/`, which Git ignores. It starts with one example rule;
 choose subscriptions in **Filter lists** after signing in.
 
-### 2. Set your admin password
+### 2. Choose an admin password (optional)
 
-There is **no default admin password or username**. Bootstrap a password before
-your first login. Choose one between 12 and 1,024 bytes long.
+Fresh installs automatically use the password **`admin`**, with no username.
+Existing credentials are preserved. You can change the password in **Settings**
+after signing in; there is no forced-change step. Passwords accept 1–1,024 UTF-8 bytes.
+
+To choose a different password before the first start, optionally bootstrap it:
 
 This command uses Python 3 to prompt without echoing your password and passes it
 to dimsum over standard input:
@@ -116,7 +121,8 @@ See [recovery](docs/operations/recovery.md) for existing installations and resto
 ./dist/dimsum serve -config artifacts/dev/dimsum.yaml
 ```
 
-Open **http://127.0.0.1:18080/** and enter the password you just created.
+Open **http://127.0.0.1:18080/** and sign in with **`admin`**, or your existing or
+bootstrapped password.
 The Go server serves both the dashboard and its API. No frontend dev server is
 needed for this view. Stop the server with **Ctrl+C**.
 
@@ -141,13 +147,12 @@ Use a 64-bit Linux installation. Native systemd installation is the primary
 deployment path; the repository also includes Linux Docker Compose support.
 
 - **Native service:** follow the [systemd installation steps](docs/operations/install.md#native-systemd-installation)
-  to create the service user, install the executable and unit, bootstrap the
-  password, and start the service.
+  to create the service user, install the executable and unit, and start the service.
 - **Debian package:** build a local `.deb` using the
   [packaging instructions](docs/operations/install.md#standalone-and-native-service-packages).
   Installing the package does not create your configuration or start the service.
 - **Docker Compose:** follow the [container setup](docs/operations/install.md#dockercompose-on-linux)
-  for configuration/state mounts, directory ownership and password bootstrap.
+  for configuration/state mounts, directory ownership and optional password setup.
 
 For devices on your network, configure `dns.listen` with the server's LAN address
 and port `53`, then set that address as their DNS server, usually through your
@@ -182,6 +187,7 @@ export DIMSUM_CONTROL_SOCKET='/actual/path/from/startup/control'
 ./dist/dimsum control diagnostics
 ./dist/dimsum control settings
 ./dist/dimsum control lists
+./dist/dimsum control catalog
 ./dist/dimsum control queries --query 'limit=25'
 ```
 
@@ -221,33 +227,44 @@ Example prompt for your agent:
 See the [control reference](docs/operations/agent-control.md) for grouped edits,
 job handling, API access and structured response details.
 
+### Change the admin password
+
+With the server running and the control socket selected:
+
+```sh
+python3 -c 'import getpass, json; print(json.dumps({"password": getpass.getpass("New dimsum admin password: ")}))' \
+  | ./dist/dimsum control password @-
+```
+
+This is also available in **Settings** and through `POST /api/v1/password` with
+`{"password":"..."}`. A successful change revokes all browser sessions; sign in again.
+
 ## Development
 
 ### Frontend with live reload
 
-The Vite dev server runs the frontend only. You must also run the Go backend and
-bootstrap its admin password using the steps above.
+The TanStack Start/Vite dev server runs the frontend only. Run the Go backend
+using the quick-start steps above.
 
 For the quick-start backend on port 18080:
 
-1. Change **both** `/api` and `/session` proxy targets in
-   `web/vite.config.ts` from `http://127.0.0.1:8080` to `http://127.0.0.1:18080`.
-2. Add `allowed_hosts: ["127.0.0.1:5173"]` under `admin` in your YAML config.
-3. Restart the Go server after changing `allowed_hosts`.
-4. Start Vite from another terminal:
+1. Add `allowed_hosts: ["127.0.0.1:5173"]` under `admin` in your YAML config.
+2. Restart the Go server after changing `allowed_hosts`.
+3. Start the frontend from another terminal:
 
 ```sh
 npm --prefix web run dev -- --port 5173 --strictPort
 ```
 
-Open **http://127.0.0.1:5173/** and use the same admin password. If you use Bun,
-`bun run dev` from `web/` also starts only Vite; it does not start dimsum or create
-a password. Use the port Vite prints and match it in `admin.allowed_hosts`.
+Open **http://127.0.0.1:5173/** and use the same admin password. Both `/api` and
+`/session` proxy to `http://127.0.0.1:18080` by default. To use another backend:
 
-If you see an error from another application, check the proxy targets: another
-service may own port 8080. A connection-refused error means the configured backend
-is not listening. For the embedded UI at port 18080, Vite's proxy settings do not
-apply.
+```sh
+DIMSUM_API_URL=http://127.0.0.1:8080 npm --prefix web run dev -- --port 5173 --strictPort
+```
+
+Match the frontend host and port in `admin.allowed_hosts`. A connection-refused
+proxy error means the backend is not listening at `DIMSUM_API_URL`.
 
 ### Tests and API types
 
