@@ -1,11 +1,12 @@
-import { count, text, type Row } from "@/lib/api";
+import { useState } from "react";
+import { count, text, outcomes, type Row, type Point } from "@/lib/api";
 import { DataTable } from "@/components/data";
-const outcomes = ["forwarded", "blocked", "cached", "stale", "errors"];
-export default function TrafficChart({ buckets }: { buckets: Row[] }) {
+export default function TrafficChart({ buckets }: { buckets: Point[] }) {
+  const [table, setTable] = useState(false);
   const values = buckets.map((b) =>
     outcomes.map((k) => {
-      const n = Number(b[k]);
-      return Number.isFinite(n) && n >= 0 ? n : 0;
+      const n = Number(b.outcomes?.[k]);
+      return !b.gap && Number.isFinite(n) && n >= 0 ? n : 0;
     }),
   );
   const max = Math.max(1, ...values.map((v) => v.reduce((a, b) => a + b, 0)));
@@ -26,18 +27,21 @@ export default function TrafficChart({ buckets }: { buckets: Row[] }) {
       {buckets.length ? (
         <div
           className="traffic-chart"
+          style={{ gap: buckets.length > 100 ? 0 : 3 }}
           role="img"
           aria-label="DNS outcomes over time. Exact values are available in the traffic table below."
         >
           {buckets.map((b, i) => (
             <div
               className={
-                "bar " + (b.missing || b.complete === false ? "gap" : "")
+                "bar " +
+                (b.gap || !b.outcomes || b.complete === false ? "gap" : "")
               }
               key={i}
-              title={`${text(b.time ?? b.start)}: ${b.missing ? "missing" : values[i].reduce((a, v) => a + v, 0) + " queries"}`}
+              title={`${b.time}: ${b.gap || !b.outcomes ? "Missing interval" : outcomes.map((k) => `${k}: ${b.outcomes?.[k] ?? "unavailable"}`).join(", ")}`}
             >
-              {!b.missing &&
+              {!b.gap &&
+                b.outcomes &&
                 outcomes.map((k, j) => (
                   <div
                     key={k}
@@ -51,24 +55,29 @@ export default function TrafficChart({ buckets }: { buckets: Row[] }) {
       ) : (
         <p className="empty">No traffic buckets in this range.</p>
       )}
-      <details>
+      <details onToggle={(e) => setTable(e.currentTarget.open)}>
         <summary>View traffic as a table</summary>
-        <DataTable
-          items={buckets}
-          columns={[
-            {
-              key: "time",
-              label: "Interval",
-              render: (r) => text(r.time ?? r.start),
-            },
-            ...outcomes.map((key) => ({
-              key,
-              label: key,
-              render: (r: Row) => (r.missing ? "Missing" : count(r[key])),
-            })),
-            { key: "complete", label: "Complete" },
-          ]}
-        />
+        {table && (
+          <DataTable
+            items={buckets}
+            columns={[
+              {
+                key: "time",
+                label: "Interval",
+                render: (r) => text(r.time),
+              },
+              ...outcomes.map((key) => ({
+                key,
+                label: key,
+                render: (r: Row) =>
+                  r.gap || !r.outcomes
+                    ? "Missing"
+                    : count((r.outcomes as Row)[key]),
+              })),
+              { key: "complete", label: "Complete" },
+            ]}
+          />
+        )}
       </details>
     </>
   );

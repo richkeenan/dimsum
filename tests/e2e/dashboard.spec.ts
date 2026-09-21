@@ -146,8 +146,8 @@ test("incomplete history and unavailable statistics do not imply DNS outage", as
   );
   await page.goto("/");
   await expect(
-    page.getByText("Incomplete history.", { exact: false }),
+    page.getByText("Incomplete history.", { exact: false }).first(),
   ).toBeVisible();
   await expect(page.getByText("History storage unavailable")).toBeVisible();
-  await expect(page.getByText("Healthy", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ready", { exact: true })).toBeVisible();
 });

@@ -1,7 +1,92 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, APIError, count, percentage, normalizeSettings } from "./api";
+import {
+  api,
+  APIError,
+  count,
+  percentage,
+  normalizeSettings,
+  queryParameters,
+  historyWindow,
+  microsecondsToMS,
+  backupURL,
+  archiveBase64,
+  maxArchiveBytes,
+} from "./api";
 afterEach(() => vi.unstubAllGlobals());
 describe("API boundary", () => {
+  it("sends only supported nonempty provider filters and opaque cursors", () => {
+    expect(
+      queryParameters(
+        {
+          name: "",
+          client: "192.0.2.1",
+          outcome: "cache",
+          upstream: "9",
+          source: "x",
+        },
+        "",
+      ).toString(),
+    ).toBe("limit=100&client=192.0.2.1&outcome=cache");
+    expect(queryParameters({}, "9007199254740993").get("cursor")).toBe(
+      "9007199254740993",
+    );
+  });
+  it("keeps exact range boundaries and requests a bounded number of provider buckets", () => {
+    for (const preset of ["1h", "24h", "7d"]) {
+      const now = Date.parse("2026-09-21T12:34:56Z");
+      const w = historyWindow(preset, now);
+      const p = new URLSearchParams(w.params);
+      const from = Date.parse(p.get("from")!),
+        to = Date.parse(p.get("to")!);
+      expect(to).toBe(now);
+      expect(to - from).toBe(
+        (
+          { "1h": 3600000, "24h": 86400000, "7d": 604800000 } as Record<
+            string,
+            number
+          >
+        )[preset],
+      );
+      expect(
+        Math.ceil(to / (w.resolution * 1000)) -
+          Math.floor(from / (w.resolution * 1000)),
+      ).toBeLessThanOrEqual(1500);
+    }
+    const custom = { from: "2026-01-01T12:34:56Z", to: "2026-09-21T12:34:56Z" };
+    const result = historyWindow("custom", 0, custom);
+    const p = new URLSearchParams(result.params);
+    expect(Date.parse(p.get("from")!)).toBe(Date.parse(custom.from));
+    expect(Date.parse(p.get("to")!)).toBe(Date.parse(custom.to));
+    expect(result.resolution).toBe(86400);
+  });
+  it("formats duration decimals exactly and restricts download links to backup artifacts", () => {
+    expect(microsecondsToMS("9007199254740993")).toBe("9007199254740.993");
+    expect(microsecondsToMS("180")).toBe("0.180");
+    expect(backupURL({ download_url: "https://evil.test" })).toBeUndefined();
+    expect(
+      backupURL({ download_url: "/api/v1/config/backups/" + "a".repeat(32) }),
+    ).toBe("/api/v1/config/backups/" + "a".repeat(32));
+  });
+  it("rejects oversized and empty archives before reading or encoding them", async () => {
+    const arrayBuffer = vi.fn();
+    await expect(
+      archiveBase64({
+        size: maxArchiveBytes + 1,
+        arrayBuffer,
+      } as unknown as File),
+    ).rejects.toThrow("2 MiB");
+    await expect(
+      archiveBase64({ size: 0, arrayBuffer } as unknown as File),
+    ).rejects.toThrow("empty");
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    const bytes = new Uint8Array([0, 255, 128, 42]);
+    expect(
+      await archiveBase64({
+        size: 4,
+        arrayBuffer: async () => bytes.buffer,
+      } as File),
+    ).toBe("AP+AKg==");
+  });
   it("uses the documented nested saved revision, including invalid disk status", () => {
     expect(
       normalizeSettings({

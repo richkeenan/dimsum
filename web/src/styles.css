@@ -377,6 +377,18 @@ main {
 .cached {
   background: #9bb6a0;
 }
+.cache {
+  background: #9bb6a0;
+}
+.local {
+  background: #7c9cba;
+}
+.error {
+  background: #b97770;
+}
+.rejected {
+  background: #927790;
+}
 .stale {
   background: #b5b9cd;
 }
@@ -413,7 +425,7 @@ main {
   flex: 1;
   display: flex;
   flex-direction: column-reverse;
-  min-width: 2px;
+  min-width: 0;
   max-width: 50px;
 }
 .bar > div {

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, rows, text, type Page, type Row, type Settings } from "@/lib/api";
+import {
+  api,
+  rows,
+  text,
+  queryParameters,
+  microsecondsToMS,
+  outcomes,
+  type Page,
+  type Row,
+  type Settings,
+} from "@/lib/api";
 import { useLive, useResource } from "@/lib/hooks";
 import {
   Completeness,
@@ -44,11 +54,7 @@ export default function Queries({
   useEffect(() => {
     setCursors([""]);
   }, [range]);
-  const query = new URLSearchParams({
-    ...filters,
-    limit: "100",
-    cursor: cursors.at(-1) ?? "",
-  });
+  const query = queryParameters(filters, cursors.at(-1));
   const state = useResource<Page>(
     "queries?" + range + "&" + query,
     refresh + tick,
@@ -63,22 +69,27 @@ export default function Queries({
           setCursors([""]);
         }}
       >
-        {[
-          "name",
-          "client",
-          "outcome",
-          "qtype",
-          "upstream",
-          "rule",
-          "source",
-        ].map((key) => (
+        {["name", "client", "outcome", "qtype"].map((key) => (
           <label key={key}>
-            {key === "qtype" ? "Type" : key}
-            <Input
-              aria-label={"Filter " + key}
-              value={draft[key] ?? ""}
-              onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-            />
+            {key === "qtype" ? "Type" : key === "name" ? "Exact name" : key}
+            {key === "outcome" ? (
+              <select
+                aria-label="Filter outcome"
+                value={draft[key] ?? ""}
+                onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+              >
+                <option value="">All outcomes</option>
+                {outcomes.map((o) => (
+                  <option key={o}>{o}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                aria-label={"Filter " + key}
+                value={draft[key] ?? ""}
+                onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
+              />
+            )}
           </label>
         ))}
         <Button type="submit">Filter</Button>
@@ -125,8 +136,13 @@ export default function Queries({
                 label: "Client",
                 render: (r) => (
                   <span>
-                    {text(r.client_name ?? r.client)}
-                    {r.client_name != null && <small>{text(r.client)}</small>}
+                    {text(r.client_name || r.client)}
+                    {!!r.client_name && (
+                      <small>
+                        {text(r.client)}
+                        {r.client_name_fresh === false ? " · stale name" : ""}
+                      </small>
+                    )}
                   </span>
                 ),
               },
@@ -152,10 +168,14 @@ export default function Queries({
                   </span>
                 ),
               },
-              { key: "reason", label: "Reason" },
-              { key: "duration_ms", label: "Time (ms)" },
-              { key: "upstream", label: "Upstream" },
-              { key: "freshness", label: "Freshness" },
+              { key: "rule_id", label: "Rule ID" },
+              {
+                key: "duration_us",
+                label: "Time (ms)",
+                render: (r) => microsecondsToMS(r.duration_us),
+              },
+              { key: "upstream_id", label: "Upstream ID" },
+              { key: "generation", label: "Generation" },
             ]}
           />
         </section>

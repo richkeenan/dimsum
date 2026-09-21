@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+  "/api/v1/config/backups/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download the most recent completed configuration backup
+     * @description Owner-authenticated archive including necessary credentials. Expires at the next backup or restart.
+     */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Configuration archive */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/x-tar": string;
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/session": {
     parameters: {
       query?: never;
@@ -150,25 +192,28 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
+    /** @description Retained admitted-query totals; rejected admissions are separate. Missing history is 503. */
     get: {
       parameters: {
-        query?: never;
+        query?: {
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+        };
         header?: never;
         path?: never;
         cookie?: never;
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Retained totals and observation completeness */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              [key: string]: unknown;
-            };
+            "application/json": components["schemas"]["HistorySummary"];
           };
         };
         default: components["responses"]["Error"];
@@ -189,25 +234,36 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
+    /**
+     * @description At most 1500 buckets. Auto resolution is 60, then 3600, then 86400 seconds
+     *     according to the point budget. Full buckets use retained rollups; partial
+     *     first/last buckets aggregate retained detail without expanding the requested
+     *     window. Partial edges can therefore be incomplete after detail retention.
+     *     In incomplete windows empty buckets are gaps with null counters, not zero
+     *     traffic. Populated buckets retain actual counts but are marked incomplete.
+     */
     get: {
       parameters: {
-        query?: never;
+        query?: {
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+          resolution_seconds?: 60 | 3600 | 86400;
+        };
         header?: never;
         path?: never;
         cookie?: never;
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Bounded history buckets */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              [key: string]: unknown;
-            };
+            "application/json": components["schemas"]["HistorySeries"];
           };
         };
         default: components["responses"]["Error"];
@@ -228,25 +284,28 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
+    /** @description Top ten clients by admitted requests and exact domains by blocks; stable identity ties. */
     get: {
       parameters: {
-        query?: never;
+        query?: {
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+        };
         header?: never;
         path?: never;
         cookie?: never;
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Exact retained rankings */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              [key: string]: unknown;
-            };
+            "application/json": components["schemas"]["HistoryRankings"];
           };
         };
         default: components["responses"]["Error"];
@@ -267,12 +326,29 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
+    /**
+     * @description Descending timestamp and ID keyset page with a fixed insertion ceiling.
+     *     Cursor binds normalized filters and window. With a cursor, omitted from/to
+     *     reuse its original window; repeat the same filters on every page. Malformed
+     *     cursors and changed filters/range return 400 bad_request. Unknown or repeated
+     *     parameters are rejected. No offset pagination or substring-name search.
+     */
     get: {
       parameters: {
         query?: {
-          limit?: number;
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+          limit?: components["parameters"]["Limit"];
           cursor?: string;
+          /** @description Exact name; accepts canonical DNS decimal escapes from displayed names, or dot for root. */
+          name?: string;
+          /** @description Literal observed IPv4 or IPv6 address without zone */
+          client?: string;
+          outcome?: components["schemas"]["Outcome"];
+          /** @description DNS type mnemonic, decimal 1–65535, or TYPE<number> */
+          qtype?: string;
         };
         header?: never;
         path?: never;
@@ -280,15 +356,13 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Retained query page */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              [key: string]: unknown;
-            };
+            "application/json": components["schemas"]["HistoryQueries"];
           };
         };
         default: components["responses"]["Error"];
@@ -311,7 +385,7 @@ export interface paths {
       };
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
+    /** @description One retained event with boot-scoped historical rule metadata; 404 if absent or expired. */
     get: {
       parameters: {
         query?: never;
@@ -323,15 +397,13 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Available historical fields, explicitly distinguishing missing metadata */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              [key: string]: unknown;
-            };
+            "application/json": components["schemas"]["HistoryDetail"];
           };
         };
         default: components["responses"]["Error"];
@@ -678,26 +750,29 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Configured overrides in items, plus optional bounded retained observations and cached names. */
     get: {
       parameters: {
-        query?: never;
+        query?: {
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+          limit?: components["parameters"]["Limit"];
+        };
         header?: never;
         path?: never;
         cookie?: never;
       };
       requestBody?: never;
       responses: {
-        /** @description Configured items, not discovered statistics */
+        /** @description DNS-observed address identities, not a physical-device inventory */
         200: {
           headers: {
             [name: string]: unknown;
           };
           content: {
-            "application/json": {
-              status?: components["schemas"]["Activation"];
-              items?: unknown[];
-              configuration_error?: string;
-            };
+            "application/json": components["schemas"]["ClientsResponse"];
           };
         };
         default: components["responses"]["Error"];
@@ -858,7 +933,6 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Provider-backed data; 503 when unavailable. Range/filter fields are delegated to the provider. */
     get: {
       parameters: {
         query?: never;
@@ -868,7 +942,7 @@ export interface paths {
       };
       requestBody?: never;
       responses: {
-        /** @description Provider result; counters and identifiers use decimal strings */
+        /** @description Configuration and installed diagnostic measurements */
         200: {
           headers: {
             [name: string]: unknown;
@@ -1167,6 +1241,168 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** @description Unsigned integer encoded as a decimal string, including values beyond JavaScript exact integers. */
+    Decimal: string;
+    HistoryRange: {
+      /** Format: date-time */
+      from: string;
+      /** Format: date-time */
+      to: string;
+    };
+    /** @enum {string} */
+    Outcome:
+      | "local"
+      | "blocked"
+      | "cache"
+      | "stale"
+      | "forwarded"
+      | "error"
+      | "rejected";
+    HistorySummary: {
+      range: components["schemas"]["HistoryRange"];
+      /** @description Admitted terminal query count */
+      queries: components["schemas"]["Decimal"];
+      blocked: components["schemas"]["Decimal"];
+      fresh: components["schemas"]["Decimal"];
+      stale: components["schemas"]["Decimal"];
+      rejected: components["schemas"]["Decimal"];
+      /** @description Sum of admitted query durations in microseconds */
+      duration_us: components["schemas"]["Decimal"];
+      complete: boolean;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    HistoryQuery: {
+      id: components["schemas"]["Decimal"];
+      /** @description Boot scope for generation and rule identifiers */
+      boot_id: string;
+      sequence: components["schemas"]["Decimal"];
+      /** Format: date-time */
+      time: string;
+      /** @description Observed address */
+      client: string;
+      /** @description Current cached friendly name; empty when unknown */
+      client_name: string;
+      client_name_source: string;
+      client_name_fresh: boolean;
+      /** @description Lowercase byte-safe DNS presentation with decimal escapes; root is empty */
+      name: string;
+      /** @description DNS type mnemonic or TYPE<number> */
+      qtype: string;
+      qtype_code: number;
+      qclass: number;
+      outcome: components["schemas"]["Outcome"];
+      rcode: number;
+      duration_us: components["schemas"]["Decimal"];
+      generation: components["schemas"]["Decimal"];
+      rule_id: components["schemas"]["Decimal"];
+      upstream_id: components["schemas"]["Decimal"];
+      /** @description Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block */
+      flags: number;
+    };
+    HistoryQueries: {
+      items: components["schemas"]["HistoryQuery"][];
+      /** @description Omitted on the last page; opaque base64url value */
+      next_cursor?: string;
+      /** @description Observation/retention completeness */
+      complete: boolean;
+      range: components["schemas"]["HistoryRange"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    HistoryDetail: components["schemas"]["HistoryQuery"] & {
+      /** @description One retained matched alias */
+      alias?: string;
+      alias_available: boolean;
+      rule_description?: string;
+      rule_description_available: boolean;
+      /** @constant */
+      alias_chain_available: false;
+      /** @constant */
+      upstream_attempts_available: false;
+      /** @constant */
+      cache_age_available: false;
+      /** @constant */
+      ad_trust_available: false;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    HistoryRankings: {
+      clients: {
+        address: string;
+        name: string;
+        count: components["schemas"]["Decimal"];
+      }[];
+      domains: {
+        name: string;
+        count: components["schemas"]["Decimal"];
+      }[];
+      complete: boolean;
+      range: components["schemas"]["HistoryRange"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    OutcomeCounts: {
+      local: components["schemas"]["Decimal"];
+      blocked: components["schemas"]["Decimal"];
+      cache: components["schemas"]["Decimal"];
+      stale: components["schemas"]["Decimal"];
+      forwarded: components["schemas"]["Decimal"];
+      error: components["schemas"]["Decimal"];
+      rejected: components["schemas"]["Decimal"];
+    };
+    HistoryPoint: {
+      /**
+       * Format: date-time
+       * @description Bucket start clipped to from for a partial first bucket; ends at the next point or range.to
+       */
+      time: string;
+      outcomes: components["schemas"]["OutcomeCounts"] | null;
+      duration_us: components["schemas"]["Decimal"] | null;
+      /** @description Exclusive microsecond upper bounds: 100, 500, 1000, 5000, 10000, 100000, 1000000, infinity; all terminal outcomes */
+      histogram: components["schemas"]["Decimal"][] | null;
+      /** @description Conservative coverage status for the aligned interior or individual partial edge */
+      complete: boolean;
+      /** @description No observed counts in an incomplete window; null counters must not be graphed as zero */
+      gap: boolean;
+    };
+    HistorySeries: {
+      points: components["schemas"]["HistoryPoint"][];
+      /** @enum {integer} */
+      resolution_seconds: 60 | 3600 | 86400;
+      complete: boolean;
+      range: components["schemas"]["HistoryRange"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    ObservedClients: {
+      items: {
+        address: string;
+        name: string;
+        name_source: string;
+        name_fresh: boolean;
+        count: components["schemas"]["Decimal"];
+        blocked: components["schemas"]["Decimal"];
+        /** Format: date-time */
+        last_seen: string;
+      }[];
+      complete: boolean;
+      /** @description More than limit observed addresses; distinct from missing observation coverage */
+      truncated: boolean;
+      range: components["schemas"]["HistoryRange"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    ClientsResponse: {
+      status: components["schemas"]["Activation"];
+      items?: {
+        address: string;
+        name: string;
+      }[];
+      configuration_error?: string;
+      observed_available: boolean;
+      observed?: components["schemas"]["ObservedClients"];
+    };
     Activation: {
       saved_revision: string;
       active_revision: string;
@@ -1216,7 +1452,7 @@ export interface components {
         "application/json": components["schemas"]["Activation"];
       };
     };
-    /** @description 400 malformed, 401 auth, 403 CSRF/Host/Origin, 409 revision/generation conflict, 422 validation, 429 capacity, 503 unavailable */
+    /** @description 400 malformed/bad_request, 401 auth, 403 CSRF/Host/Origin, 404 missing or expired detail, 409 revision/generation conflict, 422 validation, 429 capacity, 503 unavailable */
     Error: {
       headers: {
         [name: string]: unknown;
@@ -1226,7 +1462,13 @@ export interface components {
       };
     };
   };
-  parameters: never;
+  parameters: {
+    /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+    From: string;
+    /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+    To: string;
+    Limit: number;
+  };
   requestBodies: never;
   headers: never;
   pathItems: never;

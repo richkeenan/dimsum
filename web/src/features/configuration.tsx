@@ -10,7 +10,13 @@ import {
   type Mutation,
 } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
+import {
+  Completeness,
+  DataTable,
+  Details,
+  ErrorNotice,
+  Resource,
+} from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -73,28 +79,16 @@ const columns: Record<string, string[]> = {
     "enabled",
     "url",
     "dialect",
-    "active_generation",
-    "fetched",
-    "unique",
-    "effective",
-    "overlap",
-    "last_good_update",
-    "latest_attempt",
-    "next_refresh",
+    "active_enabled",
+    "usable",
+    "rules",
+    "sha256",
     "error",
   ],
   rules: ["id", "kind", "action", "pattern", "enabled"],
   records: ["name", "type", "value", "ttl"],
   upstreams: ["address"],
-  clients: [
-    "name",
-    "address",
-    "source",
-    "freshness",
-    "last_seen",
-    "queries",
-    "blocked",
-  ],
+  clients: ["name", "address"],
 };
 const descriptions: Record<string, string> = {
   lists:
@@ -107,9 +101,18 @@ const descriptions: Record<string, string> = {
   clients:
     "Addresses are DNS-observed identities. Router proxying can combine devices; IPv6 privacy addresses can split one device.",
 };
-export default function Configuration({ kind }: { kind: string }) {
+export default function Configuration({
+  kind,
+  range,
+}: {
+  kind: string;
+  range: string;
+}) {
   const [tick, setTick] = useState(0);
-  const state = useResource<Row>(kind, tick);
+  const state = useResource<Row>(
+    kind + (kind === "clients" ? "?" + range + "&limit=200" : ""),
+    tick,
+  );
   const settings = useResource<Settings>("settings", tick);
   const [editing, setEditing] = useState<Row>();
   const [original, setOriginal] = useState<Row>();
@@ -118,7 +121,7 @@ export default function Configuration({ kind }: { kind: string }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Row>();
   function open(row?: Row) {
-    setOriginal(row);
+    setOriginal(row?.__index === undefined ? undefined : row);
     setEditRevision(normalizeSettings(state.data).revision);
     setEditing(
       row
@@ -192,6 +195,73 @@ export default function Configuration({ kind }: { kind: string }) {
       <Resource state={settings}>
         <Revision value={settings.data} />
       </Resource>
+      {kind === "clients" && (
+        <Resource state={state}>
+          <section className="panel">
+            <div className="panel-heading">
+              <h2>Observed clients</h2>
+              <span>Selected range · at most 200 identities</span>
+            </div>
+            {state.data?.observed_available === true ? (
+              <>
+                <Completeness meta={state.data.observed as Row} />
+                {(state.data.observed as Row)?.truncated === true && (
+                  <p className="notice">
+                    The observed client list is truncated. Narrow the time range
+                    to inspect more identities.
+                  </p>
+                )}
+                <DataTable
+                  items={rows(state.data.observed)}
+                  columns={[
+                    {
+                      key: "name",
+                      label: "Client",
+                      render: (r) => (
+                        <span>
+                          {text(r.name || r.address)}
+                          <small>{text(r.address)}</small>
+                        </span>
+                      ),
+                    },
+                    { key: "name_source", label: "Name source" },
+                    {
+                      key: "name_fresh",
+                      label: "Name freshness",
+                      render: (r) =>
+                        r.name_fresh === true ? "Current" : "Stale / unknown",
+                    },
+                    { key: "last_seen", label: "Last seen" },
+                    { key: "count", label: "Queries" },
+                    { key: "blocked", label: "Blocked" },
+                    {
+                      key: "actions",
+                      label: "Name override",
+                      render: (r) => (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            open(
+                              collectionRows(state.data).find(
+                                (c) => c.address === r.address,
+                              ) ?? r,
+                            )
+                          }
+                        >
+                          Set name
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            ) : (
+              <p className="empty">Observed client history is unavailable.</p>
+            )}
+          </section>
+        </Resource>
+      )}
       {error && !editing && (
         <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />
       )}
@@ -222,7 +292,20 @@ export default function Configuration({ kind }: { kind: string }) {
         </div>
         <Resource state={state} retry={() => setTick((t) => t + 1)}>
           <DataTable
-            items={collectionRows(state.data)}
+            items={collectionRows(state.data).map((r) => {
+              if (kind !== "lists") return r;
+              const source = rows(state.data?.status, "sources").find(
+                (s) => s.id === r.id,
+              );
+              return {
+                ...r,
+                active_enabled: source?.enabled,
+                usable: source?.usable,
+                rules: source?.rules,
+                sha256: source?.sha256,
+                error: source?.error,
+              };
+            })}
             columns={[
               ...columns[kind].map((key) => ({
                 key,

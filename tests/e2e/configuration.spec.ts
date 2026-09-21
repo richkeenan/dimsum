@@ -3,7 +3,7 @@ import { fixtureAPI, settings, activation } from "./fixtures";
 test.beforeEach(async ({ page }) => fixtureAPI(page));
 test("friendly-name changes are surgical indexed edits", async ({ page }) => {
   let body: unknown;
-  await page.route("**/api/v1/clients", (route) => {
+  await page.route("**/api/v1/clients*", (route) => {
     if (route.request().method() === "PATCH") {
       body = route.request().postDataJSON();
       return route.fulfill({ json: activation });

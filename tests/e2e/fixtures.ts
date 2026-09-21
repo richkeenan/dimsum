@@ -1,5 +1,12 @@
 import type { Page } from "../../web/e2e";
-import type { Activation } from "../../web/src/lib/api";
+import type {
+  Activation,
+  Summary,
+  QueryDetail,
+  Series,
+  Rankings,
+  ClientsResponse,
+} from "../../web/src/lib/api";
 export const activation: Activation = {
   saved_revision: "fixture-revision-1",
   active_revision: "fixture-revision-1",
@@ -10,40 +17,50 @@ export const activation: Activation = {
   sources: [],
 };
 export const summary = {
-  total: "48216",
+  range: { from: "2026-09-20T12:00:00Z", to: "2026-09-21T12:00:00Z" },
+  queries: "48216",
   blocked: "12144",
-  cached: "27864",
+  fresh: "27864",
   stale: "18",
-  errors: "7",
-  active_clients: "24",
-  dns: "Healthy",
-  list_health: "Current",
-  storage_health: "Persisting",
-  blocking: true,
+  rejected: "7",
+  duration_us: "12345678",
   complete: true,
   updated_at: "2026-09-21T12:00:00Z",
-};
+} satisfies Summary;
 export const settings = {
   status: activation,
   config: { cache: { bytes: 8388608 }, dns: { listen: ["127.0.0.1:5353"] } },
 };
 export const query = {
   id: "9007199254740993",
+  boot_id: "fixture-boot",
+  sequence: "9007199254740993",
   time: "2026-09-21T11:58:01Z",
   name: "telemetry.example.test",
   client: "192.0.2.12",
   client_name: "Study laptop",
+  client_name_source: "manual",
+  client_name_fresh: true,
   qtype: "A",
+  qtype_code: 1,
+  qclass: 1,
+  rcode: 3,
+  flags: 0,
   outcome: "blocked",
-  reason: "custom deny",
-  duration_ms: "0.18",
-  upstream: "—",
-  freshness: "fresh",
-  policy_generation: "42",
-  winning_rule: "privacy-rule",
-  response_mode: "NXDOMAIN",
-  ad_trusted: false,
-};
+  duration_us: "180",
+  generation: "42",
+  rule_id: "9",
+  upstream_id: "0",
+  rule_description:
+    "id: custom:privacy-rule\nkind: exact\npattern: telemetry.example.test",
+  rule_description_available: true,
+  alias_available: false,
+  alias_chain_available: false,
+  upstream_attempts_available: false,
+  cache_age_available: false,
+  ad_trust_available: false,
+  updated_at: summary.updated_at,
+} satisfies QueryDetail;
 export async function fixtureAPI(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace(
@@ -54,18 +71,34 @@ export async function fixtureAPI(page: Page) {
       summary,
       settings,
       timeseries: {
-        complete: true,
-        buckets: Array.from({ length: 48 }, (_, i) => ({
-          time: new Date(Date.UTC(2026, 8, 21, 0, i * 30)).toISOString(),
-          forwarded: String(150 + ((i * 71) % 300)),
-          blocked: String(75 + ((i * 31) % 120)),
-          cached: String(220 + ((i * 29) % 300)),
-          stale: "0",
-          errors: "0",
-          missing: i === 17,
+        complete: false,
+        range: summary.range,
+        updated_at: summary.updated_at,
+        resolution_seconds: 3600,
+        points: Array.from({ length: 24 }, (_, i) => ({
+          time: new Date(Date.UTC(2026, 8, 20, 12 + i)).toISOString(),
+          outcomes:
+            i === 17
+              ? null
+              : {
+                  local: "21",
+                  forwarded: String(150 + ((i * 71) % 300)),
+                  blocked: String(75 + ((i * 31) % 120)),
+                  cache: String(220 + ((i * 29) % 300)),
+                  stale: "0",
+                  error: "0",
+                  rejected: "0",
+                },
+          duration_us: i === 17 ? null : "123456",
+          histogram: i === 17 ? null : ["1", "2", "3", "4", "5", "6", "7", "8"],
+          gap: i === 17,
+          complete: i !== 17,
         })),
-      },
+      } satisfies Series,
       rankings: {
+        complete: true,
+        range: summary.range,
+        updated_at: summary.updated_at,
         clients: [
           "Study laptop",
           "Living room TV",
@@ -98,32 +131,47 @@ export async function fixtureAPI(page: Page) {
             ][i] + ".example.test",
           count: String(1900 - i * 170),
         })),
-      },
+      } satisfies Rankings,
       queries: { items: [query], next_cursor: "second-page" },
       ["queries/" + query.id]: query,
       clients: {
         status: activation,
+        observed_available: true,
+        observed: {
+          complete: true,
+          truncated: false,
+          range: summary.range,
+          updated_at: summary.updated_at,
+          items: [
+            {
+              address: "192.0.2.12",
+              name: "Study laptop",
+              name_source: "manual",
+              name_fresh: true,
+              count: "9100",
+              blocked: "1420",
+              last_seen: query.time,
+            },
+          ],
+        },
         items: [
           {
             name: "Study laptop",
             address: "192.0.2.12",
-            source: "manual",
-            freshness: "current",
-            queries: "9100",
-            blocked: "1420",
           },
         ],
-      },
+      } satisfies ClientsResponse,
       lists: { status: activation, items: [] },
       rules: { status: activation, items: [] },
       records: { status: activation, items: [] },
       upstreams: { status: activation, items: [] },
       jobs: { items: [] },
       diagnostics: {
-        dns: "healthy",
-        storage: "persisting",
+        dns_ready: true,
+        storage: { available: true, writer: { LastError: "" } },
         version: "fixture",
       },
+      blocking: { enabled: true, status: activation },
     };
     if (path === "events") {
       await route.fulfill({

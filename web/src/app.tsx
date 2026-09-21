@@ -17,7 +17,7 @@ import {
   Sun,
   Users,
 } from "lucide-react";
-import { api, type Row, type Settings } from "./lib/api";
+import { api, historyWindow, type Row, type Settings } from "./lib/api";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import {
@@ -84,18 +84,11 @@ export default function App() {
     setPage(p);
     history.pushState({}, "", p === "overview" ? "/" : "/" + p);
   }
-  const rangeParams = new URLSearchParams(
-    range === "custom" && custom
-      ? custom
-      : {
-          from: new Date(
-            anchor -
-              ({ "1h": 3600000, "24h": 86400000, "7d": 604800000 }[range] ??
-                86400000),
-          ).toISOString(),
-          to: new Date(anchor).toISOString(),
-        },
-  ).toString();
+  const { params: rangeParams, resolution } = historyWindow(
+    range,
+    anchor,
+    custom,
+  );
   const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
   return (
     <div className="app-shell">
@@ -219,8 +212,15 @@ export default function App() {
               className="inline-form custom-range"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!from || !to || new Date(from) >= new Date(to)) {
-                  setRangeError("Start must be before end.");
+                if (
+                  !from ||
+                  !to ||
+                  new Date(from) >= new Date(to) ||
+                  Date.parse(to) - Date.parse(from) > 366 * 86400000
+                ) {
+                  setRangeError(
+                    "Choose a positive range no longer than 366 days.",
+                  );
                   return;
                 }
                 setCustom({
@@ -260,11 +260,13 @@ export default function App() {
             {new Date(
               new URLSearchParams(rangeParams).get("to")!,
             ).toLocaleString()}
+            {" · Missing and partial intervals are marked"}
           </div>
           {error && <ErrorNotice error={error} />}
           <Suspense fallback={<p role="status">Loading view…</p>}>
             {page === "overview" ? (
               <Overview
+                resolution={resolution}
                 range={rangeParams}
                 refresh={refresh}
                 drill={(key, value) => {
@@ -287,7 +289,11 @@ export default function App() {
             ) : page === "jobs" ? (
               <Jobs key={refresh} />
             ) : (
-              <Configuration key={page + refresh} kind={page} />
+              <Configuration
+                key={page + refresh}
+                kind={page}
+                range={rangeParams}
+              />
             )}
           </Suspense>
           <footer>

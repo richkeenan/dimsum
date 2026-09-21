@@ -3,9 +3,11 @@ export default defineConfig({
   testDir: "../tests/e2e",
   fullyParallel: true,
   workers: 2,
-  outputDir: process.env.DIMSUM_E2E_CONFIG
-    ? "test-results/go-api"
-    : "test-results/fixtures",
+  outputDir: process.env.DIMSUM_E2E_MANAGED_CONFIG
+    ? "test-results/managed"
+    : process.env.DIMSUM_E2E_CONFIG
+      ? "test-results/go-api"
+      : "test-results/fixtures",
   reporter: "list",
   use: {
     baseURL: process.env.DIMSUM_E2E_URL ?? "http://127.0.0.1:4173",

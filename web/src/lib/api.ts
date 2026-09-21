@@ -8,6 +8,7 @@ type LoginResult =
 let csrfToken = sessionStorage.getItem("dimsum-csrf") ?? "";
 export type Row = Record<string, unknown>;
 export interface Meta {
+  range?: { from: string; to: string };
   from?: string;
   to?: string;
   updated_at?: string;
@@ -15,23 +16,22 @@ export interface Meta {
   incomplete?: boolean;
   gaps?: unknown[];
 }
-export interface Summary extends Meta {
-  total?: string;
-  blocked?: string;
-  cached?: string;
-  stale?: string;
-  errors?: string;
-  active_clients?: string;
-  dns?: string;
-  blocking?: boolean;
-  list_health?: string;
-  storage_health?: string;
-  [key: string]: unknown;
-}
-export interface Page extends Meta {
-  items: Row[];
-  next_cursor?: string;
-}
+export type Summary = components["schemas"]["HistorySummary"];
+export type Page = components["schemas"]["HistoryQueries"];
+export type QueryDetail = components["schemas"]["HistoryDetail"];
+export type Series = components["schemas"]["HistorySeries"];
+export type Point = components["schemas"]["HistoryPoint"];
+export type Rankings = components["schemas"]["HistoryRankings"];
+export type ClientsResponse = components["schemas"]["ClientsResponse"];
+export const outcomes = [
+  "local",
+  "blocked",
+  "cache",
+  "stale",
+  "forwarded",
+  "error",
+  "rejected",
+] as const;
 export interface Settings {
   revision: string;
   active_generation?: string;
@@ -203,4 +203,78 @@ export function percentage(part: unknown, total: unknown): string {
       Number((BigInt(String(part)) * 1000n) / BigInt(String(total))) / 10
     ).toFixed(1) + "%"
   );
+}
+// Decimal-unit formatting never passes an identifier or counter through Number.
+export function microsecondsToMS(value: unknown): string {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return "—";
+  const n = BigInt(value);
+  return `${n / 1000n}.${String(n % 1000n).padStart(3, "0")}`;
+}
+export function queryParameters(
+  filters: Record<string, string>,
+  cursor?: string,
+): URLSearchParams {
+  const p = new URLSearchParams({ limit: "100" });
+  for (const key of ["name", "client", "outcome", "qtype"])
+    if (filters[key]?.trim()) p.set(key, filters[key].trim());
+  if (cursor) p.set("cursor", cursor);
+  return p;
+}
+export function historyWindow(
+  preset: string,
+  now: number,
+  custom?: { from: string; to: string },
+) {
+  const duration =
+    (
+      { "1h": 3600000, "24h": 86400000, "7d": 604800000 } as Record<
+        string,
+        number
+      >
+    )[preset] ?? 86400000;
+  let width = duration <= 3600000 ? 60000 : 3600000;
+  let to = now,
+    from = to - duration;
+  if (preset === "custom" && custom) {
+    from = Date.parse(custom.from);
+    to = Date.parse(custom.to);
+    if (
+      !Number.isFinite(from) ||
+      !Number.isFinite(to) ||
+      to <= from ||
+      to - from > 366 * 86400000
+    )
+      throw new Error("Invalid history window.");
+    width = 60000;
+    while (Math.ceil(to / width) - Math.floor(from / width) > 1500)
+      width = width === 60000 ? 3600000 : 86400000;
+  }
+  return {
+    params: new URLSearchParams({
+      from: new Date(from).toISOString(),
+      to: new Date(to).toISOString(),
+    }).toString(),
+    resolution: width / 1000,
+  };
+}
+export const maxArchiveBytes = 2 * 1024 * 1024;
+export async function archiveBase64(file: File): Promise<string> {
+  if (file.size > maxArchiveBytes)
+    throw new Error("Choose an archive no larger than 2 MiB.");
+  if (!file.size) throw new Error("The archive is empty.");
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(binary);
+}
+export function backupURL(result: unknown): string | undefined {
+  const url =
+    result && typeof result === "object"
+      ? (result as Row).download_url
+      : undefined;
+  return typeof url === "string" &&
+    /^\/api\/v1\/config\/backups\/[a-f0-9]{32}$/.test(url)
+    ? url
+    : undefined;
 }
