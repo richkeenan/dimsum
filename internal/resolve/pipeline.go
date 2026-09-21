@@ -3,7 +3,6 @@ package resolve
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 
 	"github.com/richkeenan/dimsum/internal/dnswire"
@@ -29,12 +28,5 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 	if err != nil {
 		return 0, err
 	}
-	binary.BigEndian.PutUint16(out, q.Header.ID)
-	flags := binary.BigEndian.Uint16(out[2:4]) &^ (dnswire.FlagAD | dnswire.FlagRD | dnswire.FlagCD)
-	flags |= q.Header.Flags & (dnswire.FlagRD | dnswire.FlagCD)
-	binary.BigEndian.PutUint16(out[2:4], flags)
-	// Validation guarantees the upstream question is expanded and the same length;
-	// patching case never shifts opaque RDATA or invalidates compression offsets.
-	copy(out[12:12+int(q.Name.Length)], q.Name.Wire[:q.Name.Length])
-	return result.N, nil
+	return dnswire.PersonalizeReply(out, out[:result.N], &r.Message)
 }

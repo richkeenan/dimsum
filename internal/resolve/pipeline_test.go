@@ -3,6 +3,7 @@ package resolve_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"github.com/miekg/dns"
 	"net/netip"
 	"testing"
@@ -16,6 +17,29 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestForwardRejectHeaderDependentNames(t *testing.T) {
+	// CD changes flags byte 3 from zero (root) to 16. With this question,
+	// the mutated pointer still decodes as a valid binary label: rescanning
+	// alone cannot detect the change in the answer owner's meaning.
+	wire := []byte{0x12, 1, 1, 0x10, 0, 1, 0, 0, 0, 0, 0, 0, 6, 'a', 'b', 'c', 'd', 'e', 'f', 0, 0, 1, 0, 1}
+	r := transport.Request{Wire: wire}
+	require.NoError(t, dnswire.ParseRequest(wire, &r.Message))
+	u, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
+		p := bytes.Clone(r.Wire)
+		binary.BigEndian.PutUint16(p[2:4], 0x8100)
+		p[7] = 1
+		p = append(p, 0xc0, 3, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 1, 2, 3, 4)
+		return testutil.Response{Wire: p}
+	})
+	require.NoError(t, err)
+	defer u.Close()
+	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+	require.NoError(t, err)
+	n, err := resolve.New(c).Resolve(context.Background(), &r, make([]byte, 65535))
+	assert.Error(t, err, "client flag patch changed owner semantics")
+	assert.Zero(t, n)
+}
 
 func TestForwardRDZeroMiss(t *testing.T) {
 	p := resolve.New(nil)
