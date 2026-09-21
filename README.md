@@ -2,7 +2,7 @@
 
 A hand-built, performance-focused DNS ad blocker in Go, with a React, shadcn/ui, and Tailwind administration interface.
 
-**Status: research and implementation design, updated after owner grilling on 21 September 2026.** There is no application code yet. Product decisions are recorded; technical candidates and performance targets still require experiments. Implementation awaits a separate request.
+**Status: early implementation.** Milestone A provides hand-built DNS parsing, bounded client transports, and validated UDP/TCP forwarding on configured test ports. See the [protocol support and test-port guide](docs/milestone-a-forwarding.md). Filtering, caching, administration, and release qualification remain pending; performance targets still require experiments.
 
 ## Read in this order
 
@@ -36,6 +36,6 @@ The owner-approved statistics default is **SQLite WAL with asynchronous batched 
 
 The owner-approved cache default is **immediate responses from eligible expired cache entries, with background refresh and a maximum stale age of one hour**. Stricter freshness modes remain configurable.
 
-The owner-approved dependency policy is to **hand-build DNS request handling, filtering, caching, and fallback**, use established supporting libraries for TLS, SQLite, regex, and the frontend, and use existing DNS libraries as test oracles. The four initial design decisions are resolved; implementation awaits a separate request.
+The owner-approved dependency policy is to **hand-build DNS request handling, filtering, caching, and fallback**, use established supporting libraries for TLS, SQLite, regex, and the frontend, and use existing DNS libraries as test oracles. The four initial design decisions are resolved.
 
 “Fastest” is an engineering objective, not a result this research establishes. Acceptance requires reproducible comparisons against Pi-hole, AdGuard Home, Blocky, and CoreDNS on the same Raspberry Pi, with equivalent behavior and statistics enabled.
