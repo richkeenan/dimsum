@@ -181,11 +181,11 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 			s.mu.Unlock()
 			return s.fail(fmt.Errorf("dns/admin/paths change requires explicit service restart"))
 		}
-		if !s.starting && (c.Cache.Bytes != previous.Cache.Bytes || c.Cache.Shards != previous.Cache.Shards) {
+		if !s.starting && (c.Cache.Bytes != previous.Cache.Bytes || c.Cache.Shards != previous.Cache.Shards || c.Cache.MaxNegativeTTLSeconds != previous.Cache.MaxNegativeTTLSeconds) {
 			s.mu.Lock()
 			s.status.RestartRequired = true
 			s.mu.Unlock()
-			return s.fail(fmt.Errorf("cache.bytes/cache.shards change requires explicit service restart"))
+			return s.fail(fmt.Errorf("cache.bytes/cache.shards/cache.max_negative_ttl_seconds change requires explicit service restart"))
 		}
 	}
 	// Compile every request-visible producer before staging the recovery unit.

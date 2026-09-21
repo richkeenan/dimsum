@@ -111,6 +111,9 @@ func Validate(c Config) error {
 	if c.Cache.MaxNegativeTTLSeconds < 1 || c.Cache.MaxNegativeTTLSeconds > 86400 {
 		return fmt.Errorf("cache.max_negative_ttl_seconds: must be 1..86400 seconds")
 	}
+	if c.Cache.StaleTTLSeconds < 1 || c.Cache.StaleTTLSeconds > 300 {
+		return fmt.Errorf("cache.stale_ttl_seconds: must be 1..300 seconds")
+	}
 	switch c.Cache.StaleMode {
 	case "immediate", "failure-only", "off":
 	default:

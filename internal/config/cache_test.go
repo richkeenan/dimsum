@@ -19,6 +19,7 @@ func TestCacheDefaultsAndBounds(t *testing.T) {
 		assert.Equal(t, 8<<20, d.Config().Cache.Bytes)
 		assert.Equal(t, 4, d.Config().Cache.Shards)
 		assert.Equal(t, 300, d.Config().Cache.MaxNegativeTTLSeconds)
+		assert.Equal(t, 30, d.Config().Cache.StaleTTLSeconds)
 	}
 	for _, tc := range []struct {
 		field    string
@@ -27,6 +28,7 @@ func TestCacheDefaultsAndBounds(t *testing.T) {
 		{"bytes", 512 << 10, 1 << 30},
 		{"shards", 1, 16},
 		{"max_negative_ttl_seconds", 1, 86400},
+		{"stale_ttl_seconds", 1, 300},
 	} {
 		for _, value := range []int{-1, 0, tc.min - 1, tc.min, tc.max, tc.max + 1} {
 			t.Run(fmt.Sprintf("%s/%d", tc.field, value), func(t *testing.T) {
@@ -43,7 +45,7 @@ func TestCacheDefaultsAndBounds(t *testing.T) {
 	}
 }
 
-const cacheFields = "cache:\n  bytes: 8388608 # budget\n  shards: 4\n  max_negative_ttl_seconds: 300 # seconds\n  stale_mode: immediate\n  max_stale_seconds: 3600\n"
+const cacheFields = "cache:\n  bytes: 8388608 # budget\n  shards: 4\n  max_negative_ttl_seconds: 300 # seconds\n  stale_ttl_seconds: 30 # response TTL\n  stale_mode: immediate\n  max_stale_seconds: 3600\n"
 
 func TestCacheGroupedEditPreservesComments(t *testing.T) {
 	d, err := config.Parse([]byte(sample + cacheFields))
@@ -52,9 +54,10 @@ func TestCacheGroupedEditPreservesComments(t *testing.T) {
 		{Path: []string{"cache", "bytes"}, Value: 16777216},
 		{Path: []string{"cache", "shards"}, Value: 8},
 		{Path: []string{"cache", "max_negative_ttl_seconds"}, Value: 120},
+		{Path: []string{"cache", "stale_ttl_seconds"}, Value: 60},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, sample+"cache:\n  bytes: 16777216 # budget\n  shards: 8\n  max_negative_ttl_seconds: 120 # seconds\n  stale_mode: immediate\n  max_stale_seconds: 3600\n", string(next.Bytes()))
+	assert.Equal(t, sample+"cache:\n  bytes: 16777216 # budget\n  shards: 8\n  max_negative_ttl_seconds: 120 # seconds\n  stale_ttl_seconds: 60 # response TTL\n  stale_mode: immediate\n  max_stale_seconds: 3600\n", string(next.Bytes()))
 	assert.Equal(t, sample+cacheFields, string(d.Bytes()))
 	_, err = d.Edit([]config.Edit{{Path: []string{"cache", "bytes"}, Value: 0}})
 	assert.ErrorContains(t, err, "cache.bytes")
@@ -68,7 +71,8 @@ func TestCacheAllocationRequiresRestart(t *testing.T) {
 	}{
 		{"bytes", 16 << 20, true},
 		{"shards", 8, true},
-		{"max_negative_ttl_seconds", 120, false},
+		{"max_negative_ttl_seconds", 120, true},
+		{"stale_ttl_seconds", 60, false},
 		{"stale_mode", "off", false},
 		{"max_stale_seconds", 60, false},
 	} {

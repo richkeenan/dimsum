@@ -47,6 +47,7 @@ type Cache struct {
 	Bytes                 int    `yaml:"bytes" json:"bytes"`
 	Shards                int    `yaml:"shards" json:"shards"`
 	MaxNegativeTTLSeconds int    `yaml:"max_negative_ttl_seconds" json:"max_negative_ttl_seconds"`
+	StaleTTLSeconds       int    `yaml:"stale_ttl_seconds" json:"stale_ttl_seconds"`
 	StaleMode             string `yaml:"stale_mode" json:"stale_mode"`
 	MaxStaleSeconds       int    `yaml:"max_stale_seconds" json:"max_stale_seconds"`
 }
@@ -68,7 +69,7 @@ var ErrConflict = errors.New("configuration revision conflict")
 // Default is a safe local development baseline; file parsing requires explicit
 // version, listeners and paths, and defaults only optional cache settings.
 func Default() Config {
-	return Config{Version: 1, DNS: DNS{Listen: []string{"127.0.0.1:5353"}}, Admin: Admin{Listen: "127.0.0.1:8080"}, Paths: Paths{DataDir: "./data", SecretsDir: "./secrets"}, Cache: Cache{Bytes: 8 << 20, Shards: 4, MaxNegativeTTLSeconds: 300, StaleMode: "immediate", MaxStaleSeconds: 3600}}
+	return Config{Version: 1, DNS: DNS{Listen: []string{"127.0.0.1:5353"}}, Admin: Admin{Listen: "127.0.0.1:8080"}, Paths: Paths{DataDir: "./data", SecretsDir: "./secrets"}, Cache: Cache{Bytes: 8 << 20, Shards: 4, MaxNegativeTTLSeconds: 300, StaleTTLSeconds: 30, StaleMode: "immediate", MaxStaleSeconds: 3600}}
 }
 
 func Parse(source []byte) (*Document, error) {
