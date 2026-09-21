@@ -23,6 +23,7 @@ export type Series = components["schemas"]["HistorySeries"];
 export type Point = components["schemas"]["HistoryPoint"];
 export type Rankings = components["schemas"]["HistoryRankings"];
 export type ClientsResponse = components["schemas"]["ClientsResponse"];
+export type Device = components["schemas"]["DeviceEnrichment"];
 export const outcomes = [
   "local",
   "blocked",

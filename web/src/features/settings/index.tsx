@@ -5,6 +5,7 @@ import { Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentAccess } from "./agents";
+import { DiscoverySettings } from "./discovery";
 
 export function Revision({ value }: { value?: Settings }) {
   if (
@@ -326,6 +327,7 @@ export function PasswordForm() {
 export default function SettingsView() {
   const [tick, setTick] = useState(0);
   const state = useResource<Settings>("settings", tick);
+  const diagnostics = useResource<Row>("diagnostics", tick);
   return (
     <div className="min-w-0 [&_p]:leading-relaxed">
       <Revision value={state.data} />
@@ -334,6 +336,11 @@ export default function SettingsView() {
           <SettingsForm
             settings={state.data}
             refresh={() => setTick((t) => t + 1)}
+          />
+          <DiscoverySettings
+            settings={state.data}
+            refresh={() => setTick((t) => t + 1)}
+            diagnostics={diagnostics.data?.naming as Row | undefined}
           />
           {state.error && (
             <ErrorNotice

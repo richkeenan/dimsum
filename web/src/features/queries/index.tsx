@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { ClientIdentity } from "@/components/client-identity";
+import type { Device } from "@/lib/api";
 import {
   api,
   rows,
@@ -11,12 +13,7 @@ import {
   type Settings,
 } from "@/lib/api";
 import { useLive, useResource } from "@/lib/hooks";
-import {
-  DataTable,
-  Details,
-  ErrorNotice,
-  Resource,
-} from "@/components/data";
+import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -237,15 +234,12 @@ export default function Queries({
                 label: "Client",
                 width: 190,
                 render: (r) => (
-                  <span className="whitespace-nowrap">
-                    {text(r.client_name || r.client)}
-                    {!!r.client_name && (
-                      <small className="mt-0.5 block text-xs text-muted-foreground">
-                        {text(r.client)}
-                        {r.client_name_fresh === false ? " · stale name" : ""}
-                      </small>
-                    )}
-                  </span>
+                  <ClientIdentity
+                    address={text(r.client)}
+                    name={r.client_name ? String(r.client_name) : undefined}
+                    device={r.client_device as Device | undefined}
+                    stale={r.client_name_fresh === false}
+                  />
                 ),
               },
               {

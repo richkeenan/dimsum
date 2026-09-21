@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DiscoveryStatus } from "@/features/settings/discovery";
 import { useResource } from "@/lib/hooks";
 import { Details, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,10 @@ export default function Diagnostics() {
       </p>
       <Resource state={state} retry={() => setTick((t) => t + 1)}>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
+          <section className="mb-5 min-w-0 rounded-lg border border-border bg-background p-5">
+            <h3 className="mb-3 text-sm font-medium">Device discovery</h3>
+            <DiscoveryStatus value={state.data?.naming as Row | undefined} />
+          </section>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
             <h3 className="mb-3 text-sm font-medium">DNS service</h3>
             <strong>

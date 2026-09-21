@@ -1,4 +1,6 @@
 import { lazy, Suspense } from "react";
+import { ClientIdentity } from "@/components/client-identity";
+import type { Device } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import {
   count,
@@ -117,12 +119,11 @@ export default function Overview({
                       className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
                       onClick={() => drill("client", text(r.address))}
                     >
-                      {text(r.name || r.address)}
-                      {!!r.name && r.name !== r.address && (
-                        <small className="mt-0.5 block text-xs text-muted-foreground">
-                          {text(r.address)}
-                        </small>
-                      )}
+                      <ClientIdentity
+                        address={text(r.address)}
+                        name={r.name ? String(r.name) : undefined}
+                        device={r.device as Device | undefined}
+                      />
                     </button>
                   ),
                 },

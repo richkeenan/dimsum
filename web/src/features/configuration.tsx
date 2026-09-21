@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { ClientDeviceButton } from "@/components/client-identity";
+import type { Device } from "@/lib/api";
 import {
   api,
   rows,
@@ -206,12 +208,16 @@ export default function Configuration({
   const configuredClients = collectionRows(state.data);
   const observedClients = rows(state.data?.observed);
   const devices = [
-    ...observedClients.map((observed) => ({
-      ...observed,
-      ...configuredClients.find(
+    ...observedClients.map((observed) => {
+      const configured = configuredClients.find(
         (client) => client.address === observed.address,
-      ),
-    })),
+      );
+      return {
+        ...observed,
+        ...configured,
+        ...(configured ? { name_source: "override", name_fresh: true } : {}),
+      };
+    }),
     ...configuredClients.filter(
       (client) =>
         !observedClients.some(
@@ -315,14 +321,14 @@ export default function Configuration({
                       key: "name",
                       label: "Client",
                       render: (r) => (
-                        <span>
-                          {text(r.name || r.address)}
-                          {r.name && r.name !== r.address ? (
-                            <small className="mt-0.5 block text-xs text-muted-foreground">
-                              {text(r.address)}
-                            </small>
-                          ) : null}
-                        </span>
+                        <ClientDeviceButton
+                          address={text(r.address)}
+                          name={r.name ? String(r.name) : undefined}
+                          device={r.device as Device | undefined}
+                          source={
+                            r.name_source ? String(r.name_source) : undefined
+                          }
+                        />
                       ),
                     },
                     {
