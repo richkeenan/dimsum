@@ -16,7 +16,7 @@ import (
 )
 
 func run(ctx context.Context, args []string, out, stderr io.Writer) int {
-	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml\n\nserve forwards DNS using explicit dns.upstreams (literal IP:port endpoints).\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
+	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml [-state path/to/derived-state]\n\nserve forwards DNS using explicit dns.upstreams and watches policy/list edits.\n-state defaults to CONFIG.state; retain this directory for offline recovery.\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprint(out, usage)
 		return 0
@@ -28,6 +28,7 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	path := flags.String("config", "dimsum.yaml", "authoritative configuration file")
+	state := flags.String("state", "", "derived list/recovery directory (default CONFIG.state)")
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -39,16 +40,16 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	fail := func(err error) int { fmt.Fprintln(stderr, err); return 1 }
-	b, err := os.ReadFile(*path)
-	if err != nil {
-		return fail(err)
-	}
-	d, err := config.Parse(b)
-	if err != nil {
-		return fail(err)
-	}
 	encoder := json.NewEncoder(out)
 	if args[0] == "validate" {
+		b, err := os.ReadFile(*path)
+		if err != nil {
+			return fail(err)
+		}
+		d, err := config.Parse(b)
+		if err != nil {
+			return fail(err)
+		}
 		if err := encoder.Encode(struct {
 			Valid           bool   `json:"valid"`
 			Revision        string `json:"revision"`
@@ -58,18 +59,26 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		return 0
 	}
+	if *state == "" {
+		*state = *path + ".state"
+	}
+	store, err := config.OpenStore(ctx, *path, *state, config.StoreOptions{})
+	if err != nil {
+		return fail(err)
+	}
 	s := new(app.Service)
-	if err := s.StartForwarding(ctx, d.Config()); err != nil {
+	if err := s.StartManaged(ctx, store); err != nil {
 		return fail(err)
 	}
 	defer s.Close()
 	a := s.Addresses()
 	if err := encoder.Encode(struct {
-		State string   `json:"state"`
-		Ready bool     `json:"ready"`
-		DNS   []string `json:"dns"`
-		Admin string   `json:"admin"`
-	}{"dns_serving", s.Ready(), a.DNS, a.Admin}); err != nil {
+		State      string                  `json:"state"`
+		Ready      bool                    `json:"ready"`
+		DNS        []string                `json:"dns"`
+		Admin      string                  `json:"admin"`
+		Activation config.ActivationResult `json:"activation"`
+	}{"dns_serving", s.Ready(), a.DNS, a.Admin, store.Inspect()}); err != nil {
 		return fail(err)
 	}
 	<-s.Done()

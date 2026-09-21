@@ -43,14 +43,29 @@ type Listeners struct {
 var ErrStarted = errors.New("service already started")
 
 func (s *Service) Start(ctx context.Context, c config.Config) error {
-	return s.start(ctx, c, nil)
+	return s.start(ctx, c, nil, nil)
 }
 
 // StartForwarding binds all sockets transactionally and attaches the DNS pipeline.
 // Start remains available for callers that attach their own transport handlers.
 func (s *Service) StartForwarding(ctx context.Context, c config.Config) error {
+	return s.startForwarding(ctx, c, nil)
+}
+
+// StartManaged owns the automatic watcher for the lifetime of the listeners.
+func (s *Service) StartManaged(ctx context.Context, store *config.Store) error {
+	if store == nil || store.Snapshot() == nil {
+		return fmt.Errorf("service: active configuration required")
+	}
+	return s.startForwarding(ctx, store.Snapshot().Config(), store)
+}
+
+func (s *Service) startForwarding(ctx context.Context, c config.Config, store *config.Store) error {
 	if err := config.Validate(c); err != nil {
 		return err
+	}
+	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0) {
+		return fmt.Errorf("service: policy configuration requires StartManaged")
 	}
 	endpoints := make([]netip.AddrPort, len(c.DNS.Upstreams))
 	for i, a := range c.DNS.Upstreams {
@@ -60,14 +75,14 @@ func (s *Service) StartForwarding(ctx context.Context, c config.Config) error {
 	if err != nil {
 		return err
 	}
-	server, err := transport.New(transport.Options{}, resolve.New(u))
+	server, err := transport.New(transport.Options{}, resolve.NewWithStore(u, store))
 	if err != nil {
 		return err
 	}
-	return s.start(ctx, c, server)
+	return s.start(ctx, c, server, store)
 }
 
-func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server) error {
+func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
@@ -134,6 +149,10 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 				}
 			}
 		}()
+	}
+	if store != nil {
+		workers.Add(1)
+		go func() { defer workers.Done(); store.Watch(runCtx) }()
 	}
 	if server != nil {
 		for _, listener := range sockets.TCP {
