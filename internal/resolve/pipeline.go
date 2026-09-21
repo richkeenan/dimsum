@@ -156,6 +156,9 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 }
 
 func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *config.Snapshot, name policy.Name, settings policy.Settings, paused bool) (int, error) {
+	if n >= 12 && (out[3]&15 == 2 || out[3]&15 == 5) {
+		r.Result.Outcome = transport.ResolutionError
+	}
 	if snapshot != nil {
 		decision, err := snapshot.Policy().InspectResponse(out[:n], name, paused)
 		if err != nil {

@@ -60,11 +60,16 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 		if e != nil {
 			return 0, e
 		}
+		r.Result.UpstreamID = result.EndpointID
+		r.Result.Fallback = result.Fallback
 		var message dnswire.Message
 		if e = dnswire.ScanMessage(out[:result.N], &message); e != nil {
 			return 0, e
 		}
 		code = message.RCode
+		if code == 2 || code == 5 {
+			r.Result.Outcome = transport.ResolutionError
+		}
 		more, ns, e := dnswire.SyntheticSections(out[:result.N])
 		if e != nil {
 			return 0, e
@@ -81,6 +86,7 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 		return 0, err
 	}
 	if _, err = snapshot.Policy().InspectResponse(out[:n], original, true); err != nil {
+		r.Result.Outcome = transport.ResolutionError
 		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2, RecursionAvailable: true}, 1232)
 	}
 	return n, nil
