@@ -11,6 +11,7 @@ type ResponseDecision struct {
 	Decision               Decision
 	Original, BlockedAlias Name
 	Links                  int
+	RuleNumber             uint32
 }
 
 // InspectResponse follows only answer-section aliases reachable from the original
@@ -95,9 +96,10 @@ func (p *PolicySnapshot) InspectResponse(message []byte, original Name, paused b
 		}
 		seen[direct] = true
 		current = direct
-		d := p.Evaluate(Query{Original: original, Name: current, Paused: paused})
+		d, number := p.EvaluateNumber(Query{Original: original, Name: current, Paused: paused})
 		if d.Result == Block && result.Decision.Result != Block {
 			result.Decision = d
+			result.RuleNumber = number
 			result.BlockedAlias = current
 		}
 	}

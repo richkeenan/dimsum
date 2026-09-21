@@ -183,9 +183,10 @@ func TestTenCoalescedClients(t *testing.T) {
 		}
 	}()
 	type result struct {
-		id   int
-		wire []byte
-		err  error
+		id       int
+		wire     []byte
+		err      error
+		metadata transport.Result
 	}
 	results := make(chan result, 10)
 	for i := range 10 {
@@ -199,7 +200,7 @@ func TestTenCoalescedClients(t *testing.T) {
 		go func() {
 			out := make([]byte, 65535)
 			n, err := p.Resolve(context.Background(), &req, out)
-			results <- result{i, out[:n], err}
+			results <- result{i, out[:n], err, req.Result}
 		}()
 	}
 	require.Eventually(t, func() bool {
@@ -214,6 +215,7 @@ func TestTenCoalescedClients(t *testing.T) {
 	}, time.Second, time.Millisecond)
 	close(release)
 	released = true
+	coalesced := 0
 	for range 10 {
 		result := <-results
 		require.NoError(t, result.err)
@@ -226,8 +228,14 @@ func TestTenCoalescedClients(t *testing.T) {
 		}
 		assert.Equal(t, want, m.Question[0].Name)
 		assert.False(t, m.AuthenticatedData)
+		assert.Equal(t, transport.ForwardedAnswer, result.metadata.Outcome)
+		assert.EqualValues(t, 1, result.metadata.UpstreamID)
+		if result.metadata.Coalesced {
+			coalesced++
+		}
 	}
 	assert.EqualValues(t, 1, calls.Load())
+	assert.Equal(t, 9, coalesced)
 }
 
 func TestRefreshOverflowStillServesStale(t *testing.T) {

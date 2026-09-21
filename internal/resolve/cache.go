@@ -58,9 +58,11 @@ func cacheKey(r *transport.Request, s *config.Snapshot) (dnscache.Key, bool) {
 func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.Cache, k dnscache.Key, r *transport.Request, refresh bool) ([]byte, error) {
 	// Copy before returning to a stale client or sharing work past its deadline.
 	wire := append([]byte(nil), r.Wire...)
-	f, err := p.cache.flights.join(k, refresh, func(workCtx context.Context) ([]byte, error) {
+	var metadata upstream.ExchangeResult
+	f, joined, err := p.cache.flights.joinStatus(k, refresh, func(workCtx context.Context) ([]byte, error) {
 		out := make([]byte, 65535)
 		result, err := p.exchange(workCtx, s, upstream.DefaultRoute, wire, out)
+		metadata = result
 		if err == nil {
 			out = out[:result.N]
 			// Only authenticated upstream originals enter the cache, before policy
@@ -75,7 +77,7 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.C
 			}
 		}
 		return out, err
-	})
+	}, &metadata)
 	if err != nil {
 		p.cache.overflow.Add(1)
 		return nil, err
@@ -83,7 +85,13 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.C
 	if refresh {
 		return nil, nil
 	}
-	return p.cache.flights.wait(ctx, k, f)
+	r.Result.Coalesced = joined
+	response, err := p.cache.flights.wait(ctx, k, f)
+	if err == nil && f.metadata != nil {
+		r.Result.UpstreamID = f.metadata.EndpointID
+		r.Result.Fallback = f.metadata.Fallback
+	}
+	return response, err
 }
 
 func staleLimit(cfg config.Cache) uint32 {

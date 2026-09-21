@@ -33,3 +33,13 @@ func (s *PolicySnapshot) Rule(id string) (Rule, bool) {
 	}
 	return Rule{}, false
 }
+
+// RuleAt is a constant-time generation-scoped history lookup. Returned strings
+// belong to the immutable snapshot; consumers retaining a subset should copy.
+func (s *PolicySnapshot) RuleAt(number uint32) (Rule, bool) {
+	if number == 0 || uint64(number) > uint64(len(s.rules)) {
+		return Rule{}, false
+	}
+	r := s.rules[number-1]
+	return Rule{ID: s.text(r.id), SourceID: s.text(r.source), SourceText: s.text(r.text), Pattern: s.text(r.pattern), Dialect: s.text(r.dialect), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}, true
+}

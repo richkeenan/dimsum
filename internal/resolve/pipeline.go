@@ -16,14 +16,22 @@ import (
 )
 
 type Pipeline struct {
-	upstream  *upstream.Client
-	store     *config.Store
-	names     *clients.Manager
-	upstreams upstreams
-	cache     cacheState
+	upstream        *upstream.Client
+	store           *config.Store
+	names           *clients.Manager
+	upstreams       upstreams
+	cache           cacheState
+	observeExchange func(upstream.ExchangeResult, error)
 }
 
 func New(c *upstream.Client) *Pipeline { return &Pipeline{upstream: c} }
+
+// SetExchangeObserver must be called before concurrent resolution begins. The
+// callback must remain bounded and nonblocking; client outcomes are observed by
+// transport after fitting, independently of exchanges and background refreshes.
+func (p *Pipeline) SetExchangeObserver(fn func(upstream.ExchangeResult, error)) {
+	p.observeExchange = fn
+}
 func NewWithStore(c *upstream.Client, store *config.Store) *Pipeline {
 	return &Pipeline{upstream: c, store: store}
 }
@@ -31,10 +39,12 @@ func NewWithNames(c *upstream.Client, store *config.Store, names *clients.Manage
 	return &Pipeline{upstream: c, store: store, names: names}
 }
 func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte) (int, error) {
+	r.Result = transport.Result{Admitted: r.Result.Admitted}
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	q := &r.Message.Question
+	r.Result.Outcome = transport.ForwardedAnswer
 	if p.names != nil {
 		p.names.Observe(r.Peer.Addr())
 	}
@@ -51,7 +61,9 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		if snapshot == nil {
 			return 0, errors.New("resolve: no active policy")
 		}
+		r.Result.Generation = snapshot.Generation()
 		if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
+			r.Result.Outcome = transport.LocalAnswer
 			if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
 				if target := snapshot.Local().Continuation(&r.Message); target != nil {
 					return p.completeLocal(ctx, r, out, n, target, snapshot)
@@ -62,14 +74,18 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		settings = snapshot.Filtering()
 		paused = settings.Paused(time.Now())
 		if policy.PrivateReverse(name) {
+			r.Result.Outcome = transport.PolicyBlock
 			return policy.BuildBlocked(out, &r.Message, policy.Settings{Mode: "nxdomain"})
 		}
-		decision := snapshot.Policy().Evaluate(policy.Query{Original: name, Name: name, Paused: paused})
+		decision, number := snapshot.Policy().EvaluateNumber(policy.Query{Original: name, Name: name, Paused: paused})
 		if decision.Result == policy.Block {
+			r.Result.Outcome = transport.PolicyBlock
+			r.Result.RuleNumber = number
 			return buildBlock(out, &r.Message, settings, decision)
 		}
 	}
 	if policy.PrivateReverse(name) {
+		r.Result.Outcome = transport.PolicyBlock
 		return policy.BuildBlocked(out, &r.Message, policy.Settings{Mode: "nxdomain"})
 	}
 	c, cfg, err := p.cacheFor(snapshot)
@@ -80,7 +96,9 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 	if eligible {
 		hit := c.Lookup(k, &r.Message, out, time.Now(), staleLimit(cfg), uint32(cfg.StaleTTLSeconds))
 		if hit.Hit && (!hit.Stale || cfg.StaleMode == "immediate") {
+			r.Result.Outcome = transport.FreshAnswer
 			if hit.Stale {
+				r.Result.Outcome = transport.StaleAnswer
 				p.cache.stale.Add(1)
 				p.cache.staleAgeSeconds.Add(hit.StaleAge)
 				if q.Header.Flags&dnswire.FlagRD != 0 {
@@ -96,6 +114,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		p.cache.bypasses.Add(1)
 	}
 	if q.Header.Flags&dnswire.FlagRD == 0 {
+		r.Result.Outcome = transport.ResolutionError
 		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 5, RecursionAvailable: true}, 1232)
 	}
 	if p.upstream == nil && snapshot == nil {
@@ -110,6 +129,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		if exchangeErr != nil || upstreamFailed(wire) {
 			hit := c.Lookup(k, &r.Message, out, time.Now(), staleLimit(cfg), uint32(cfg.StaleTTLSeconds))
 			if hit.Hit && hit.Stale {
+				r.Result.Outcome = transport.StaleAnswer
 				p.cache.stale.Add(1)
 				p.cache.staleAgeSeconds.Add(hit.StaleAge)
 				return p.finish(r, out, hit.Length, snapshot, name, settings, paused)
@@ -128,6 +148,8 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			return 0, err
 		}
 		n = result.N
+		r.Result.UpstreamID = result.EndpointID
+		r.Result.Fallback = result.Fallback
 	}
 	return p.finish(r, out, n, snapshot, name, settings, paused)
 }
@@ -136,9 +158,13 @@ func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *con
 	if snapshot != nil {
 		decision, err := snapshot.Policy().InspectResponse(out[:n], name, paused)
 		if err != nil {
+			r.Result.Outcome = transport.ResolutionError
 			return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2, RecursionAvailable: true}, 1232)
 		}
 		if decision.Decision.Result == policy.Block {
+			r.Result.Outcome = transport.PolicyBlock
+			r.Result.ResponsePolicy = true
+			r.Result.RuleNumber = decision.RuleNumber
 			return buildBlock(out, &r.Message, settings, decision.Decision)
 		}
 	}

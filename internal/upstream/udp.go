@@ -43,6 +43,8 @@ type ExchangeResult struct {
 	Endpoint    netip.AddrPort
 	TCP         bool
 	Route       RouteKey
+	EndpointID  uint32
+	Fallback    bool
 }
 
 // ValidateOptions checks defaults and limits without allocating transport state.
@@ -186,7 +188,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 			return result, dnswire.ErrBounds
 		}
 		copy(out, buf[:n])
-		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, TCP: tcp, Route: DefaultRoute}, nil
+		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, TCP: tcp, Route: DefaultRoute, EndpointID: uint32(index + 1), Fallback: index >= len(c.options.Endpoints)}, nil
 	}
 	if ctx.Err() != nil {
 		last = ctx.Err()

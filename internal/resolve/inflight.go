@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/richkeenan/dimsum/internal/dnscache"
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 const maxFlights = 128
@@ -16,12 +17,13 @@ const maxRefresh = 16
 var errFlightFull = errors.New("resolve: shared resolution capacity exhausted")
 
 type flight struct {
-	done    chan struct{}
-	cancel  context.CancelFunc
-	waiters int
-	refresh bool
-	wire    []byte
-	err     error
+	done     chan struct{}
+	cancel   context.CancelFunc
+	waiters  int
+	refresh  bool
+	wire     []byte
+	err      error
+	metadata *upstream.ExchangeResult
 }
 
 // Work owns request/response bytes. Waiters only read a completed immutable
@@ -36,22 +38,27 @@ type flights struct {
 }
 
 func (g *flights) join(k dnscache.Key, refresh bool, work func(context.Context) ([]byte, error)) (*flight, error) {
+	f, _, err := g.joinStatus(k, refresh, work, nil)
+	return f, err
+}
+
+func (g *flights) joinStatus(k dnscache.Key, refresh bool, work func(context.Context) ([]byte, error), metadata *upstream.ExchangeResult) (*flight, bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed {
-		return nil, net.ErrClosed
+		return nil, false, net.ErrClosed
 	}
 	if f := g.active[k]; f != nil {
 		if !refresh {
 			if f.waiters >= maxWaiters {
-				return nil, errFlightFull
+				return nil, false, errFlightFull
 			}
 			f.waiters++
 		}
-		return f, nil
+		return f, true, nil
 	}
 	if g.workers >= maxFlights || (refresh && g.refreshes >= maxRefresh) {
-		return nil, errFlightFull
+		return nil, false, errFlightFull
 	}
 	if g.active == nil {
 		g.active = make(map[dnscache.Key]*flight)
@@ -59,7 +66,7 @@ func (g *flights) join(k dnscache.Key, refresh bool, work func(context.Context) 
 	// The upstream client enforces its configured bounded total timeout. This
 	// context belongs to the shared work, not to any individual client deadline.
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &flight{done: make(chan struct{}), cancel: cancel, refresh: refresh}
+	f := &flight{done: make(chan struct{}), cancel: cancel, refresh: refresh, metadata: metadata}
 	if refresh {
 		g.refreshes++
 	} else {
@@ -83,7 +90,7 @@ func (g *flights) join(k dnscache.Key, refresh bool, work func(context.Context) 
 		close(f.done)
 		g.mu.Unlock()
 	}()
-	return f, nil
+	return f, false, nil
 }
 
 func (g *flights) wait(ctx context.Context, k dnscache.Key, f *flight) ([]byte, error) {

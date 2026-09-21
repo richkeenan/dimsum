@@ -199,6 +199,11 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 func (s *PolicySnapshot) Memory() SnapshotMemory { return s.memory }
 func (s *PolicySnapshot) Match(n Name) Decision  { return s.match(n, false) }
 func (s *PolicySnapshot) match(n Name, explain bool) Decision {
+	d, _ := s.matchNumber(n, explain)
+	return d
+}
+
+func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
 	d := Decision{Result: Forward, Generation: s.generation}
 	var winner uint32
 	visit := func(head uint32) {
@@ -247,31 +252,38 @@ func (s *PolicySnapshot) match(n Name, explain bool) Decision {
 		slices.Sort(d.SourceIDs)
 		d.SourceIDs = slices.Compact(d.SourceIDs)
 	}
-	return d
+	return d, winner
 }
 
 func (s *PolicySnapshot) Evaluate(q Query) Decision {
-	d := s.match(q.Name, q.Explain)
+	d, _ := s.EvaluateNumber(q)
+	return d
+}
+
+// EvaluateNumber also returns the one-based immutable rule index. It is scoped
+// to this generation and is suitable for fixed-size events, not as a public ID.
+func (s *PolicySnapshot) EvaluateNumber(q Query) (Decision, uint32) {
+	d, number := s.matchNumber(q.Name, q.Explain)
 	if q.Local {
 		d.Result = Local
 		d.RuleID = ""
-		return d
+		return d, 0
 	}
 	if q.Paused {
 		d.Result = Paused
 		d.RuleID = ""
-		return d
+		return d, 0
 	}
 	if q.Name != q.Original {
-		original := s.match(q.Original, q.Explain)
+		original, originalNumber := s.matchNumber(q.Original, q.Explain)
 		if original.Result == Allow {
 			if q.Explain {
 				original.SourceIDs = append(original.SourceIDs, d.SourceIDs...)
 				slices.Sort(original.SourceIDs)
 				original.SourceIDs = slices.Compact(original.SourceIDs)
 			}
-			return original
+			return original, originalNumber
 		}
 	}
-	return d
+	return d, number
 }

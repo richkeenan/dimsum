@@ -19,6 +19,7 @@ type Request struct {
 	Message dnswire.Message
 	Peer    netip.AddrPort
 	TCP     bool
+	Result  Result
 }
 
 // Handler writes a complete client-specific DNS reply into out and returns its
@@ -34,6 +35,7 @@ func (f HandlerFunc) Resolve(c context.Context, r *Request, b []byte) (int, erro
 type Options struct {
 	SmallSlots, LargeSlots, Workers, MaxConnections, UDPSize int
 	ReadTimeout, WriteTimeout, RequestTimeout                time.Duration
+	Observe                                                  Observer
 }
 type counters struct{ slotDrops, largeReceived, largeDrops, connectionDrops, connections, invalid, writeErrors atomic.Uint64 }
 type Stats struct{ SlotDrops, LargeReceived, LargeDrops, ConnectionDrops, Connections, Invalid, WriteErrors uint64 }
@@ -98,6 +100,9 @@ func (s *Server) acquire(n int) *RequestSlot {
 	}
 	if slot == nil {
 		s.stats.slotDrops.Add(1)
+		if s.opts.Observe != nil {
+			s.opts.Observe(nil, Result{Outcome: AdmissionRejected})
+		}
 		if n > smallSize {
 			s.stats.largeDrops.Add(1)
 		}
@@ -105,8 +110,19 @@ func (s *Server) acquire(n int) *RequestSlot {
 	return slot
 }
 
-func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrPort, tcp bool, deadline time.Time) int {
+func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrPort, tcp bool, deadline time.Time) (n int) {
 	r := Request{Wire: wire, Peer: peer, TCP: tcp}
+	if s.opts.Observe != nil {
+		defer func() {
+			r.Result.Arrival = deadline.Add(-s.opts.RequestTimeout)
+			r.Result.Elapsed = time.Since(r.Result.Arrival)
+			if n >= 12 && n <= len(out) {
+				r.Result.RCode = r.Result.RCode&^15 | uint16(out[3]&15)
+				r.Result.Truncated = out[2]&2 != 0
+			}
+			s.opts.Observe(&r, r.Result)
+		}()
+	}
 	err := dnswire.ParseRequest(wire, &r.Message)
 	if err != nil {
 		s.stats.invalid.Add(1)
@@ -118,10 +134,14 @@ func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrP
 		switch {
 		case errors.Is(err, dnswire.ErrOpcode):
 			code = 4
+			r.Result.Outcome = AdmissionRejected
 		case errors.Is(err, dnswire.ErrClass), errors.Is(err, dnswire.ErrUnsupported):
 			code = 5
+			r.Result.Outcome = AdmissionRejected
 		case errors.Is(err, dnswire.ErrBadVersion):
 			code = 16
+			r.Result.Outcome = AdmissionRejected
+			r.Result.RCode = 16
 		}
 		if errors.Is(err, dnswire.ErrBadVersion) {
 			n, _ := dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: code}, s.opts.UDPSize)
@@ -140,15 +160,17 @@ func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrP
 		return 12
 	}
 	requestCtx, cancel := context.WithDeadline(ctx, deadline)
+	r.Result.Admitted = true
 	if requestCtx.Err() != nil {
 		cancel()
 		n, _ := dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2}, s.opts.UDPSize)
 		return n
 	}
-	n, err := s.handler.Resolve(requestCtx, &r, out)
+	n, err = s.handler.Resolve(requestCtx, &r, out)
 	expired := requestCtx.Err() != nil
 	cancel()
 	if err != nil || expired || n < 12 || n > len(out) {
+		r.Result.Outcome = ResolutionError
 		n, _ = dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2}, s.opts.UDPSize)
 		return n
 	}
@@ -158,6 +180,7 @@ func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrP
 	}
 	n, err = dnswire.FitReply(out, out[:n], &r.Message, budget, s.opts.UDPSize)
 	if err != nil {
+		r.Result.Outcome = ResolutionError
 		s.stats.invalid.Add(1)
 		n, _ = dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2}, s.opts.UDPSize)
 	}
