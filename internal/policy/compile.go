@@ -55,7 +55,8 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		return nil, fmt.Errorf("policy: invalid snapshot budget")
 	}
 	count, exactCount := 0, 0
-	var textBytes uint64
+	var textBytes, storedTextBytes uint64
+	sources := make(map[string]textRef)
 	for _, r := range input {
 		if !o.DisabledSources[r.SourceID] {
 			count++
@@ -63,6 +64,17 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 				exactCount++
 			}
 			textBytes += uint64(len(r.ID)) + uint64(len(r.SourceID)) + uint64(len(r.SourceText)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect))
+			if count > o.MaxRules || uint64(count) > math.MaxUint32-1 || textBytes > o.MaxBytes {
+				return nil, fmt.Errorf("policy: snapshot input budget exceeded")
+			}
+			storedTextBytes += uint64(len(r.ID)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect))
+			if r.SourceText != r.Pattern {
+				storedTextBytes += uint64(len(r.SourceText))
+			}
+			if _, ok := sources[r.SourceID]; !ok {
+				storedTextBytes += uint64(len(r.SourceID))
+				sources[r.SourceID] = textRef{}
+			}
 		}
 	}
 	if count > o.MaxRules || uint64(count) > math.MaxUint32-1 || textBytes > o.MaxBytes {
@@ -74,8 +86,12 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		s.exact.slots = make([]exactSlot, (uint64(exactCount)*100+uint64(load)-1)/uint64(load))
 	}
 	var text strings.Builder
+	// Reserve actual stored text, not the conservative admission estimate:
+	// source IDs are interned and SourceText often shares its Pattern. Growing
+	// this arena repeatedly otherwise leaves large copied buffers for GC.
+	text.Grow(int(storedTextBytes))
+	clear(sources)
 	seen := make(map[string]bool, count)
-	sources := make(map[string]textRef)
 	var suffixes []suffixBuild
 	var suffixKeyBytes uint64
 	var fallback []Rule
