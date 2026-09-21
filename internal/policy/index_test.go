@@ -285,3 +285,47 @@ func TestCompileRegexReusesReferenceCompilation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ref.Match(n), snapshot.Match(n))
 }
+
+func TestCompileGlobRetainedBudgetAfterIDNAMapping(t *testing.T) {
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	build := func() (*PolicySnapshot, error) {
+		// IDNA drops soft hyphens. The lowercase wildcard label must not pin
+		// this large original pattern after the literal label becomes "example".
+		pattern := "ads?.ex" + strings.Repeat("\u00ad", 4<<20) + "ample.test"
+		return CompileSnapshot(1, []Rule{{ID: "mapped", Kind: Glob, Class: SubscriptionDeny, Pattern: pattern}}, DefaultLimits())
+	}
+	s, err := build()
+	require.NoError(t, err)
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	// The original text belongs in provenance exactly once. Runtime bookkeeping
+	// and allocator rounding have generous slack; an extra 8 MiB backing string
+	// is retained payload, not rounding, and cannot be omitted from MaxBytes.
+	t.Logf("retained heap delta=%d, snapshot accounting=%d", int64(after.HeapAlloc)-int64(before.HeapAlloc), s.Memory().TotalBytes)
+	assert.Less(t, int64(after.HeapAlloc)-int64(before.HeapAlloc), int64(s.Memory().TotalBytes)+(2<<20))
+	require.Len(t, s.fallback, 1)
+	assert.Equal(t, []string{"ads?", "example", "test"}, s.fallback[0].labels)
+	assert.Empty(t, s.fallback[0].name.wire)
+	rule, ok := s.Rule("mapped")
+	require.True(t, ok)
+	assert.Contains(t, rule.Pattern, "\u00ad", "diagnostics retain original text")
+	ref, err := Compile(1, []Rule{rule}, DefaultLimits())
+	require.NoError(t, err)
+	for _, text := range []string{"ads1.example.test", "ads12.example.test", "x.ads1.example.test"} {
+		n, err := NormalizeName(text)
+		require.NoError(t, err)
+		assert.Equal(t, ref.Match(n), s.Match(n))
+	}
+	opts := DefaultSnapshotOptions()
+	opts.MaxBytes = s.Memory().TotalBytes
+	bounded, err := CompileSnapshotWithOptions(2, []Rule{rule}, DefaultLimits(), opts)
+	require.NoError(t, err, "admit the complete retained-accounting size")
+	assert.Equal(t, opts.MaxBytes, bounded.Memory().TotalBytes)
+	opts.MaxBytes--
+	rejected, err := CompileSnapshotWithOptions(3, []Rule{rule}, DefaultLimits(), opts)
+	require.ErrorContains(t, err, "snapshot byte budget exceeded")
+	assert.Nil(t, rejected, "reject one byte below the complete retained size")
+	runtime.KeepAlive(s)
+}

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"runtime"
 	"runtime/metrics"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,6 +16,31 @@ import (
 
 var benchmarkDecision Decision
 var benchmarkHead uint32
+
+func BenchmarkSnapshotGlobBuild(b *testing.B) {
+	for _, tc := range []struct{ name, pattern string }{
+		{"plain", "ads?.example.test"},
+		{"idna-mapped-8MiB", "ads?.ex" + strings.Repeat("\u00ad", 4<<20) + "ample.test"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			rules := []Rule{{ID: "mapped", Kind: Glob, Class: SubscriptionDeny, Pattern: tc.pattern}}
+			s, err := CompileSnapshot(1, rules, DefaultLimits())
+			require.NoError(b, err)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				s, err = CompileSnapshot(uint64(i+2), rules, DefaultLimits())
+				if err != nil {
+					break
+				}
+			}
+			b.StopTimer()
+			require.NoError(b, err)
+			b.ReportMetric(float64(s.Memory().TotalBytes), "retained-B")
+			b.ReportMetric(float64(s.Memory().FallbackBytes), "fallback-B")
+		})
+	}
+}
 
 // Deterministic synthetic feed: realistic stable membership IDs, verbatim text,
 // eight source names and 23-byte canonical keys (root omitted). No network.

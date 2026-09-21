@@ -155,6 +155,15 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	fallbackCharge := uint64(m.regexBytes)
 	for i := range s.fallback {
 		r := &s.fallback[i]
+		if r.kind == Glob {
+			// normalizeGlob can leave wildcard labels in the original pattern
+			// and literal labels in length-prefixed Name.wire storage. Detach
+			// both: visible lengths below must cover all retained label bytes,
+			// even when IDNA removes most of a long original literal label.
+			for j, label := range r.labels {
+				r.labels[j] = strings.Clone(label)
+			}
+		}
 		fallbackCharge += uint64(len(r.name.wire)) + uint64(cap(r.labels))*16
 		for _, label := range r.labels {
 			fallbackCharge += uint64(len(label))
