@@ -7,19 +7,17 @@ import (
 	"testing"
 
 	"github.com/richkeenan/dimsum/internal/app"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLifecycleMalformedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "dimsum.yaml")
-	if err := os.WriteFile(path, []byte("version: ["), 0600); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte("version: ["), 0600))
 	s := new(app.Service)
-	if err := s.StartFile(context.Background(), path); err == nil {
-		s.Close()
-		t.Fatal("malformed file started service")
-	}
-	if a := s.Addresses(); len(a.DNS) != 0 || a.Admin != "" {
-		t.Fatal("partial start")
-	}
+	t.Cleanup(func() { s.Close() })
+	require.Error(t, s.StartFile(context.Background(), path), "malformed file started service")
+	a := s.Addresses()
+	assert.Empty(t, a.DNS, "partial start")
+	assert.Empty(t, a.Admin, "partial start")
 }

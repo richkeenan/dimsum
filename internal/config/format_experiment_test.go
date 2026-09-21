@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/creachadair/tomledit"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -14,29 +16,18 @@ import (
 func TestConfigFormatExperiment(t *testing.T) {
 	y := "# household\nversion: 1  # schema\ndns:\n    listen: '127.0.0.1:5353' # local\n\n# preserve spacing\ndata_dir:   './data'\n"
 	var node yaml.Node
-	if err := yaml.Unmarshal([]byte(y), &node); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, yaml.Unmarshal([]byte(y), &node))
 	yout, err := yaml.Marshal(&node)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	tom := "# household\nversion=1  # schema\n[dns]\nlisten = '127.0.0.1:5353' # local\n\n# preserve spacing\ndata_dir   = './data'\n"
 	doc, err := tomledit.Parse(strings.NewReader(tom))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	var tout bytes.Buffer
-	if err := tomledit.Format(&tout, doc); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, tomledit.Format(&tout, doc))
 	for _, c := range []struct{ name, in, out string }{{"yaml-v3 AST", y, string(yout)}, {"tomledit document", tom, tout.String()}} {
-		if !strings.Contains(c.out, "# household") || !strings.Contains(c.out, "# local") {
-			t.Fatalf("%s lost comments", c.name)
-		}
-		if c.in == c.out {
-			t.Fatalf("re-evaluate %s: formatter now preserves exact input", c.name)
-		}
+		assert.Contains(t, c.out, "# household", "%s lost comments", c.name)
+		assert.Contains(t, c.out, "# local", "%s lost comments", c.name)
+		assert.NotEqual(t, c.in, c.out, "re-evaluate %s: formatter now preserves exact input", c.name)
 		t.Logf("%s preserves comments but changes unrelated whitespace:\n%s", c.name, c.out)
 	}
 }
