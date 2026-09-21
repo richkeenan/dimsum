@@ -358,7 +358,7 @@ export default function SettingsView() {
           complete configuration.
         </p>
         {state.data?.source ? (
-          <pre className="max-h-[600px] overflow-auto font-mono text-[11px] whitespace-pre-wrap [overflow-wrap:anywhere]">
+          <pre className="max-h-[600px] overflow-auto font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">
             {state.data.source}
           </pre>
         ) : (

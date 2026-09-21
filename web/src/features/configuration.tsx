@@ -318,7 +318,7 @@ export default function Configuration({
                         <span>
                           {text(r.name || r.address)}
                           {r.name && r.name !== r.address ? (
-                            <small className="mt-0.5 block text-[10px] text-muted-foreground">
+                            <small className="mt-0.5 block text-xs text-muted-foreground">
                               {text(r.address)}
                             </small>
                           ) : null}

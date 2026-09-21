@@ -242,7 +242,7 @@ export default function Queries({
                   <span className="whitespace-nowrap">
                     {text(r.client_name || r.client)}
                     {!!r.client_name && (
-                      <small className="mt-0.5 block text-[10px] text-muted-foreground">
+                      <small className="mt-0.5 block text-xs text-muted-foreground">
                         {text(r.client)}
                         {r.client_name_fresh === false ? " · stale name" : ""}
                       </small>
@@ -256,7 +256,7 @@ export default function Queries({
                 width: 300,
                 render: (r) => (
                   <button
-                    className="border-0 bg-transparent p-0 text-left text-xs whitespace-nowrap text-foreground hover:underline"
+                    className="border-0 bg-transparent p-0 text-left text-base whitespace-nowrap text-foreground hover:underline"
                     onClick={() => inspect(r)}
                   >
                     {text(r.name)}
@@ -270,7 +270,7 @@ export default function Queries({
                 width: 140,
                 render: (r) => (
                   <span
-                    className={`inline-block rounded px-[7px] py-[3px] text-[11px] ${r.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : r.outcome === "error" || r.outcome === "rejected" ? "bg-destructive/10 text-destructive" : r.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
+                    className={`inline-block rounded px-[7px] py-[3px] text-xs ${r.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : r.outcome === "error" || r.outcome === "rejected" ? "bg-destructive/10 text-destructive" : r.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
                   >
                     {resultLabel(r.outcome)}
                   </span>
@@ -456,7 +456,7 @@ function QueryDetail({
         {name || "Root domain"}
       </h3>
       <span
-        className={`inline-block w-fit rounded px-[7px] py-[3px] text-[11px] ${state.data?.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : state.data?.outcome === "error" || state.data?.outcome === "rejected" ? "bg-destructive/10 text-destructive" : state.data?.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
+        className={`inline-block w-fit rounded px-[7px] py-[3px] text-xs ${state.data?.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : state.data?.outcome === "error" || state.data?.outcome === "rejected" ? "bg-destructive/10 text-destructive" : state.data?.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
       >
         {resultLabel(state.data?.outcome)}
       </span>

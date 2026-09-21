@@ -21,7 +21,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
   const max = Math.max(1, ...values.map((v) => v.reduce((a, b) => a + b, 0)));
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2.5 px-5 py-[18px] text-[11px] text-muted-foreground min-[701px]:gap-[18px]">
+      <div className="flex flex-wrap items-center gap-2.5 px-5 py-[18px] text-xs text-muted-foreground min-[701px]:gap-[18px]">
         {outcomes.map((k) => (
           <span className="flex items-center gap-[5px]" key={k}>
             <i

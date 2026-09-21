@@ -173,7 +173,7 @@ export function DataTable({
               {row.getAllCells().map((cell, i) => (
                 <TableCell
                   key={cell.id}
-                  className="max-w-105 px-4 py-2 text-xs leading-snug whitespace-nowrap tabular-nums"
+                  className="max-w-105 px-4 py-3 text-base leading-normal whitespace-nowrap tabular-nums"
                   style={{ textAlign: visible[i]?.align }}
                   title={
                     typeof row.original[visible[i]?.key] === "string"
@@ -203,7 +203,7 @@ export function DataTable({
 
 export function Details({ value }: { value: unknown }) {
   return (
-    <dl className="text-xs wrap-anywhere [&>div]:grid [&>div]:grid-cols-[minmax(110px,35%)_1fr] [&>div]:gap-3 [&>div]:border-b [&>div]:border-border [&>div]:py-2.5 [&_dt]:text-muted-foreground [&_dt]:capitalize [&_dd]:whitespace-pre-wrap">
+    <dl className="text-base wrap-anywhere [&>div]:grid [&>div]:grid-cols-[minmax(110px,35%)_1fr] [&>div]:gap-3 [&>div]:border-b [&>div]:border-border [&>div]:py-3 [&_dt]:text-muted-foreground [&_dt]:capitalize [&_dd]:whitespace-pre-wrap">
       {Object.entries(value && typeof value === "object" ? value : {}).map(
         ([key, v]) => (
           <div key={key}>

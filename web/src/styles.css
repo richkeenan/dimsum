@@ -19,6 +19,10 @@
   --color-destructive: #ae4944;
   --radius-md: 6px;
   --radius-lg: 10px;
+  --text-xs: 0.875rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 1rem;
+  --text-sm--line-height: 1.5;
 }
 
 :root {
@@ -28,7 +32,7 @@
     BlinkMacSystemFont,
     sans-serif;
   font-synthesis: none;
-  font-size: 14px;
+  font-size: 100%;
   color-scheme: light;
   --canvas: #f5f7fb;
   --background: #fff;

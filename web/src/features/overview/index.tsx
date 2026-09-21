@@ -48,7 +48,7 @@ export default function Overview({
         }}
       />
       <Resource state={summary}>
-        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[701px]:grid-cols-5">
+        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[1101px]:grid-cols-5">
           {[
             ["Total queries", count(s?.queries)],
             ["Blocked queries", count(s?.blocked)],
@@ -63,7 +63,7 @@ export default function Overview({
             ],
           ].map(([label, value]) => (
             <div
-              className="min-w-0 border-border px-4 py-4 max-[700px]:border-b max-[700px]:odd:border-r max-[700px]:last:col-span-2 max-[700px]:last:border-b-0 max-[700px]:last:border-r-0 min-[701px]:border-r min-[701px]:last:border-r-0 min-[1051px]:px-5"
+              className="min-w-0 border-border px-4 py-4 max-[1100px]:border-b max-[1100px]:odd:border-r max-[1100px]:last:col-span-2 max-[1100px]:last:border-b-0 max-[1100px]:last:border-r-0 min-[1101px]:border-r min-[1101px]:last:border-r-0 min-[1051px]:px-5"
               key={label}
             >
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -73,7 +73,7 @@ export default function Overview({
             </div>
           ))}
         </div>
-        <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-[11px] text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
+        <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-xs text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
           <span>
             Rejected queries <b>{count(s?.rejected)}</b>
           </span>
@@ -90,7 +90,7 @@ export default function Overview({
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
           <h2 className="text-sm font-semibold">Query activity</h2>
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             Outcomes over the selected range
           </span>
         </div>
@@ -114,7 +114,7 @@ export default function Overview({
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
               <h2 className="text-sm font-semibold">Top clients</h2>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 By requests · top 10
               </span>
             </div>
@@ -131,7 +131,7 @@ export default function Overview({
                     >
                       {text(r.name || r.address)}
                       {!!r.name && r.name !== r.address && (
-                        <small className="mt-0.5 block text-[10px] text-muted-foreground">
+                        <small className="mt-0.5 block text-xs text-muted-foreground">
                           {text(r.address)}
                         </small>
                       )}
@@ -151,7 +151,7 @@ export default function Overview({
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
               <h2 className="text-sm font-semibold">Top blocked domains</h2>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 Exact names · top 10
               </span>
             </div>
@@ -163,7 +163,7 @@ export default function Overview({
                   label: "Domain",
                   render: (r) => (
                     <button
-                      className="border-0 bg-transparent p-0 text-left text-xs text-foreground hover:underline"
+                      className="border-0 bg-transparent p-0 text-left text-base text-foreground hover:underline"
                       onClick={() => drill("name", text(r.name))}
                     >
                       {text(r.name)}
@@ -191,7 +191,7 @@ function Health({ refresh }: { refresh: number }) {
   const storage = diagnostics.data?.storage as Row | undefined;
   const writer = storage?.writer as Row | undefined;
   return (
-    <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-[11px] text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
+    <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-xs text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
       <Resource state={diagnostics}>
         <span>
           DNS{" "}

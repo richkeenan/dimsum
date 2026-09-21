@@ -208,13 +208,13 @@ export default function App() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-65 flex-col bg-[#172e50] px-4 py-6 text-[#edf3ff] md:flex md:w-54 ${menu ? "flex" : "hidden"}`}
+        className={`fixed inset-y-0 left-0 z-30 w-65 flex-col overflow-y-auto bg-[#172e50] px-4 py-6 text-[#edf3ff] md:flex md:w-60 ${menu ? "flex" : "hidden"}`}
         aria-label="Application navigation"
       >
         <Link
           to="/"
           search={rangeSearch}
-          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-semibold tracking-tight [&_small]:block [&_small]:text-[10px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
+          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-semibold tracking-tight [&_small]:block [&_small]:text-xs [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
         >
           <span className="rounded-[11px] bg-primary p-2 text-white">
             <Network size={22} />
@@ -267,8 +267,8 @@ export default function App() {
           </Button>
         </div>
       </aside>
-      <div className="min-w-0 flex-1 md:ml-54">
-        <header className="flex h-16 items-center justify-between border-b border-border bg-background px-4 text-xs md:px-8">
+      <div className="min-w-0 flex-1 md:ml-60">
+        <header className="flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-border bg-background px-4 py-2 text-xs md:px-8">
           <div className="flex items-center gap-3">
             <Button
               className="md:hidden"
