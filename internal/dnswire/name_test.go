@@ -64,6 +64,9 @@ func TestDecodeName(t *testing.T) {
 			if err == nil && (n.End != tt.end || !bytes.Equal(n.Canonical[:n.Length], tt.canonical)) {
 				t.Fatalf("end=%d canonical=%x", n.End, n.Canonical[:n.Length])
 			}
+			if err == nil {
+				checkNameOracle(t, tt.wire, tt.off, &n)
+			}
 		})
 	}
 }
