@@ -1,7 +1,7 @@
 # DNS console direction
 
 Desktop-first instrument panel: 216px navigation, a narrow status/range toolbar,
-four overview measures, one wide outcome chart, two compact ranking tables.
+five overview measures, one wide outcome chart, two compact ranking tables.
 Keep identities left-aligned and counts right-aligned with tabular numerals.
 
 Palette: paper #f6f5f2, surface #ffffff, ink #303b36, muted #737970,

@@ -48,10 +48,11 @@ export default function Overview({
         }}
       />
       <Resource state={summary}>
-        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[701px]:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-background min-[701px]:grid-cols-5">
           {[
             ["Total queries", count(s?.queries)],
             ["Blocked queries", count(s?.blocked)],
+            ["Blocked %", percentage(s?.blocked, s?.queries)],
             ["Answered from cache", percentage(s?.fresh, s?.queries)],
             [
               "Active clients",
@@ -62,7 +63,7 @@ export default function Overview({
             ],
           ].map(([label, value]) => (
             <div
-              className="min-w-0 border-border px-4 py-4 max-[700px]:border-b max-[700px]:odd:border-r max-[700px]:nth-[n+3]:border-b-0 min-[701px]:border-r min-[701px]:last:border-r-0 min-[1051px]:px-5"
+              className="min-w-0 border-border px-4 py-4 max-[700px]:border-b max-[700px]:odd:border-r max-[700px]:last:col-span-2 max-[700px]:last:border-b-0 max-[700px]:last:border-r-0 min-[701px]:border-r min-[701px]:last:border-r-0 min-[1051px]:px-5"
               key={label}
             >
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -73,9 +74,6 @@ export default function Overview({
           ))}
         </div>
         <div className="mt-3.5 mb-6 flex flex-wrap gap-3 text-[11px] text-muted-foreground min-[701px]:gap-[22px] [&_b]:ml-1 [&_b]:font-medium [&_b]:text-foreground">
-          <span>
-            Blocked <b>{percentage(s?.blocked, s?.queries)}</b>
-          </span>
           <span>
             Rejected queries <b>{count(s?.rejected)}</b>
           </span>
