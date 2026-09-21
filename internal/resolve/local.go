@@ -9,6 +9,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/transport"
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 // completeLocal follows an external target under the same captured generation.
@@ -29,7 +30,7 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 		code = 3
 		authority = []dnswire.SyntheticRecord{dnswire.NegativeSOA([]byte{0}, 2)}
 	} else {
-		if p.upstream == nil {
+		if p.upstream == nil && snapshot == nil {
 			return 0, errors.New("resolve: no upstream for local alias target")
 		}
 		h := r.Message.Question.Header
@@ -55,7 +56,7 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 			binary.BigEndian.PutUint16(query[len(query)-2:], uint16(len(r.Message.EDNS.Options)))
 			query = append(query, r.Message.EDNS.Options...)
 		}
-		result, e := p.upstream.Exchange(ctx, query, out)
+		result, e := p.exchange(ctx, snapshot, upstream.DefaultRoute, query, out)
 		if e != nil {
 			return 0, e
 		}

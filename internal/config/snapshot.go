@@ -4,6 +4,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 // Snapshot is immutable. A request loads it once and holds that pointer through
@@ -23,6 +24,9 @@ func (s *Snapshot) Names() *clients.View           { return s.names }
 func (s *Snapshot) Filtering() policy.Settings     { return s.document.value.Filtering }
 func (s *Snapshot) Generation() uint64             { return s.generation }
 func (s *Snapshot) Revision() string               { return s.document.Revision() }
+
+// UpstreamOptions returns owned endpoint slices from the captured generation.
+func (s *Snapshot) UpstreamOptions() upstream.Options { return s.document.value.DNS.UpstreamOptions() }
 
 type SourceStatus struct {
 	ID      string `json:"id"`

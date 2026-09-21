@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"github.com/richkeenan/dimsum/internal/clients"
+	"github.com/richkeenan/dimsum/internal/upstream"
 	"net"
 	"net/netip"
 	"strings"
@@ -33,16 +34,20 @@ func Validate(c Config) error {
 	if err := address("admin.listen", c.Admin.Listen); err != nil {
 		return err
 	}
-	if len(c.DNS.Upstreams) > 16 {
+	if len(c.DNS.Upstreams) > 16 || len(c.DNS.Fallback) > 16 {
 		return fmt.Errorf("dns.upstreams: at most 16 endpoints")
 	}
 	endpoints := append([]string(nil), c.DNS.Upstreams...)
+	endpoints = append(endpoints, c.DNS.Fallback...)
 	if c.Naming.Resolver != "" {
 		endpoints = append(endpoints, c.Naming.Resolver)
 	}
 	for i, a := range endpoints {
 		field := fmt.Sprintf("dns.upstreams[%d]", i)
-		if i == len(c.DNS.Upstreams) {
+		if i >= len(c.DNS.Upstreams) {
+			field = fmt.Sprintf("dns.fallback_upstreams[%d]", i-len(c.DNS.Upstreams))
+		}
+		if i == len(c.DNS.Upstreams)+len(c.DNS.Fallback) {
 			field = "naming.resolver"
 		}
 		endpoint, err := netip.ParseAddrPort(a)
@@ -73,6 +78,23 @@ func Validate(c Config) error {
 				return fmt.Errorf("%s: endpoint points to DNS listener %s", field, listen)
 			}
 		}
+	}
+	p := c.DNS.UpstreamPolicy
+	for _, ms := range []int{p.TimeoutMS, p.AttemptTimeoutMS, p.OpenMS, p.MaxBackoffMS} {
+		if ms < 0 || ms > 60000 {
+			return fmt.Errorf("dns.upstream_policy: durations must be 0..60000 milliseconds")
+		}
+	}
+	o := c.DNS.UpstreamOptions()
+	// A listener-only configuration remains valid; forwarding requires a primary.
+	if len(o.Endpoints) == 0 {
+		if len(o.Fallback) > 0 {
+			return fmt.Errorf("dns.upstreams: primary required with fallback")
+		}
+		o.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:53")}
+	}
+	if err := upstream.ValidateOptions(o); err != nil {
+		return fmt.Errorf("dns.upstream_policy: %w", err)
 	}
 	if strings.TrimSpace(c.Paths.DataDir) == "" || strings.TrimSpace(c.Paths.SecretsDir) == "" {
 		return fmt.Errorf("paths: data_dir and secrets_dir are required")

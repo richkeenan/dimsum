@@ -46,7 +46,7 @@ type Listeners struct {
 var ErrStarted = errors.New("service already started")
 
 func (s *Service) Start(ctx context.Context, c config.Config) error {
-	return s.start(ctx, c, nil, nil, nil)
+	return s.start(ctx, c, nil, nil, nil, nil)
 }
 
 // StartForwarding binds all sockets transactionally and attaches the DNS pipeline.
@@ -70,26 +70,35 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || c.Naming != (clients.Settings{})) {
 		return fmt.Errorf("service: policy configuration requires StartManaged")
 	}
-	endpoints := make([]netip.AddrPort, len(c.DNS.Upstreams))
-	for i, a := range c.DNS.Upstreams {
-		endpoints[i] = netip.MustParseAddrPort(a)
-	}
-	u, err := upstream.New(upstream.Options{Endpoints: endpoints})
-	if err != nil {
+	if err := upstream.ValidateOptions(c.DNS.UpstreamOptions()); err != nil {
 		return err
+	}
+	var u *upstream.Client
+	if store == nil {
+		var err error
+		u, err = upstream.New(c.DNS.UpstreamOptions())
+		if err != nil {
+			return err
+		}
 	}
 	var names *clients.Manager
 	if store != nil {
 		names = clients.New(func() *clients.View { return store.Snapshot().Names() })
 	}
-	server, err := transport.New(transport.Options{}, resolve.NewWithNames(u, store, names))
+	pipeline := resolve.NewWithNames(u, store, names)
+	server, err := transport.New(transport.Options{}, pipeline)
 	if err != nil {
+		pipeline.Close()
 		return err
 	}
-	return s.start(ctx, c, server, store, names)
+	err = s.start(ctx, c, server, store, names, func() { pipeline.Close() })
+	if err != nil {
+		pipeline.Close()
+	}
+	return err
 }
 
-func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store, names *clients.Manager) error {
+func (s *Service) start(ctx context.Context, c config.Config, server *transport.Server, store *config.Store, names *clients.Manager, cleanup func()) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.started {
@@ -130,6 +139,16 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	}
 	sockets.Admin = admin
 	addresses.Admin = admin.Addr().String()
+	bound := c
+	bound.DNS.Listen = addresses.DNS
+	if err := config.Validate(bound); err != nil {
+		return err
+	}
+	if store != nil {
+		if err := store.BindDNSListeners(addresses.DNS); err != nil {
+			return err
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -190,6 +209,9 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		cancel()
 		closeListeners(sockets)
 		workers.Wait()
+		if cleanup != nil {
+			cleanup()
+		}
 		close(s.done)
 	}()
 	return nil

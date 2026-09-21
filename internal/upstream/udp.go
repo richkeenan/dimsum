@@ -42,18 +42,24 @@ type ExchangeResult struct {
 	N, Attempts int
 	Endpoint    netip.AddrPort
 	TCP         bool
+	Route       RouteKey
 }
 
-func New(o Options) (*Client, error) {
+// ValidateOptions checks defaults and limits without allocating transport state.
+func ValidateOptions(o Options) error { return normalizeOptions(&o) }
+
+func normalizeOptions(o *Options) error {
 	if len(o.Endpoints) == 0 || len(o.Endpoints) > 16 {
-		return nil, errors.New("upstream: require 1..16 endpoints")
+		return errors.New("upstream: require 1..16 endpoints")
 	}
 	if len(o.Fallback) > 16 {
-		return nil, errors.New("upstream: at most 16 fallback endpoints")
+		return errors.New("upstream: at most 16 fallback endpoints")
 	}
-	for _, a := range append(append([]netip.AddrPort(nil), o.Endpoints...), o.Fallback...) {
-		if !a.IsValid() || a.Port() == 0 || a.Addr().Unmap().IsUnspecified() || a.Addr().Unmap().IsMulticast() {
-			return nil, errors.New("upstream: require unicast literal IP and nonzero port")
+	for _, endpoints := range [][]netip.AddrPort{o.Endpoints, o.Fallback} {
+		for _, a := range endpoints {
+			if !a.IsValid() || a.Port() == 0 || a.Addr().Unmap().IsUnspecified() || a.Addr().Unmap().IsMulticast() {
+				return errors.New("upstream: require unicast literal IP and nonzero port")
+			}
 		}
 	}
 	if o.MaxOutstanding == 0 {
@@ -81,10 +87,17 @@ func New(o Options) (*Client, error) {
 		o.MaxBackoff = 60 * time.Second
 	}
 	if (o.Mode != "ordered" && o.Mode != "adaptive") || o.MaxAttempts < 1 || o.MaxAttempts > 16 || o.FailureThreshold < 1 || o.FailureThreshold > 100 || o.OpenInterval < 0 || o.OpenInterval > time.Minute || o.MaxBackoff < o.OpenInterval || o.MaxBackoff > time.Minute {
-		return nil, errors.New("upstream: invalid pool settings")
+		return errors.New("upstream: invalid pool settings")
 	}
 	if o.MaxOutstanding < 1 || o.MaxOutstanding > 65536 || o.Timeout < 0 || o.Timeout > time.Minute || o.AttemptTimeout < 0 || o.AttemptTimeout > time.Minute {
-		return nil, errors.New("upstream: invalid limits")
+		return errors.New("upstream: invalid limits")
+	}
+	return nil
+}
+
+func New(o Options) (*Client, error) {
+	if err := normalizeOptions(&o); err != nil {
+		return nil, err
 	}
 	o.Endpoints = append([]netip.AddrPort(nil), o.Endpoints...)
 	o.Fallback = append([]netip.AddrPort(nil), o.Fallback...)
@@ -165,7 +178,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 			return result, dnswire.ErrBounds
 		}
 		copy(out, buf[:n])
-		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, TCP: tcp}, nil
+		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, TCP: tcp, Route: DefaultRoute}, nil
 	}
 	if ctx.Err() != nil {
 		last = ctx.Err()

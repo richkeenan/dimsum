@@ -16,9 +16,10 @@ import (
 )
 
 type Pipeline struct {
-	upstream *upstream.Client
-	store    *config.Store
-	names    *clients.Manager
+	upstream  *upstream.Client
+	store     *config.Store
+	names     *clients.Manager
+	upstreams upstreams
 }
 
 func New(c *upstream.Client) *Pipeline { return &Pipeline{upstream: c} }
@@ -73,10 +74,10 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 	if q.Header.Flags&dnswire.FlagRD == 0 {
 		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 5, RecursionAvailable: true}, 1232)
 	}
-	if p.upstream == nil {
+	if p.upstream == nil && snapshot == nil {
 		return 0, errors.New("resolve: no upstream")
 	}
-	result, err := p.upstream.Exchange(ctx, r.Wire, out)
+	result, err := p.exchange(ctx, snapshot, upstream.DefaultRoute, r.Wire, out)
 	if err != nil {
 		return 0, err
 	}

@@ -1,6 +1,8 @@
 package upstream
 
 import (
+	"context"
+	"errors"
 	"net/netip"
 	"sort"
 )
@@ -10,6 +12,15 @@ import (
 type RouteKey uint64
 
 const DefaultRoute RouteKey = 1
+
+var ErrRoute = errors.New("upstream: unsupported resolution namespace")
+
+func (c *Client) ExchangeRoute(ctx context.Context, route RouteKey, wire, out []byte) (ExchangeResult, error) {
+	if route != DefaultRoute {
+		return ExchangeResult{}, ErrRoute
+	}
+	return c.Exchange(ctx, wire, out)
+}
 
 func (c *Client) endpoint(i int) netip.AddrPort {
 	if i < len(c.options.Endpoints) {

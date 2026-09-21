@@ -38,6 +38,7 @@ type Store struct {
 	status      ActivationResult
 	active      atomic.Pointer[Snapshot]
 	starting    bool
+	listeners   []string // actual bound addresses, guarded by build
 }
 type recovery struct {
 	Generation uint64
@@ -163,11 +164,18 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		return s.fail(fmt.Errorf("configuration exceeds 1 MiB"))
 	}
 	c := d.Config()
+	if len(s.listeners) > 0 {
+		bound := c
+		bound.DNS.Listen = s.listeners
+		if err := Validate(bound); err != nil {
+			return s.fail(err)
+		}
+	}
 	generation := uint64(1)
 	if old := s.Snapshot(); old != nil {
 		generation = old.generation + 1
 		previous := old.Config()
-		if !s.starting && (!reflect.DeepEqual(c.DNS, previous.DNS) || c.Admin != previous.Admin || c.Paths != previous.Paths) {
+		if !s.starting && (!reflect.DeepEqual(c.DNS.Listen, previous.DNS.Listen) || c.Admin != previous.Admin || c.Paths != previous.Paths) {
 			s.mu.Lock()
 			s.status.RestartRequired = true
 			s.mu.Unlock()

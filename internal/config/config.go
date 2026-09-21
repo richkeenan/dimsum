@@ -31,8 +31,10 @@ type Config struct {
 	Naming    clients.Settings     `yaml:"naming,omitempty"`
 }
 type DNS struct {
-	Listen    []string `yaml:"listen"`
-	Upstreams []string `yaml:"upstreams,omitempty"`
+	Listen         []string         `yaml:"listen"`
+	Upstreams      []string         `yaml:"upstreams,omitempty"`
+	Fallback       []string         `yaml:"fallback_upstreams,omitempty"`
+	UpstreamPolicy UpstreamSettings `yaml:"upstream_policy,omitempty"`
 }
 type Admin struct {
 	Listen string `yaml:"listen"`
@@ -120,6 +122,7 @@ func (d *Document) Config() Config {
 	c := d.value
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)
 	c.DNS.Upstreams = append([]string(nil), c.DNS.Upstreams...)
+	c.DNS.Fallback = append([]string(nil), c.DNS.Fallback...)
 	c.Lists = append([]lists.Subscription(nil), c.Lists...)
 	c.Rules = append([]CustomRule(nil), c.Rules...)
 	c.Records = append([]Record(nil), c.Records...)
