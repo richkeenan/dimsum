@@ -224,3 +224,40 @@ func TestIDNGlobAndBinaryOctetWildcard(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, policy.Block, m.Match(n).Result)
 }
+
+func TestGlobIDNASeparators(t *testing.T) {
+	for _, separator := range []string{"。", "．", "｡"} {
+		t.Run(separator, func(t *testing.T) {
+			for _, pattern := range []string{
+				"ads?.example" + separator + "com",
+				"ads?" + separator + "example.com",
+				"ads?.example.com" + separator,
+			} {
+				t.Run("valid/"+pattern, func(t *testing.T) {
+					m := compile(t, rule("glob", policy.Glob, policy.CustomDeny, pattern))
+					assert.Equal(t, policy.Block, m.Match(name(t, "ads1.example.com")).Result)
+					assert.Equal(t, policy.Forward, m.Match(name(t, "ads12.example.com")).Result)
+				})
+			}
+			t.Run("descendants", func(t *testing.T) {
+				m := compile(t, rule("glob", policy.Glob, policy.CustomDeny, "*"+separator+"example.com"))
+				assert.Equal(t, policy.Block, m.Match(name(t, "a.b.example.com")).Result)
+				assert.Equal(t, policy.Forward, m.Match(name(t, "example.com")).Result)
+			})
+			for _, pattern := range []string{
+				"ads?.example" + separator + ".com",
+				"ads?.example." + separator + "com",
+				"ads?.example" + separator + separator + "com",
+				"ads?.example.com" + separator + ".",
+				"ads?.example.com." + separator,
+				"ads?.example.com" + separator + separator,
+			} {
+				t.Run("invalid/"+pattern, func(t *testing.T) {
+					m, err := policy.Compile(1, []policy.Rule{rule("glob", policy.Glob, policy.CustomDeny, pattern)}, policy.DefaultLimits())
+					assert.Error(t, err)
+					assert.Nil(t, m)
+				})
+			}
+		})
+	}
+}

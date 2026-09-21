@@ -93,6 +93,16 @@ func Compile(generation uint64, rules []Rule, limits Limits) (*Matcher, error) {
 }
 
 func normalizeGlob(s string) ([]string, bool, error) {
+	// Map IDNA label separators before interpreting glob boundaries. Removing
+	// the root dot per literal label could otherwise hide an empty interior label.
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '\u3002', '\uff0e', '\uff61':
+			return '.'
+		default:
+			return r
+		}
+	}, s)
 	s = strings.TrimSuffix(s, ".")
 	descendants := strings.HasPrefix(s, "*.")
 	if descendants {
@@ -101,10 +111,13 @@ func normalizeGlob(s string) ([]string, bool, error) {
 	labels := strings.Split(s, ".")
 	length := 1
 	for i, label := range labels {
+		if label == "" {
+			return nil, false, fmt.Errorf("empty glob label")
+		}
 		if strings.ContainsAny(label, "*?") {
 			// Wildcards inside IDNs cannot be punycode-normalized meaningfully.
 			// Literal IDN labels elsewhere in the same pattern are supported.
-			if len(label) == 0 || len(label) > 63 || strings.Contains(label, "**") {
+			if len(label) > 63 || strings.Contains(label, "**") {
 				return nil, false, fmt.Errorf("invalid glob label")
 			}
 			for _, c := range label {
