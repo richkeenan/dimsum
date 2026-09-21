@@ -15,6 +15,17 @@ import (
 
 type brokenReader struct{}
 
+func TestBidiSourceQuarantine(t *testing.T) {
+	for _, text := range []string{"123.א.example", "123.xn--4db.example", "123.a_b.א.example", "123_abc.xn--4db.example"} {
+		r, err := Parse(strings.NewReader("valid.example\n"+text), Source{"s", Domains, policy.Suffix}, DefaultLimits())
+		require.Error(t, err)
+		assert.Empty(t, r.Rules)
+		require.Len(t, r.Diagnostics, 1)
+		assert.Equal(t, 2, r.Diagnostics[0].Line)
+		assert.Equal(t, "invalid-domain", r.Diagnostics[0].Code)
+	}
+}
+
 func TestUnderscoreParserCompileInvariant(t *testing.T) {
 	for _, tc := range []struct {
 		d    Dialect

@@ -16,6 +16,11 @@ type Name struct{ wire string }
 var hostnameProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
 	idna.StrictDomainName(true), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
 
+// Used only after the narrow per-label checks below. Disabling STD3 permits
+// underscores, but retains whole-domain Bidi, A-label and length validation.
+var underscoreDomainProfile = idna.New(idna.MapForLookup(), idna.Transitional(false),
+	idna.StrictDomainName(false), idna.ValidateLabels(true), idna.BidiRule(), idna.VerifyDNSLength(true))
+
 // NormalizeName validates a configuration DNS name. ASCII underscore labels use
 // the DNS-safe letters/digits/hyphen/underscore alphabet; other labels retain
 // strict nontransitional IDNA validation (including all xn-- A-labels).
@@ -58,6 +63,15 @@ func NormalizeName(s string) (Name, error) {
 		}
 		wire = append(wire, byte(len(label)))
 		wire = append(wire, label...)
+	}
+	// Bidi is domain-wide: an RTL label (including a decoded A-label) requires
+	// every label to satisfy the Bidi rule. Per-label ToASCII cannot enforce it.
+	profile := hostnameProfile
+	if strings.Contains(s, "_") {
+		profile = underscoreDomainProfile
+	}
+	if _, err := profile.ToASCII(s); err != nil {
+		return Name{}, fmt.Errorf("policy: invalid DNS name %q: %w", s, err)
 	}
 	wire = append(wire, 0)
 	return NameFromWire(wire)
