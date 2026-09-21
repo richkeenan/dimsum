@@ -119,6 +119,75 @@ it("offers only supported local records with a five-minute lifetime and reverse 
   ).toHaveValue("false");
 });
 
+it("offers a canonical dashboard hostname after saving and shows the link only after approval", async () => {
+  const send = vi
+    .spyOn(api, "send")
+    .mockResolvedValueOnce({
+      saved_revision: "record-saved",
+      dashboard_hosts: [
+        {
+          name: "xn--bcher-kva.test",
+          host: "xn--bcher-kva.test:18080",
+          url: "http://xn--bcher-kva.test:18080/",
+        },
+      ],
+    })
+    .mockResolvedValueOnce({ saved_revision: "host-saved" });
+  render(<Configuration kind="records" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add record" }));
+  fireEvent.change(screen.getByLabelText("DNS name"), {
+    target: { value: "bücher.test" },
+  });
+  fireEvent.change(screen.getByLabelText(/Address or target/), {
+    target: { value: "192.0.2.10" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  const confirm = await screen.findByRole("dialog", {
+    name: /Use xn--bcher-kva.test for the dashboard/,
+  });
+  expect(
+    screen.queryByRole("link", { name: "http://xn--bcher-kva.test:18080/" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    within(confirm).getByRole("button", { name: "Add to accepted hosts" }),
+  );
+  expect(
+    await screen.findByRole("link", {
+      name: "http://xn--bcher-kva.test:18080/",
+    }),
+  ).toHaveAttribute("href", "http://xn--bcher-kva.test:18080/");
+  expect(send).toHaveBeenLastCalledWith("records", "PATCH", {
+    revision: "record-saved",
+    accept_admin_host: "xn--bcher-kva.test",
+  });
+});
+
+it("keeps the DNS record when dashboard approval is declined", async () => {
+  const send = vi.spyOn(api, "send").mockResolvedValue({
+    saved_revision: "record-saved",
+    dashboard_hosts: [
+      {
+        name: "dimsum.test",
+        host: "dimsum.test:18080",
+        url: "http://dimsum.test:18080/",
+      },
+    ],
+  });
+  render(<Configuration kind="records" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add record" }));
+  fireEvent.change(screen.getByLabelText("DNS name"), {
+    target: { value: "dimsum.test" },
+  });
+  fireEvent.change(screen.getByLabelText(/Address or target/), {
+    target: { value: "192.0.2.10" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Changes saved");
+  expect(send).toHaveBeenCalledTimes(1);
+});
+
 it("preserves an existing ID and the editing revision while background data changes", async () => {
   resources.values.lists.data = {
     revision: "old",

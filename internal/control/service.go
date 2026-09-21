@@ -54,6 +54,7 @@ type Activation struct {
 	RestartRequired  bool                  `json:"restart_required"`
 	Error            string                `json:"error,omitempty"`
 	Sources          []config.SourceStatus `json:"sources"`
+	DashboardHosts   []DashboardHost       `json:"dashboard_hosts,omitempty"`
 }
 
 func activation(a config.ActivationResult) Activation {
@@ -64,7 +65,7 @@ func activation(a config.ActivationResult) Activation {
 	if a.Sources == nil {
 		a.Sources = []config.SourceStatus{}
 	}
-	return Activation{a.SavedRevision, a.ActiveRevision, strconv.FormatUint(a.ActiveGeneration, 10), a.Pending, a.Recovered, a.RestartRequired, a.Error, a.Sources}
+	return Activation{a.SavedRevision, a.ActiveRevision, strconv.FormatUint(a.ActiveGeneration, 10), a.Pending, a.Recovered, a.RestartRequired, a.Error, a.Sources, nil}
 }
 
 var messageURL = regexp.MustCompile(`https?://[^\s"'<>]+`)
@@ -197,10 +198,11 @@ func redactURLs(v any) {
 }
 
 type Mutation struct {
-	Revision string        `json:"revision"`
-	Edits    []config.Edit `json:"edits,omitempty"`
-	Item     any           `json:"item,omitempty"`
-	Index    *int          `json:"index,omitempty"`
+	Revision        string        `json:"revision"`
+	Edits           []config.Edit `json:"edits,omitempty"`
+	Item            any           `json:"item,omitempty"`
+	Index           *int          `json:"index,omitempty"`
+	AcceptAdminHost string        `json:"accept_admin_host,omitempty"`
 }
 
 func path(resource string) []string {
@@ -261,6 +263,12 @@ func (s *Service) candidate(resource, method string, m Mutation) (*config.Docume
 	if d.Revision() != m.Revision {
 		return nil, config.ErrConflict
 	}
+	if m.AcceptAdminHost != "" {
+		if resource != "records" || method != "PATCH" || len(m.Edits) != 0 || m.Item != nil || m.Index != nil {
+			return nil, fmt.Errorf("accept_admin_host requires a records PATCH without other edits")
+		}
+		return s.acceptDashboardHost(d, m.AcceptAdminHost)
+	}
 	if e = normalizeEdits(m.Edits); e != nil {
 		return nil, e
 	}
@@ -308,7 +316,11 @@ func (s *Service) Mutate(ctx context.Context, resource, method string, m Mutatio
 		return nil, e
 	}
 	a, e := s.options.Store.Save(ctx, m.Revision, d)
-	return activation(a), e
+	result := activation(a)
+	if e == nil && resource == "records" && method != "DELETE" {
+		result.DashboardHosts = dashboardHosts(d.Config())
+	}
+	return result, e
 }
 func (s *Service) Stage(m Mutation) (any, error) {
 	if s.options.Store == nil {

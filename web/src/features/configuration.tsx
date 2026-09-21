@@ -203,6 +203,13 @@ export default function Configuration({
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Row>();
+  const [dashboardHost, setDashboardHost] = useState<{
+    name: string;
+    url: string;
+    revision: string;
+  }>();
+  const [dashboardURL, setDashboardURL] = useState("");
+  const [hostError, setHostError] = useState<Error>();
   const revision = normalizeSettings(state.data).revision;
   const ready = !!revision && !state.loading && !state.error;
   const configuredClients = collectionRows(state.data);
@@ -266,15 +273,61 @@ export default function Configuration({
             value: value as string | number | boolean,
           }));
       if (method === "PATCH" && !body.edits?.length) {
-        setEditing(undefined);
-        return;
+        if (kind === "records") {
+          // Saving an existing record can also offer its dashboard hostname.
+          body.edits = [
+            {
+              path: [String(original?.__index), "name"],
+              value: String(row?.name),
+            },
+          ];
+        } else {
+          setEditing(undefined);
+          return;
+        }
       }
       const result = await api.send<Row>(kind, method, body);
       setNotice(result);
+      setDashboardURL("");
+      if (kind === "records" && method !== "DELETE") {
+        const name = new URL(`http://${row?.name}`).hostname
+          .toLowerCase()
+          .replace(/\.$/, "");
+        const candidate = rows(result.dashboard_hosts).find(
+          (host) => host.name === name,
+        );
+        if (candidate && result.saved_revision) {
+          setHostError(undefined);
+          setDashboardHost({
+            name,
+            url: String(candidate.url),
+            revision: String(result.saved_revision),
+          });
+        }
+      }
       setEditing(undefined);
       setTick((t) => t + 1);
     } catch (e) {
       setError(e as Error);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function acceptDashboardHost() {
+    if (!dashboardHost) return;
+    setBusy(true);
+    setHostError(undefined);
+    try {
+      const result = await api.send<Row>("records", "PATCH", {
+        revision: dashboardHost.revision,
+        accept_admin_host: dashboardHost.name,
+      });
+      setNotice(result);
+      setDashboardURL(dashboardHost.url);
+      setDashboardHost(undefined);
+      setTick((t) => t + 1);
+    } catch (e) {
+      setHostError(e as Error);
     } finally {
       setBusy(false);
     }
@@ -530,6 +583,14 @@ export default function Configuration({
               ? "Operation started. View progress in Backups & jobs."
               : "Changes saved."}
           </p>
+          {dashboardURL && (
+            <p>
+              Dashboard address added. No restart needed. Open{" "}
+              <a className="text-primary underline" href={dashboardURL}>
+                {dashboardURL}
+              </a>
+            </p>
+          )}
           <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
             <summary className="cursor-pointer text-muted-foreground">
               Technical details
@@ -539,6 +600,35 @@ export default function Configuration({
         </section>
       )}
       {kind === "rules" && <RuleTester />}
+      <Dialog
+        open={!!dashboardHost}
+        onOpenChange={(open) => {
+          if (!open && !busy) setDashboardHost(undefined);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>
+            Use {dashboardHost?.name} for the dashboard too?
+          </DialogTitle>
+          <DialogDescription>
+            This address belongs to this dimsum server. Add it to accepted hosts
+            to open the dashboard at {dashboardHost?.url}.
+          </DialogDescription>
+          {hostError && <ErrorNotice error={hostError} />}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setDashboardHost(undefined)}
+            >
+              Not now
+            </Button>
+            <Button disabled={busy} onClick={() => void acceptDashboardHost()}>
+              {busy ? "Adding…" : "Add to accepted hosts"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={!!editing}
         onOpenChange={(open) => {

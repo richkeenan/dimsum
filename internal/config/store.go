@@ -175,7 +175,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if old := s.Snapshot(); old != nil {
 		generation = old.generation + 1
 		previous := old.Config()
-		if !s.starting && (!reflect.DeepEqual(c.DNS.Listen, previous.DNS.Listen) || c.Admin.Listen != previous.Admin.Listen || c.Admin.ControlSocket != previous.Admin.ControlSocket || c.Admin.SecureCookies != previous.Admin.SecureCookies || !reflect.DeepEqual(c.Admin.AllowedHosts, previous.Admin.AllowedHosts) || c.Paths != previous.Paths) {
+		if !s.starting && (!reflect.DeepEqual(c.DNS.Listen, previous.DNS.Listen) || c.Admin.Listen != previous.Admin.Listen || c.Admin.ControlSocket != previous.Admin.ControlSocket || c.Admin.SecureCookies != previous.Admin.SecureCookies || c.Paths != previous.Paths) {
 			s.mu.Lock()
 			s.status.RestartRequired = true
 			s.mu.Unlock()

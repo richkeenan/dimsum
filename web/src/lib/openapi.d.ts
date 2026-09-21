@@ -1847,9 +1847,18 @@ export interface components {
       restart_required: boolean;
       error?: string;
       sources: Record<string, never>[];
+      /** @description Unaccepted exact local A/AAAA names pointing to this admin listener; returned after saving records. Approval is a separate revision-checked records PATCH. */
+      dashboard_hosts?: {
+        name: string;
+        host: string;
+        /** Format: uri */
+        url: string;
+      }[];
     };
     Mutation: {
       revision: string;
+      /** @description For PATCH /records only, without edits/item/index: accept this saved local A/AAAA name for dashboard access. Rechecks local interface and admin listener, persists admin.allowed_hosts, and activates without restart. */
+      accept_admin_host?: string;
       edits?: {
         path: string[];
         /** @description String arrays are accepted only for naming.mdns.interfaces; other paths require scalars. */

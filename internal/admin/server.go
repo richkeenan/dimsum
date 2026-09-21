@@ -85,6 +85,9 @@ func (s *Server) handler(local bool) http.Handler {
 					valid = true
 				}
 			}
+			if !valid && s.service != nil {
+				valid = s.service.AllowsAdminHost(r.Host)
+			}
 			if !valid {
 				s.fail(w, r, 403, "host_rejected", "unrecognized Host")
 				return

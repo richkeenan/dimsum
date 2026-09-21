@@ -855,11 +855,24 @@ components:
         restart_required: {type: boolean}
         error: {type: string}
         sources: {type: array, items: {type: object}}
+        dashboard_hosts:
+          description: Unaccepted exact local A/AAAA names pointing to this admin listener; returned after saving records. Approval is a separate revision-checked records PATCH.
+          type: array
+          items:
+            type: object
+            required: [name, host, url]
+            properties:
+              name: {type: string}
+              host: {type: string}
+              url: {type: string, format: uri}
     Mutation:
       type: object
       required: [revision]
       properties:
         revision: {type: string}
+        accept_admin_host:
+          type: string
+          description: 'For PATCH /records only, without edits/item/index: accept this saved local A/AAAA name for dashboard access. Rechecks local interface and admin listener, persists admin.allowed_hosts, and activates without restart.'
         edits:
           type: array
           items:
