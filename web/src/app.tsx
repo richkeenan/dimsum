@@ -185,10 +185,6 @@ export default function App() {
               setAnchor(Date.now());
             }}
           />
-          <p className="text-xs leading-relaxed">
-            On a fresh installation, the password is <code>admin</code>. You can
-            change it in Settings.
-          </p>
         </section>
       </div>
     );
