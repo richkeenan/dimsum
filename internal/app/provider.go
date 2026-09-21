@@ -456,7 +456,8 @@ func (h *historyProvider) queryOptions(q url.Values) (storage.QueryOptions, erro
 func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	e := row.Event
 	n, err := policy.NameFromWire(e.QName[:e.QNameLength])
-	if err != nil {
+	identityMissing := e.Outcome == stats.AdmissionRejected && e.QNameLength == 0
+	if err != nil && !identityMissing {
 		return historyQuery{}, historyError(err)
 	}
 	if e.Outcome >= stats.OutcomeCount {
@@ -464,6 +465,9 @@ func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	}
 	address := netip.AddrFrom16(e.Client).Unmap()
 	name := h.named(address)
+	if identityMissing {
+		return historyQuery{ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Outcome: outcomeNames[e.Outcome], DurationUS: decimal(uint64(e.Duration)), ClientNameSource: "unavailable", Generation: decimal(uint64(e.Generation)), RuleID: "0", UpstreamID: "0"}, nil
+	}
 	qtype := qtypeNames[e.QType]
 	if qtype == "" {
 		qtype = "TYPE" + strconv.Itoa(int(e.QType))

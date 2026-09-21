@@ -7,6 +7,7 @@ import (
 
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/stats"
+	"github.com/richkeenan/dimsum/internal/storage"
 	"github.com/richkeenan/dimsum/internal/transport"
 	"github.com/richkeenan/dimsum/internal/upstream"
 	"github.com/stretchr/testify/assert"
@@ -57,4 +58,15 @@ func TestObservationDoesNotWaitForMetadataConsumer(t *testing.T) {
 	}
 	o.mu.Unlock()
 	assert.EqualValues(t, 1, o.collector.Snapshot().Admitted)
+}
+
+func TestIdentitylessRejectionPresentation(t *testing.T) {
+	h := &historyProvider{}
+	item, err := h.queryRow(storage.Row{ID: 7, Event: stats.QueryEvent{Outcome: stats.AdmissionRejected}})
+	require.NoError(t, err)
+	assert.Equal(t, "7", item.ID)
+	assert.Equal(t, "rejected", item.Outcome)
+	assert.Empty(t, item.Client)
+	assert.Empty(t, item.Name)
+	assert.Equal(t, "unavailable", item.ClientNameSource)
 }
