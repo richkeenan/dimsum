@@ -188,16 +188,16 @@ func (z *Zones) Answer(dst []byte, q *dnswire.Message) (int, bool, error) {
 		return 0, false, e
 	}
 	name := n.Display()
-	if zone := z.zone(name); zone != nil && zone.Name == name && q.Question.Type == 6 {
-		size, err := dnswire.BuildSynthetic(dst, q, 0, true, []dnswire.SyntheticRecord{dnswire.NegativeSOA(wire(name), zone.NegativeTTL)}, nil)
-		return size, true, err
-	}
 	if len(z.lookup(name)) == 0 && z.zone(name) == nil {
 		return 0, false, nil
 	}
 	var answers, authority []dnswire.SyntheticRecord
 	var code uint16
 	for depth := 0; depth <= 16; depth++ {
+		if zone := z.zone(name); zone != nil && zone.Name == name && q.Question.Type == 6 {
+			answers = append(answers, dnswire.NegativeSOA(wire(name), zone.NegativeTTL))
+			break
+		}
 		rr := z.lookup(name)
 		alias := ""
 		for _, r := range rr {
