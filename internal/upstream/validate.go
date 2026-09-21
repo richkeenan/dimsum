@@ -9,16 +9,16 @@ import (
 
 var ErrResponse = errors.New("upstream: invalid or mismatched response")
 
-// Validation is the only gate to ExchangeResult. A compressed response question
-// cannot be patched safely while retaining opaque RDATA, so fail closed on that
-// uncommon layout. Outgoing questions are always expanded.
+// Validation authenticates the original message, including compressed questions.
+// Client-specific rewriting must separately preserve decoded-name semantics via
+// dnswire.PersonalizeReply. Outgoing questions are always expanded.
 func validate(wire []byte, q *dnswire.Question, id uint16) (dnswire.Message, error) {
 	var m dnswire.Message
 	if err := dnswire.ScanMessage(wire, &m); err != nil {
 		return m, ErrResponse
 	}
 	r := &m.Question
-	if r.Header.ID != id || r.Header.Flags&dnswire.FlagQR == 0 || r.Header.Flags&0x7800 != q.Header.Flags&0x7800 || r.Type != q.Type || r.Class != q.Class || r.Name.Length != q.Name.Length || r.Name.Canonical != q.Name.Canonical || r.Name.Compressed || m.HasAuthentication || m.EDNS.Version != 0 {
+	if r.Header.ID != id || r.Header.Flags&dnswire.FlagQR == 0 || r.Header.Flags&0x7800 != q.Header.Flags&0x7800 || r.Type != q.Type || r.Class != q.Class || r.Name.Length != q.Name.Length || r.Name.Canonical != q.Name.Canonical || m.HasAuthentication || m.EDNS.Version != 0 {
 		return m, ErrResponse
 	}
 	for off := 0; off < len(m.EDNS.Options); {

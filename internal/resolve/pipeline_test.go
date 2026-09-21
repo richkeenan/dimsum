@@ -41,6 +41,34 @@ func TestForwardRejectHeaderDependentNames(t *testing.T) {
 	assert.Zero(t, n)
 }
 
+func TestForwardCompressedQuestionGeneralPath(t *testing.T) {
+	u, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
+		p := bytes.Clone(r.Wire)
+		p[2] |= 0x80
+		p[13] = 'a'
+		p = append(append(bytes.Clone(p[:14]), 0xc0, 4), p[15:]...)
+		p[7] = 1
+		p = append(p, 0xc0, 12, 0xff, 0x78, 0, 1, 0, 0, 0, 60, 0, 4, 0xc0, 1, 0xff, 0)
+		return testutil.Response{Wire: p}
+	})
+	require.NoError(t, err)
+	defer u.Close()
+	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}, Timeout: 50 * time.Millisecond})
+	require.NoError(t, err)
+	wire := []byte{0x12, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'A', 0, 0, 1, 0, 1}
+	r := transport.Request{Wire: wire}
+	require.NoError(t, dnswire.ParseRequest(wire, &r.Message))
+	out := make([]byte, 65535)
+	n, err := resolve.New(c).Resolve(context.Background(), &r, out)
+	require.NoError(t, err)
+	var oracle dns.Msg
+	require.NoError(t, oracle.Unpack(out[:n]))
+	assert.EqualValues(t, 0x1201, oracle.Id)
+	assert.Equal(t, "A.", oracle.Question[0].Name)
+	require.Len(t, oracle.Answer, 1)
+	assert.Equal(t, "c001ff00", oracle.Answer[0].(*dns.RFC3597).Rdata)
+}
+
 func TestForwardRDZeroMiss(t *testing.T) {
 	p := resolve.New(nil)
 	wire := []byte{0x12, 0x34, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'A', 0, 0, 1, 0, 1}

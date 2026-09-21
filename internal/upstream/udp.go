@@ -27,7 +27,8 @@ type Client struct {
 }
 
 // ExchangeResult refers only to validated bytes copied to caller-owned output.
-// The caller must still restore client ID/case/flags before emitting them.
+// The caller must use dnswire.PersonalizeReply (or equivalent semantic checks),
+// not blindly patch client ID/case/flags: compressed names can depend on them.
 type ExchangeResult struct {
 	N, Attempts int
 	Endpoint    netip.AddrPort
