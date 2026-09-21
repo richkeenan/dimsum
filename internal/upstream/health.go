@@ -58,6 +58,19 @@ func (c *Client) record(i int, epoch uint64, elapsed time.Duration, err error, c
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	h := &c.health[i]
+	if !canceled {
+		if err == nil {
+			h.Responses++
+			if code == 2 {
+				h.SERVFAIL++
+			}
+			if code == 5 {
+				h.REFUSED++
+			}
+		} else {
+			h.Failures++
+		}
+	}
 	if epoch != h.epoch {
 		return
 	} // A late completion cannot change a newer circuit/probe.
@@ -67,18 +80,11 @@ func (c *Client) record(i int, epoch uint64, elapsed time.Duration, err error, c
 		return
 	}
 	if err == nil {
-		h.Responses++
 		h.consecutive = 0
 		if h.Latency == 0 {
 			h.Latency = elapsed
 		} else {
 			h.Latency = (h.Latency*7 + elapsed) / 8
-		}
-		if code == 2 {
-			h.SERVFAIL++
-		}
-		if code == 5 {
-			h.REFUSED++
 		}
 		if !probe || (code != 2 && code != 5) {
 			h.RetryAt = time.Time{}
@@ -86,7 +92,6 @@ func (c *Client) record(i int, epoch uint64, elapsed time.Duration, err error, c
 			return
 		}
 	} else {
-		h.Failures++
 		h.consecutive++
 	}
 	if probe || h.consecutive >= c.options.FailureThreshold {

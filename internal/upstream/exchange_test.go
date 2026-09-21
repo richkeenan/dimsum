@@ -32,7 +32,7 @@ func client(t *testing.T, address string, timeout time.Duration) *upstream.Clien
 	t.Helper()
 	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(address)}, Timeout: timeout, AttemptTimeout: timeout, MaxOutstanding: 1})
 	require.NoError(t, err)
-	t.Cleanup(func(){ c.Close() })
+	t.Cleanup(func() { c.Close() })
 	return c
 }
 
@@ -437,7 +437,9 @@ func TestExchangeTCPPartialFramesAndSocketRelease(t *testing.T) {
 				require.FailNow(t, "exchange stalled")
 			}
 			// Healthy sockets now remain leased to the pool until owner shutdown.
-			if mode == "success" { require.NoError(t, c.Close()) }
+			if mode == "success" {
+				require.NoError(t, c.Close())
+			}
 			select {
 			case e = <-worker:
 				assert.NoError(t, e)

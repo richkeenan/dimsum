@@ -30,4 +30,42 @@ func TestAdaptivePriorityExplorationAndProbeLease(t *testing.T) {
 	assert.Equal(t, "half-open", c.Health()[0].State, "late completion cannot release someone else's probe")
 	c.record(0, lease, time.Millisecond, nil, 0, false)
 	assert.Equal(t, "closed", c.Health()[0].State)
+	assert.Equal(t, uint64(2), c.Health()[0].Responses, "late completions still contribute metrics")
+}
+
+func TestCircuitBackoffAndReachabilitySignals(t *testing.T) {
+	a := netip.MustParseAddrPort("127.0.0.1:1053")
+	c, err := New(Options{Endpoints: []netip.AddrPort{a}, OpenInterval: time.Second, MaxBackoff: 2 * time.Second})
+	require.NoError(t, err)
+	for range 3 {
+		ok, lease := c.claim(0)
+		require.True(t, ok)
+		c.record(0, lease, time.Millisecond, nil, 2, false)
+	}
+	assert.Equal(t, "closed", c.Health()[0].State)
+	assert.Equal(t, uint64(3), c.Health()[0].SERVFAIL)
+	assert.Zero(t, c.Health()[0].Failures)
+	for range 2 {
+		ok, lease := c.claim(0)
+		require.True(t, ok)
+		c.record(0, lease, time.Millisecond, ErrResponse, 0, false)
+	}
+	assert.Equal(t, "open", c.Health()[0].State)
+	assert.InDelta(t, 1.05, time.Until(c.Health()[0].RetryAt).Seconds(), 0.06)
+	c.health[0].RetryAt = time.Now().Add(-time.Second)
+	ok, lease := c.claim(0)
+	require.True(t, ok)
+	c.record(0, lease, time.Millisecond, nil, 5, false)
+	assert.Equal(t, "open", c.Health()[0].State)
+	assert.InDelta(t, 2, time.Until(c.Health()[0].RetryAt).Seconds(), 0.02)
+	c.health[0].RetryAt = time.Now().Add(-time.Second)
+	ok, lease = c.claim(0)
+	require.True(t, ok)
+	c.record(0, lease, time.Millisecond, ErrResponse, 0, true)
+	assert.Equal(t, "open", c.Health()[0].State)
+	assert.Equal(t, uint64(2), c.Health()[0].Failures, "caller cancellation is not endpoint failure")
+	ok, lease = c.claim(0)
+	require.True(t, ok)
+	c.record(0, lease, time.Millisecond, nil, 3, false)
+	assert.Equal(t, "closed", c.Health()[0].State)
 }

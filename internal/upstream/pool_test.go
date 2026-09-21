@@ -100,3 +100,66 @@ func TestPoolBudget(t *testing.T) {
 	assert.Equal(t, 3, r.Attempts)
 	assert.Less(t, time.Since(start), 2300*time.Millisecond)
 }
+
+func TestRouteNamespaceDoesNotEscapeDefaultPool(t *testing.T) {
+	u := poolFixture(t, func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} })
+	c := client(t, u.Address(), time.Second)
+	_, err := c.ExchangeRoute(context.Background(), upstream.RouteKey(2), query(), make([]byte, 65535))
+	assert.ErrorIs(t, err, upstream.ErrRoute)
+	assert.Empty(t, u.Requests())
+	r, err := c.ExchangeRoute(context.Background(), upstream.DefaultRoute, query(), make([]byte, 65535))
+	require.NoError(t, err)
+	assert.Equal(t, upstream.DefaultRoute, r.Route)
+}
+
+func TestAdaptiveSamplesPrimaryBeforeFallback(t *testing.T) {
+	handler := func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} }
+	a, b, f := poolFixture(t, handler), poolFixture(t, handler), poolFixture(t, handler)
+	c, err := upstream.New(upstream.Options{Mode: "adaptive", Endpoints: []netip.AddrPort{netip.MustParseAddrPort(a.Address()), netip.MustParseAddrPort(b.Address())}, Fallback: []netip.AddrPort{netip.MustParseAddrPort(f.Address())}})
+	require.NoError(t, err)
+	defer c.Close()
+	for _, endpoint := range []string{a.Address(), b.Address()} {
+		r, err := c.Exchange(context.Background(), query(), make([]byte, 65535))
+		require.NoError(t, err)
+		assert.Equal(t, endpoint, r.Endpoint.String())
+	}
+	assert.Empty(t, f.Requests())
+}
+
+func BenchmarkPoolExchange(b *testing.B) {
+	for _, tcp := range []bool{false, true} {
+		name := "udp"
+		if tcp {
+			name = "udp-tc-tcp-reused"
+		}
+		b.Run(name, func(b *testing.B) {
+			u, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
+				p := answer(r.Wire)
+				if tcp && r.Network == "udp" {
+					p[2] |= 2
+				}
+				return testutil.Response{Wire: p}
+			})
+			require.NoError(b, err)
+			defer u.Close()
+			c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+			require.NoError(b, err)
+			defer c.Close()
+			wire, out := query(), make([]byte, 65535)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_, err = c.Exchange(context.Background(), wire, out)
+				if err != nil {
+					break
+				}
+				<-u.Requests()
+				if tcp {
+					<-u.Requests()
+				}
+			}
+			b.StopTimer()
+			require.NoError(b, err)
+		})
+	}
+}
