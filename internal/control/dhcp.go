@@ -264,23 +264,29 @@ func (s *Service) DHCPLeases(q url.Values) (DHCPLeasePage, error) {
 	}
 	// Detached bounded snapshot, no SQL transaction or retained per-client pagination state.
 	sort.Slice(snap.Leases, func(i, j int) bool { return snap.Leases[i].Address.Compare(snap.Leases[j].Address) < 0 })
-	rows := make([]DHCPLease, 0, len(snap.Leases))
+	// Filter the bounded snapshot, but format only the requested page. Large
+	// tables must not allocate identities/addresses for rows that are discarded.
+	page.Items = make([]DHCPLease, 0, min(limit, len(snap.Leases)))
+	matched := 0
 	for _, l := range snap.Leases {
+		if state != "" && state != string(l.State) || address != "" && address != l.Address.String() || mac != "" && mac != net.HardwareAddr(l.MAC[:]).String() || client != "" && (!strings.HasPrefix(l.Identity, "id:") || client != hex.EncodeToString([]byte(l.Identity[3:]))) || hostname != "" && hostname != l.Hostname {
+			continue
+		}
+		matched++
+		if matched <= offset || len(page.Items) == limit {
+			continue
+		}
 		r := DHCPLease{Address: l.Address.String(), MAC: net.HardwareAddr(l.MAC[:]).String(), Hostname: l.Hostname, State: l.State, Expiry: l.Expiry.UTC(), HoldUntil: l.HoldUntil.UTC()}
 		if strings.HasPrefix(l.Identity, "id:") {
 			r.ClientID = hex.EncodeToString([]byte(l.Identity[3:]))
 		}
-		if state != "" && state != string(r.State) || address != "" && address != r.Address || mac != "" && mac != r.MAC || client != "" && client != r.ClientID || hostname != "" && hostname != r.Hostname {
-			continue
-		}
-		rows = append(rows, r)
+		page.Items = append(page.Items, r)
 	}
-	if offset > len(rows) {
+	if offset > matched {
 		return bad("cursor offset outside lease snapshot")
 	}
-	end := min(offset+limit, len(rows))
-	page.Items = append(page.Items, rows[offset:end]...)
-	if end < len(rows) {
+	end := offset + len(page.Items)
+	if end < matched {
 		cur.Offset = end
 		b, _ := json.Marshal(cur)
 		page.NextCursor = base64.RawURLEncoding.EncodeToString(b)

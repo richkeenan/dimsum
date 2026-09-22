@@ -79,3 +79,56 @@ func TestDHCPLeasePagesAndInvalidation(t *testing.T) {
 	_, e = s.DHCPLeases(nil)
 	assert.ErrorIs(t, e, ErrBusy)
 }
+
+func TestDHCPLeaseSmallPageAllocationDoesNotScaleWithTable(t *testing.T) {
+	s, _ := dhcpFixture(t)
+	rows := make([]dhcp.Lease, 256)
+	for i := range rows {
+		rows[i] = dhcp.Lease{Address: netip.AddrFrom4([4]byte{192, 0, 2, byte(i)}), MAC: [6]byte{2, 0, 0, 0, 0, byte(i)}, Identity: "id:\x00\xff", State: dhcp.Bound}
+	}
+	count := 16
+	s.options.DHCPInspect = func() dhcp.LeaseSnapshot {
+		return dhcp.LeaseSnapshot{Generation: 7, Revision: 1, Leases: append([]dhcp.Lease(nil), rows[:count]...)}
+	}
+	var page DHCPLeasePage
+	var err error
+	q := url.Values{"limit": {"1"}}
+	small := testing.AllocsPerRun(100, func() { page, err = s.DHCPLeases(q) })
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	count = 256
+	large := testing.AllocsPerRun(100, func() { page, err = s.DHCPLeases(q) })
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	assert.LessOrEqual(t, large-small, float64(8), "small pages must not format every discarded row")
+	t.Logf("one-item page allocations with 16/256 rows: %g/%g", small, large)
+}
+
+func TestDHCPFilteredLeasePageBoundaries(t *testing.T) {
+	s, _ := dhcpFixture(t)
+	var rows []dhcp.Lease
+	for i := 1; i <= 10; i++ {
+		state := dhcp.Bound
+		if i%2 == 0 {
+			state = dhcp.Offered
+		}
+		rows = append(rows, dhcp.Lease{Address: netip.AddrFrom4([4]byte{192, 0, 2, byte(i)}), State: state})
+	}
+	s.options.DHCPInspect = func() dhcp.LeaseSnapshot {
+		return dhcp.LeaseSnapshot{Generation: 7, Revision: 1, Leases: append([]dhcp.Lease(nil), rows...)}
+	}
+	q := url.Values{"limit": {"2"}, "state": {"bound"}}
+	var got []string
+	for {
+		page, err := s.DHCPLeases(q)
+		require.NoError(t, err)
+		for _, l := range page.Items {
+			got = append(got, l.Address)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		q.Set("cursor", page.NextCursor)
+	}
+	assert.Equal(t, []string{"192.0.2.1", "192.0.2.3", "192.0.2.5", "192.0.2.7", "192.0.2.9"}, got)
+}
