@@ -28,8 +28,10 @@ export default function LatencyChart({
   const ceiling =
     Math.ceil(maximum / 10 ** Math.floor(Math.log10(maximum))) *
     10 ** Math.floor(Math.log10(maximum));
+  const times = points.map((point) => Date.parse(point.time));
+  const span = (times.at(-1) ?? 0) - (times[0] ?? 0);
   const x = (i: number) =>
-    points.length > 1 ? (i / (points.length - 1)) * 1000 : 500;
+    span > 0 ? ((times[i] - times[0]) / span) * 1000 : 500;
   const y = (value: string) => 190 - (Number(value) / ceiling) * 180;
   const selected =
     active == null ? undefined : points[Math.min(active, points.length - 1)];
@@ -77,18 +79,13 @@ export default function LatencyChart({
               onBlur={() => setActive(null)}
               onPointerMove={(event) => {
                 const box = event.currentTarget.getBoundingClientRect();
-                setActive(
-                  Math.max(
-                    0,
-                    Math.min(
-                      points.length - 1,
-                      Math.round(
-                        ((event.clientX - box.left) / box.width) *
-                          (points.length - 1),
-                      ),
-                    ),
-                  ),
-                );
+                const target = ((event.clientX - box.left) / box.width) * 1000;
+                let nearest = 0;
+                for (let i = 1; i < points.length; i++) {
+                  if (Math.abs(x(i) - target) < Math.abs(x(nearest) - target))
+                    nearest = i;
+                }
+                setActive(nearest);
               }}
               onPointerLeave={(event) => {
                 if (document.activeElement !== event.currentTarget)

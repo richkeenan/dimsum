@@ -10,12 +10,24 @@ test("dashboard links to same-range performance with charts, keyboard data and r
   page,
 }, testInfo) => {
   const errors: string[] = [];
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/performance?"))
+      requests.push(new URL(request.url()));
+  });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/?range=1h");
   await expect(
     page.getByRole("heading", { name: "Response time", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("≈ 36 ms", { exact: true })).toBeVisible();
+  expect(requests.at(-1)?.searchParams.get("from")).toBe(
+    "2026-09-21T11:00:00.000Z",
+  );
+  expect(requests.at(-1)?.searchParams.get("to")).toBe(
+    "2026-09-21T12:00:00.000Z",
+  );
+  expect(requests.at(-1)?.searchParams.get("resolution_seconds")).toBe("60");
   await page.getByRole("button", { name: "View performance" }).click();
   await expect(page).toHaveURL(/\/performance\?range=1h/);
   await expect(
@@ -30,7 +42,9 @@ test("dashboard links to same-range performance with charts, keyboard data and r
   });
   await chart.focus();
   await page.keyboard.press("End");
-  await expect(page.getByRole("status")).toContainText("Partial coverage");
+  await expect(page.locator("#main").getByRole("status")).toContainText(
+    "Partial coverage",
+  );
   await page.getByText("View timing data", { exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Missing", exact: true }),
@@ -57,7 +71,42 @@ test("dashboard links to same-range performance with charts, keyboard data and r
   });
   await page.getByLabel("Time range").selectOption("7d");
   await expect(page).toHaveURL(/range=7d/);
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("from"))
+    .toBe("2026-09-14T12:00:00.000Z");
+  expect(requests.at(-1)?.searchParams.get("resolution_seconds")).toBe("3600");
   expect(errors).toEqual([]);
+});
+
+test("pointer inspection uses elapsed time for clipped intervals", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/performance?**", (route) =>
+    route.fulfill({
+      json: {
+        ...performance,
+        points: [
+          "2026-09-21T10:00:59Z",
+          "2026-09-21T10:01:00Z",
+          "2026-09-21T10:02:00Z",
+        ].map((time, i) => ({
+          ...performance.points[i],
+          time,
+          p95_us: ["1000", "2000", "3000"][i],
+        })),
+      },
+    }),
+  );
+  await page.goto("/performance");
+  const chart = page.getByRole("group", {
+    name: "Interactive response-time chart",
+  });
+  const box = await chart.boundingBox();
+  expect(box).not.toBeNull();
+  await chart.hover({ position: { x: box!.width * 0.2, y: box!.height / 2 } });
+  await expect(page.locator("#main").getByRole("status")).toContainText(
+    "p95 ≈ 2 ms",
+  );
 });
 
 test("legacy precision, idle data and unavailable history are explicit", async ({

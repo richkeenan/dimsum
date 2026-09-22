@@ -25,6 +25,26 @@ const point = (
 });
 
 describe("response-time presentation", () => {
+  it("places a clipped first interval on the elapsed-time scale", () => {
+    const { container } = render(
+      <LatencyChart
+        points={[
+          point("2026-09-22T10:00:59Z"),
+          point("2026-09-22T10:01:00Z"),
+          point("2026-09-22T10:02:00Z"),
+        ]}
+      />,
+    );
+    const path = container
+      .querySelector('path[data-series="p95_us"]')!
+      .getAttribute("d")!;
+    const positions = [...path.matchAll(/[ML]([\d.]+),/g)].map((match) =>
+      Number(match[1]),
+    );
+    expect(positions[0]).toBe(0);
+    expect(positions[1]).toBeCloseTo(16.39344, 4);
+    expect(positions[2]).toBe(1000);
+  });
   it("distinguishes measured zero from absent timing and uses readable units", () => {
     expect(formatLatency("0")).toBe("0 µs");
     expect(formatLatency(null)).toBe("—");
