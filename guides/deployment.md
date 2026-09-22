@@ -39,6 +39,11 @@ hidden prompt. The default server is `http://127.0.0.1:8080`; for a different
 address, use `dimsum login --server https://dns.example.net`. Subsequent
 `dimsum control` commands use this saved server without sudo.
 
+Login prints the server address before asking for your password. Check that it
+matches your dashboard: another application on port 8080 can reject a login too.
+Login connects to a running server; it does not start one. Rebuilding dimsum
+does not reset the server's saved password.
+
 The CLI stores the server address and a revocable API token, not your password,
 in `dimsum/credentials.json` under your user configuration directory. On Linux
 this is `$XDG_CONFIG_HOME` or `~/.config`; on macOS the default is

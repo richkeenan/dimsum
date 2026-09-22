@@ -24,7 +24,7 @@ func readPassword(ctx context.Context, input *os.File, output io.Writer) (passwo
 	}
 	defer func() { err = errors.Join(err, term.Restore(fd, state)) }()
 	terminal := term.NewTerminal(&passwordTerminal{ctx: ctx, fd: fd, Writer: output}, "")
-	line, err := terminal.ReadPassword("Password: ")
+	line, err := terminal.ReadPassword("Dashboard password: ")
 	return []byte(line), err
 }
 

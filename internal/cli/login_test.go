@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,62 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestLoginExplainsFailures(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		message string
+	}{
+		{401, "Login rejected"}, {403, "not allowed"}, {404, "does not appear to provide"},
+		{429, "Too many login attempts"}, {503, "not ready"}, {302, "redirect"}, {200, "unexpected response"},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte("not JSON"))
+			}))
+			defer server.Close()
+			password := filepath.Join(t.TempDir(), "password")
+			require.NoError(t, os.WriteFile(password, []byte("fixture-password"), 0600))
+			var out, stderr bytes.Buffer
+			assert.NotZero(t, cli.Run(t.Context(), []string{"login", "--server", server.URL, "--password-file", password}, &out, &stderr))
+			assert.Contains(t, stderr.String(), "Logging in to "+server.URL)
+			assert.Contains(t, stderr.String(), tc.message)
+			assert.NotContains(t, stderr.String(), "POST /session")
+			assert.NotContains(t, stderr.String(), "fixture-password")
+		})
+	}
+}
+
+func TestLoginConnectionAndCancellationMessages(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	server := httptest.NewServer(http.NotFoundHandler())
+	server.Close()
+	password := filepath.Join(t.TempDir(), "password")
+	require.NoError(t, os.WriteFile(password, []byte("fixture-password"), 0600))
+	args := []string{"login", "--server", server.URL, "--password-file", password}
+	var out, stderr bytes.Buffer
+	assert.NotZero(t, cli.Run(t.Context(), args, &out, &stderr))
+	assert.Contains(t, stderr.String(), "Could not connect to "+server.URL)
+	assert.Contains(t, stderr.String(), "--server")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	stderr.Reset()
+	assert.NotZero(t, cli.Run(ctx, args, &out, &stderr))
+	assert.Contains(t, stderr.String(), "Login cancelled.")
+	assert.NotContains(t, stderr.String(), "context canceled")
+}
+
+func TestControlWithoutLoginOffersNextStep(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("DIMSUM_CONTROL_SOCKET", "")
+	var out, stderr bytes.Buffer
+	assert.NotZero(t, cli.Run(t.Context(), []string{"control", "settings"}, &out, &stderr))
+	assert.Contains(t, stderr.String(), "Not logged in")
+	assert.Contains(t, stderr.String(), "dimsum login")
+	assert.NotContains(t, stderr.String(), "no such file")
+}
 
 func TestLoginFailureDoesNotSaveCredentials(t *testing.T) {
 	for _, status := range []int{401, 302} {
@@ -90,6 +147,7 @@ func TestLogoutRevokedTokenAndUnavailableServer(t *testing.T) {
 			if status == 503 {
 				assert.NotZero(t, code)
 				assert.NoError(t, err)
+				assert.Contains(t, stderr.String(), "Your saved connection has been kept")
 			} else {
 				assert.Zero(t, code, stderr.String())
 				assert.True(t, os.IsNotExist(err))

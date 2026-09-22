@@ -118,7 +118,15 @@ func authRequest(ctx context.Context, client *http.Client, c credentials, method
 		return &statusError{method, path, resp.StatusCode}
 	}
 	if result != nil {
-		return json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result)
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(result); err != nil {
+			var syntax *json.SyntaxError
+			var shape *json.UnmarshalTypeError
+			if errors.As(err, &syntax) || errors.As(err, &shape) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return errUnexpectedResponse
+			}
+			return err
+		}
+		return nil
 	}
 	_, err = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	return err
@@ -129,6 +137,10 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	server := flags.String("server", "http://127.0.0.1:8080", "dashboard origin")
 	passwordFile := flags.String("password-file", "", "read password from file, or - for stdin")
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: dimsum login [--server URL] [--password-file PATH|-]\n\nConnect to a running dimsum server using its dashboard password.\nA fresh server uses admin; rebuilding does not reset an existing password.\nLogin saves a private token so control commands can run without sudo.\n\nExamples:\n  dimsum login\n  dimsum login --server https://dns.example.net\n\nOptions:")
+		flags.PrintDefaults()
+	}
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -163,10 +175,13 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return fail(errors.New("CLI credential directory must be owner-only (0700)"))
 	}
+	fmt.Fprintln(stderr, "Logging in to "+base)
 	var password []byte
 	if *passwordFile == "" {
 		password, err = readPassword(ctx, os.Stdin, stderr)
-		fmt.Fprintln(stderr)
+		if err != nil {
+			fmt.Fprintln(stderr)
+		}
 	} else {
 		var reader io.Reader = os.Stdin
 		if *passwordFile != "-" {
@@ -181,6 +196,9 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 		password = []byte(strings.TrimSuffix(strings.TrimSuffix(string(password), "\n"), "\r"))
 	}
 	if err != nil {
+		if errors.Is(err, context.Canceled) || (*passwordFile == "" && errors.Is(err, io.EOF)) {
+			return fail(errors.New("Login cancelled."))
+		}
 		return fail(err)
 	}
 	if len(password) == 0 || len(password) > 4096 {
@@ -193,7 +211,7 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 		CSRF string `json:"csrf_token"`
 	}
 	if err = authRequest(ctx, client, c, "POST", "/session", map[string]string{"password": string(password)}, "", &session); err != nil {
-		return fail(err)
+		return fail(errors.New(authMessage("Login", base, err)))
 	}
 	// The temporary browser session is used only to mint the CLI token.
 	defer func() {
@@ -201,16 +219,19 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 		defer cancel()
 		_ = authRequest(cleanup, client, credentials{Server: base}, "DELETE", "/session", nil, session.CSRF, nil)
 	}()
+	if session.CSRF == "" {
+		return fail(errors.New(authMessage("Login", base, errUnexpectedResponse)))
+	}
 	var created struct {
 		ID    string `json:"id"`
 		Token string `json:"token"`
 	}
 	if err = authRequest(ctx, client, c, "POST", "/api/v1/tokens", map[string]string{"name": "dimsum CLI"}, session.CSRF, &created); err != nil {
-		return fail(err)
+		return fail(errors.New(authMessage("Saving CLI access", base, err)))
 	}
 	c.ID, c.Token = created.ID, created.Token
 	if c.ID == "" || c.Token == "" {
-		return fail(errors.New("server returned an invalid token"))
+		return fail(errors.New(authMessage("Saving CLI access", base, errUnexpectedResponse)))
 	}
 	err = saveCredentials(path, c)
 	if err != nil {
@@ -219,9 +240,9 @@ func login(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if revokeErr := authRequest(cleanup, client, c, "DELETE", "/api/v1/tokens/"+url.PathEscape(c.ID), nil, "", nil); revokeErr != nil {
 			fmt.Fprintln(stderr, "could not revoke unsaved CLI token:", revokeErr)
 		}
-		return fail(err)
+		return fail(fmt.Errorf("could not save CLI login to %s: %w", path, err))
 	}
-	fmt.Fprintln(out, "Logged in to "+base+". Run dimsum control help for commands.")
+	fmt.Fprintln(out, "Logged in to "+base+".\nYou can now run dimsum control settings without sudo.\nUse dimsum control help for commands, or dimsum logout to sign out.")
 	return 0
 }
 
@@ -246,6 +267,10 @@ func saveCredentials(path string, c credentials) error {
 }
 
 func logout(ctx context.Context, args []string, out, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		fmt.Fprintln(out, "Usage: dimsum logout\n\nRevoke this user's CLI token and remove the saved connection.\nIf the server is unreachable, keep the connection so you can retry.")
+		return 0
+	}
 	if len(args) != 0 {
 		fmt.Fprintln(stderr, "usage: dimsum logout")
 		return 2
@@ -256,6 +281,7 @@ func logout(ctx context.Context, args []string, out, stderr io.Writer) int {
 		return 0
 	}
 	if err == nil {
+		fmt.Fprintln(stderr, "Logging out of "+c.Server)
 		err = authRequest(ctx, httpClient(), c, "DELETE", "/api/v1/tokens/"+url.PathEscape(c.ID), nil, "", nil)
 		var status *statusError
 		if errors.As(err, &status) && (status.code == http.StatusUnauthorized || status.code == http.StatusNotFound) {
@@ -263,7 +289,10 @@ func logout(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, err)
+		fmt.Fprintln(stderr, authMessage("Logout", c.Server, err))
+		if c.Server != "" {
+			fmt.Fprintln(stderr, "Your saved connection has been kept. Try dimsum logout again when the server is reachable.")
+		}
 		return 3
 	}
 	path, err := credentialPath()

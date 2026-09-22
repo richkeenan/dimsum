@@ -198,7 +198,11 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	} else {
 		c, err := readCredentials()
 		if err != nil {
-			fmt.Fprintln(stderr, "run dimsum login first:", err)
+			if os.IsNotExist(err) {
+				fmt.Fprintln(stderr, "Not logged in. Run dimsum login to connect to the local server, or dimsum login --server URL for another dashboard address.")
+			} else {
+				fmt.Fprintln(stderr, "Cannot read saved CLI login:", err)
+			}
 			return 3
 		}
 		base, token = c.Server, c.Token

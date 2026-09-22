@@ -59,7 +59,7 @@ child = subprocess.Popen([sys.argv[1], "-test.run=^TestLoginPromptProcess$"],
 try:
     output = b""
     deadline = time.monotonic() + 5
-    while b"Password:" not in output or termios.tcgetattr(slave)[3] & termios.ECHO:
+    while b"Dashboard password:" not in output or termios.tcgetattr(slave)[3] & termios.ECHO:
         assert time.monotonic() < deadline, "hidden prompt did not appear: %r" % output
         if select.select([master], [], [], 0.02)[0]:
             output += os.read(master, 4096)
@@ -79,12 +79,16 @@ try:
     before[3] &= ~getattr(termios, "PENDIN", 0)
     after[3] &= ~getattr(termios, "PENDIN", 0)
     assert after == before, "terminal settings were not restored: before=%r after=%r" % (before, after)
+    while select.select([master], [], [], 0)[0]:
+        output += os.read(master, 4096)
     if sys.argv[3] == "enter":
         with open(os.path.join(sys.argv[2], "submitted.json")) as f:
             assert json.load(f) == {"password": "fixture-secret"}
-        while select.select([master], [], [], 0)[0]:
-            output += os.read(master, 4096)
         assert b"fixture-secret" not in output, "password appeared in terminal output"
+        assert b"Login rejected" in output, output
+    else:
+        assert b"Login cancelled." in output, output
+        assert b"context canceled" not in output and b"EOF" not in output, output
 finally:
     if child.poll() is None:
         child.kill()
