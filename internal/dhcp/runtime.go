@@ -20,6 +20,16 @@ type Link interface {
 	MTU() int
 }
 
+// LeaseWriter is the bounded durable-completion boundary. Submit is nonblocking;
+// Results reports only known transaction outcomes. An uncertain write is latched
+// through Err without a rollback completion. Close retains executing ownership.
+type LeaseWriter interface {
+	Submit(context.Context, Mutation) error
+	Results() <-chan CommitResult
+	Err() error
+	Close(context.Context) error
+}
+
 // Projection is a detached immutable-by-convention copy of committed ownership.
 // Consumers must check Enabled/Generation and filter Bound plus Expiry > now.
 type Projection struct {
@@ -65,6 +75,7 @@ type applyRequest struct {
 }
 type Runtime struct {
 	cancel        context.CancelFunc
+	stopping      <-chan struct{}
 	done          chan struct{}
 	apply         chan applyRequest
 	mu            sync.RWMutex
@@ -78,7 +89,7 @@ type Runtime struct {
 
 // StartRuntime takes ownership of link/store only on success. Recovery and
 // topology validation finish before any packet or probe worker starts.
-func StartRuntime(parent context.Context, s Settings, generation uint64, link Link, probe ProbeFunc, store *LeaseStore, recovery LeaseRecovery) (*Runtime, error) {
+func StartRuntime(parent context.Context, s Settings, generation uint64, link Link, probe ProbeFunc, store LeaseWriter, recovery LeaseRecovery) (*Runtime, error) {
 	if !s.Enabled || link == nil || probe == nil || store == nil {
 		return nil, errors.New("dhcp: enabled settings, link, probe and store required")
 	}
@@ -108,7 +119,7 @@ func StartRuntime(parent context.Context, s Settings, generation uint64, link Li
 		cancel()
 		return nil, err
 	}
-	r := &Runtime{cancel: cancel, done: make(chan struct{}), apply: make(chan applyRequest), transport: t}
+	r := &Runtime{cancel: cancel, stopping: ctx.Done(), done: make(chan struct{}), apply: make(chan applyRequest), transport: t}
 	r.publish(e, s, generation, true)
 	go r.run(ctx, e, s, generation, link, probe, store, packets)
 	return r, nil
@@ -127,6 +138,8 @@ func (r *Runtime) Apply(ctx context.Context, s Settings, g uint64) error {
 	q := applyRequest{ctx, s.Clone(), g, make(chan error, 1)}
 	select {
 	case r.apply <- q:
+	case <-r.stopping:
+		return errors.New("dhcp: runtime stopping")
 	case <-r.done:
 		return errors.New("dhcp: runtime stopped")
 	case <-ctx.Done():
@@ -135,6 +148,8 @@ func (r *Runtime) Apply(ctx context.Context, s Settings, g uint64) error {
 	select {
 	case err := <-q.result:
 		return err
+	case <-r.stopping:
+		return errors.New("dhcp: runtime stopping")
 	case <-r.done:
 		return errors.New("dhcp: runtime stopped")
 	case <-ctx.Done():
@@ -196,7 +211,7 @@ func (r *Runtime) publish(e *Engine, s Settings, g uint64, durable bool) {
 		r.view.Store(&LeaseView{projection: r.projection})
 	}
 }
-func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link Link, probe ProbeFunc, store *LeaseStore, packets <-chan Request) {
+func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link Link, probe ProbeFunc, store LeaseWriter, packets <-chan Request) {
 	packetCtx, stopPackets := context.WithCancel(ctx)
 	transportDone := make(chan error, 1)
 	transportStopped := make(chan struct{})
@@ -207,6 +222,7 @@ func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link
 	// Even a stuck fsync remains owned by this runtime. Close callers can time out,
 	// but Done cannot close and replacement cannot start until the writer exits.
 	defer func() {
+		r.cancel()
 		stopPackets()
 		_ = link.Close()
 		<-transportStopped

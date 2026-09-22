@@ -212,6 +212,14 @@ func TestRuntimeClosingWriterRemainsOwned(t *testing.T) {
 	other, _, err := OpenLeaseStore(dir, 1024, nil)
 	require.Error(t, err)
 	require.Nil(t, other)
+	applyResult := make(chan error, 1)
+	go func() { applyResult <- rt.Apply(context.Background(), fixtureSettings(), 2) }()
+	select {
+	case err := <-applyResult:
+		assert.Error(t, err)
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Apply waited on an irreversibly canceled runtime's stalled writer")
+	}
 	close(release)
 	require.NoError(t, rt.Close(context.Background()))
 	assert.Empty(t, link.output)

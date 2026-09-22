@@ -30,21 +30,27 @@ type DHCPStatus struct {
 // no files/sockets and starts no timers/workers. The existing app watcher drives
 // Reconcile; no DHCP watcher runs while disabled.
 type DHCPSupervisor struct {
-	gate       chan struct{}
-	mu         sync.RWMutex
-	closed     bool
-	dir        string
-	dns        []string
-	status     DHCPStatus
-	applied    dhcp.Settings
-	runtime    *dhcp.Runtime
-	attempt    uint64
-	attemptErr error
-	openLink   func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error)
+	gate              chan struct{}
+	mu                sync.RWMutex
+	closed            bool
+	dir               string
+	dns               []string
+	status            DHCPStatus
+	applied           dhcp.Settings
+	runtime           *dhcp.Runtime
+	closing           bool
+	closingSettings   dhcp.Settings
+	closingGeneration uint64
+	attempt           uint64
+	attemptErr        error
+	openLink          func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error)
+	openStore         func(string) (dhcp.LeaseWriter, dhcp.LeaseRecovery, error)
 }
 
 func NewDHCPSupervisor(dataDir string, dns []string) *DHCPSupervisor {
-	return &DHCPSupervisor{gate: make(chan struct{}, 1), dir: filepath.Join(dataDir, "dhcp"), dns: append([]string(nil), dns...), status: DHCPStatus{State: "disabled"}, openLink: dhcp.OpenSystemLink}
+	return &DHCPSupervisor{gate: make(chan struct{}, 1), dir: filepath.Join(dataDir, "dhcp"), dns: append([]string(nil), dns...), status: DHCPStatus{State: "disabled"}, openLink: dhcp.OpenSystemLink, openStore: func(path string) (dhcp.LeaseWriter, dhcp.LeaseRecovery, error) {
+		return dhcp.OpenLeaseStore(path, dhcp.MaximumLeases, nil)
+	}}
 }
 func (s *DHCPSupervisor) Status() DHCPStatus {
 	s.mu.RLock()
@@ -61,7 +67,7 @@ func (s *DHCPSupervisor) Status() DHCPStatus {
 }
 func (s *DHCPSupervisor) Projection() dhcp.Projection {
 	s.mu.RLock()
-	r, enabled := s.runtime, s.status.AppliedEnabled
+	r, enabled := s.runtime, s.status.AppliedEnabled && !s.closed && !s.closing
 	s.mu.RUnlock()
 	if r == nil || !enabled {
 		return dhcp.Projection{}
@@ -71,7 +77,7 @@ func (s *DHCPSupervisor) Projection() dhcp.Projection {
 
 func (s *DHCPSupervisor) View() *dhcp.LeaseView {
 	s.mu.RLock()
-	r, enabled := s.runtime, s.status.AppliedEnabled
+	r, enabled := s.runtime, s.status.AppliedEnabled && !s.closed && !s.closing
 	s.mu.RUnlock()
 	if r == nil || !enabled {
 		return nil
@@ -147,7 +153,7 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 	if s.status.AppliedGeneration != g {
 		s.status.PendingGeneration = g
 	}
-	r, old := s.runtime, s.applied
+	r, old, closing := s.runtime, s.applied, s.closing
 	s.mu.Unlock()
 	failed := func(err error) error {
 		s.mu.Lock()
@@ -161,24 +167,16 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 		s.attemptErr = err
 		return err
 	}
-	applied := func() {
-		s.mu.Lock()
-		s.applied = next.Clone()
-		s.status.AppliedGeneration = g
-		s.status.PendingGeneration = 0
-		s.status.AppliedEnabled = next.Enabled
-		s.status.Interface = next.Interface
-		s.status.ServerIP = next.ServerIP
-		s.status.LastError = ""
-		s.status.State = "disabled"
-		if next.Enabled {
-			s.status.State = "running"
-		} else {
-			s.status.Runtime = dhcp.RuntimeStatus{Storage: "closed", Capacity: next.Capacity()}
+	// A timed-out disable still irreversibly cancels its runtime. Finish that
+	// owned close before validating/applying the newest desired generation.
+	// This records the completed disabled boundary even if desired has advanced.
+	if closing {
+		if err := s.finishClosing(ctx); err != nil {
+			return failed(err)
 		}
-		s.mu.Unlock()
-		s.attempt = g
-		s.attemptErr = nil
+		s.mu.RLock()
+		r, old = s.runtime, s.applied
+		s.mu.RUnlock()
 	}
 	if err := dhcp.ValidateTransition(old, next); err != nil {
 		return failed(err)
@@ -187,17 +185,18 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 		// Hide dynamic names immediately, even if a kernel fsync delays closing.
 		s.mu.Lock()
 		s.status.AppliedEnabled = false
+		if r != nil {
+			s.closing = true
+			s.closingSettings = next.Clone()
+			s.closingGeneration = g
+		}
 		s.mu.Unlock()
 		if r != nil {
-			if err := r.Close(ctx); err != nil {
+			if err := s.finishClosing(ctx); err != nil {
 				return failed(err)
 			}
-			s.mu.Lock()
-			s.runtime = nil
-			s.mu.Unlock()
 		}
-		applied()
-		return nil
+		return s.publishApplied(next, g)
 	}
 	if r != nil {
 		if err := r.Status().Error; err != "" {
@@ -206,16 +205,14 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 		if r.Status().Generation == g {
 			// Completion may have raced the previous caller's deadline. The owner
 			// is authoritative; do not re-apply an already installed generation.
-			applied()
-			return nil
+			return s.publishApplied(next, g)
 		}
 		// The engine owns reconciliation and rejects pending writes/conflicts without
 		// dropping old state. The app watcher can retry a temporarily pending switch.
 		if err := r.Apply(ctx, next, g); err != nil {
 			return failed(err)
 		}
-		applied()
-		return nil
+		return s.publishApplied(next, g)
 	}
 	if s.attempt == g {
 		return s.attemptErr
@@ -251,7 +248,7 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 	}
 	// Engine enforces configured capacity; store has the hard maximum so a live
 	// capacity increase does not replace the writer or lose its token ordering.
-	store, recovery, err := dhcp.OpenLeaseStore(s.dir, dhcp.MaximumLeases, nil)
+	store, recovery, err := s.openStore(s.dir)
 	if err != nil {
 		s.mu.Lock()
 		s.status.Runtime.Storage = "failed"
@@ -273,7 +270,62 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 	s.runtime = runtime
 	s.mu.Unlock()
 	success = true
-	applied()
+	return s.publishApplied(next, g)
+}
+
+// publishApplied is the final owner-to-supervisor publication boundary. The
+// reconciliation gate is held; lifecycle publication is serialized by mu.
+func (s *DHCPSupervisor) publishApplied(next dhcp.Settings, g uint64) error {
+	s.mu.Lock()
+	// Close and successful publication share this lock. Once closed is set,
+	// neither preparation nor a completed owner Apply can resurrect visibility.
+	if s.closed {
+		s.mu.Unlock()
+		return errors.New("dhcp: supervisor closed before application publication")
+	}
+	s.applied = next.Clone()
+	s.status.AppliedGeneration = g
+	s.status.PendingGeneration = 0
+	s.status.AppliedEnabled = next.Enabled
+	s.status.Interface = next.Interface
+	s.status.ServerIP = next.ServerIP
+	s.status.LastError = ""
+	s.status.State = "disabled"
+	if next.Enabled {
+		s.status.State = "running"
+	} else {
+		s.status.Runtime = dhcp.RuntimeStatus{Storage: "closed", Capacity: next.Capacity()}
+	}
+	s.mu.Unlock()
+	s.attempt = g
+	s.attemptErr = nil
+	return nil
+}
+
+// The reconciliation gate is held throughout. Done/Close, not a caller's
+// deadline, determines when another writer may recover the ownership directory.
+func (s *DHCPSupervisor) finishClosing(ctx context.Context) error {
+	s.mu.RLock()
+	r := s.runtime
+	s.mu.RUnlock()
+	if r != nil {
+		if err := r.Close(ctx); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	s.runtime = nil
+	s.closing = false
+	s.applied = s.closingSettings.Clone()
+	s.status.AppliedGeneration = s.closingGeneration
+	s.status.AppliedEnabled = false
+	s.status.Interface = s.applied.Interface
+	s.status.ServerIP = s.applied.ServerIP
+	s.status.State = "disabled"
+	s.status.Runtime = dhcp.RuntimeStatus{Storage: "closed", Capacity: s.applied.Capacity()}
+	s.mu.Unlock()
+	s.attempt = 0
+	s.attemptErr = nil
 	return nil
 }
 func (s *DHCPSupervisor) Close(ctx context.Context) error {
@@ -281,6 +333,8 @@ func (s *DHCPSupervisor) Close(ctx context.Context) error {
 	s.closed = true
 	r := s.runtime
 	s.status.AppliedEnabled = false
+	s.status.State = "degraded"
+	s.status.LastError = "dhcp: shutdown pending"
 	s.mu.Unlock()
 	if r != nil {
 		if err := r.Close(ctx); err != nil {
@@ -296,6 +350,8 @@ func (s *DHCPSupervisor) Close(ctx context.Context) error {
 	s.mu.Lock()
 	s.status.AppliedEnabled = false
 	s.status.State = "disabled"
+	s.status.LastError = ""
+	s.runtime = nil
 	s.mu.Unlock()
 	return nil
 }

@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"os"
@@ -17,6 +19,151 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Stall an admitted writer operation before forwarding it to real SQLite. The
+// underlying store lock remains owned, and shutdown must let this accepted
+// operation finish rather than treating cancellation as a durable rollback.
+type stalledDHCPWriter struct {
+	inner            *dhcp.LeaseStore
+	entered, release chan struct{}
+	results          chan dhcp.CommitResult
+	worker           sync.WaitGroup
+}
+
+func (w *stalledDHCPWriter) Submit(ctx context.Context, m dhcp.Mutation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	w.worker.Add(1)
+	go func() {
+		defer w.worker.Done()
+		close(w.entered)
+		<-w.release
+		result := dhcp.CommitResult{Token: m.Token, Err: w.inner.Submit(context.Background(), m)}
+		if result.Err == nil {
+			var ok bool
+			result, ok = <-w.inner.Results()
+			if !ok {
+				result = dhcp.CommitResult{Token: m.Token, Err: errors.New("writer closed")}
+			}
+		}
+		w.results <- result
+	}()
+	return nil
+}
+func (w *stalledDHCPWriter) Results() <-chan dhcp.CommitResult { return w.results }
+func (w *stalledDHCPWriter) Err() error                        { return w.inner.Err() }
+func (w *stalledDHCPWriter) Close(ctx context.Context) error {
+	w.worker.Wait()
+	return w.inner.Close(ctx)
+}
+
+type appDHCPPacketLink struct {
+	appDHCPLink
+	packets chan []byte
+}
+
+func (l *appDHCPPacketLink) Receive(b []byte) (int, netip.AddrPort, bool, error) {
+	select {
+	case p := <-l.packets:
+		return copy(b, p), netip.MustParseAddrPort("0.0.0.0:68"), false, nil
+	case <-l.done:
+		return 0, netip.AddrPort{}, false, errors.New("closed")
+	}
+}
+
+func TestDHCPTimedOutDisableRecoversLatestEnabledGeneration(t *testing.T) {
+	for _, changedDomain := range []bool{false, true} {
+		t.Run(fmt.Sprint(changedDomain), func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "dhcp")
+			db, _, err := dhcp.OpenLeaseStore(path, 1024, nil)
+			require.NoError(t, err)
+			mac := [6]byte{2, 0, 0, 0, 0, 1}
+			now := time.Now().UTC()
+			old := dhcp.Lease{Identity: "mac:" + string(mac[:]), MAC: mac, Address: netip.MustParseAddr("192.0.2.100"), Expiry: now.Add(10 * time.Minute), HoldUntil: now.Add(20 * time.Minute), State: dhcp.Bound}
+			require.NoError(t, db.Submit(context.Background(), dhcp.Mutation{Token: dhcp.Token{Generation: 1, Sequence: 1}, Kind: dhcp.PutLease, Lease: old}))
+			result, ok := <-db.Results()
+			require.True(t, ok)
+			require.NoError(t, result.Err)
+			require.NoError(t, db.Close(context.Background()))
+			s := NewDHCPSupervisor(dir, []string{"0.0.0.0:53"})
+			entered, release := make(chan struct{}), make(chan struct{})
+			var releaseOnce sync.Once
+			unblock := func() { releaseOnce.Do(func() { close(release) }) }
+			defer func() { unblock(); _ = s.Close(context.Background()) }()
+			opens := 0
+			s.openStore = func(path string) (dhcp.LeaseWriter, dhcp.LeaseRecovery, error) {
+				store, rows, err := dhcp.OpenLeaseStore(path, dhcp.MaximumLeases, nil)
+				if err != nil {
+					return nil, rows, err
+				}
+				opens++
+				if opens == 1 {
+					return &stalledDHCPWriter{inner: store, entered: entered, release: release, results: make(chan dhcp.CommitResult, 1)}, rows, nil
+				}
+				return store, rows, nil
+			}
+			link := &appDHCPPacketLink{appDHCPLink: appDHCPLink{done: make(chan struct{})}, packets: make(chan []byte, 1)}
+			s.openLink = func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
+				if opens == 0 {
+					return link, func(context.Context, netip.Addr) (bool, error) { return false, nil }, nil
+				}
+				return fixtureDHCPLink(dhcp.Settings{})
+			}
+			enabled := dhcpSettings()
+			require.NoError(t, s.Reconcile(context.Background(), enabled, 1))
+			original := s.runtime
+			request := make([]byte, 244)
+			request[0] = 1
+			request[1] = 1
+			request[2] = 6
+			binary.BigEndian.PutUint32(request[4:8], 42)
+			copy(request[12:16], old.Address.AsSlice())
+			copy(request[28:34], mac[:])
+			copy(request[236:], []byte{99, 130, 83, 99, 53, 1, 3, 255})
+			link.packets <- request
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("renewal not admitted")
+			}
+			disabled := enabled
+			disabled.Enabled = false
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			require.ErrorIs(t, s.Reconcile(ctx, disabled, 2), context.DeadlineExceeded)
+			assert.Nil(t, s.View())
+			assert.False(t, s.Projection().Enabled)
+			if changedDomain {
+				enabled.LocalDomain = "other.arpa"
+			}
+			ctx2, cancel2 := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel2()
+			require.Error(t, s.Reconcile(ctx2, enabled, 3))
+			assert.Equal(t, 1, opens)
+			other, _, err := dhcp.OpenLeaseStore(path, 1024, nil)
+			require.Error(t, err)
+			require.Nil(t, other)
+			unblock()
+			select {
+			case <-original.Done():
+			case <-time.After(time.Second):
+				t.Fatal("writer did not finish closing")
+			}
+			require.NoError(t, s.Reconcile(context.Background(), enabled, 3))
+			assert.Equal(t, "running", s.Status().State)
+			assert.EqualValues(t, 3, s.Status().AppliedGeneration)
+			assert.Equal(t, 2, opens)
+			rows := s.Projection().Leases
+			require.Len(t, rows, 1)
+			assert.Equal(t, old.Identity, rows[0].Identity)
+			assert.True(t, rows[0].Expiry.After(old.Expiry))
+			assert.True(t, rows[0].HoldUntil.After(old.HoldUntil))
+			assert.Equal(t, enabled.LocalDomain, s.View().Settings().LocalDomain)
+		})
+	}
+}
 
 func dhcpSettings() dhcp.Settings {
 	return dhcp.Settings{Enabled: true, Interface: "fixture0", ServerIP: "192.0.2.2", Subnet: "192.0.2.0/24", Gateway: "192.0.2.1", RangeStart: "192.0.2.100", RangeEnd: "192.0.2.110", LeaseSeconds: 3600, LocalDomain: "home.arpa"}
@@ -211,4 +358,99 @@ func TestDHCPReconcileRecognizesCompletedOwnerSwitch(t *testing.T) {
 	require.NoError(t, s.runtime.Apply(context.Background(), settings, 2))
 	require.NoError(t, s.Reconcile(context.Background(), settings, 2))
 	assert.EqualValues(t, 2, s.Status().AppliedGeneration)
+}
+
+func TestDHCPShutdownFencesSuccessfulPublication(t *testing.T) {
+	for _, stage := range []string{"prepared", "applied"} {
+		for _, timeout := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/timeout-%t", stage, timeout), func(t *testing.T) {
+				dir := t.TempDir()
+				db, _, err := dhcp.OpenLeaseStore(filepath.Join(dir, "dhcp"), 1024, nil)
+				require.NoError(t, err)
+				mac := [6]byte{2, 0, 0, 0, 0, 1}
+				now := time.Now().UTC()
+				lease := dhcp.Lease{Identity: "mac:" + string(mac[:]), MAC: mac, Address: netip.MustParseAddr("192.0.2.100"), Expiry: now.Add(time.Minute), HoldUntil: now.Add(time.Minute), State: dhcp.Bound}
+				require.NoError(t, db.Submit(context.Background(), dhcp.Mutation{Token: dhcp.Token{Generation: 1, Sequence: 1}, Kind: dhcp.PutLease, Lease: lease}))
+				result, ok := <-db.Results()
+				require.True(t, ok)
+				require.NoError(t, result.Err)
+				require.NoError(t, db.Close(context.Background()))
+				db, recovery, err := dhcp.OpenLeaseStore(filepath.Join(dir, "dhcp"), 1024, nil)
+				require.NoError(t, err)
+				entered, release := make(chan struct{}), make(chan struct{})
+				var releaseOnce sync.Once
+				unblock := func() { releaseOnce.Do(func() { close(release) }) }
+				writer := &stalledDHCPWriter{inner: db, entered: entered, release: release, results: make(chan dhcp.CommitResult, 1)}
+				link := &appDHCPPacketLink{appDHCPLink: appDHCPLink{done: make(chan struct{})}, packets: make(chan []byte, 1)}
+				s := NewDHCPSupervisor(dir, []string{"0.0.0.0:53"})
+				settings := dhcpSettings()
+				rt, err := dhcp.StartRuntime(context.Background(), settings, 1, link, func(context.Context, netip.Addr) (bool, error) { return false, nil }, writer, recovery)
+				require.NoError(t, err)
+				s.runtime = rt
+				// Hold the real reconciliation gate at exactly the final publication
+				// boundary: runtime installed, or owner Apply succeeded, but not published.
+				s.gate <- struct{}{}
+				var gateOnce sync.Once
+				releaseGate := func() { gateOnce.Do(func() { <-s.gate }) }
+				defer func() { unblock(); releaseGate(); _ = s.Close(context.Background()) }()
+				generation := uint64(1)
+				previousGeneration := uint64(0)
+				if stage == "applied" {
+					require.NoError(t, s.publishApplied(settings, 1))
+					generation = 2
+					previousGeneration = 1
+					settings.LeaseSeconds = 7200
+					require.NoError(t, rt.Apply(context.Background(), settings, generation))
+				}
+				s.mu.Lock()
+				s.status.DesiredGeneration = generation
+				s.status.DesiredEnabled = true
+				s.status.PendingGeneration = generation
+				s.mu.Unlock()
+				request := make([]byte, 244)
+				request[0] = 1
+				request[1] = 1
+				request[2] = 6
+				binary.BigEndian.PutUint32(request[4:8], 42)
+				copy(request[12:16], lease.Address.AsSlice())
+				copy(request[28:34], mac[:])
+				copy(request[236:], []byte{99, 130, 83, 99, 53, 1, 3, 255})
+				link.packets <- request
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					t.Fatal("writer did not enter pending commit")
+				}
+				closeCtx := context.Background()
+				cancel := func() {}
+				if timeout {
+					closeCtx, cancel = context.WithTimeout(closeCtx, 30*time.Millisecond)
+				}
+				defer cancel()
+				closed := make(chan error, 1)
+				go func() { closed <- s.Close(closeCtx) }()
+				require.Eventually(t, func() bool { s.mu.RLock(); defer s.mu.RUnlock(); return s.closed }, time.Second, time.Millisecond)
+				if timeout {
+					require.ErrorIs(t, <-closed, context.DeadlineExceeded)
+				}
+				// Resume the previously successful operation only after Close's monotonic
+				// boundary, including after a timed-out Close has already returned.
+				assert.Error(t, s.publishApplied(settings, generation))
+				assert.False(t, s.Status().AppliedEnabled)
+				assert.NotEqual(t, "running", s.Status().State)
+				assert.Equal(t, previousGeneration, s.Status().AppliedGeneration)
+				assert.Nil(t, s.View())
+				assert.False(t, s.Projection().Enabled)
+				releaseGate()
+				unblock()
+				if !timeout {
+					require.NoError(t, <-closed)
+				} else {
+					require.NoError(t, s.Close(context.Background()))
+				}
+				assert.Nil(t, s.View())
+				assert.False(t, s.Status().AppliedEnabled)
+			})
+		}
+	}
 }
