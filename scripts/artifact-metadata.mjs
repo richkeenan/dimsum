@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -127,8 +128,13 @@ function collect(name, directory, licenseHint = null) {
     name.replaceAll("/", "_").replaceAll("@", "_"),
   );
   mkdirSync(target, { recursive: true });
-  for (const file of candidates)
-    copyFileSync(path.join(directory, file), path.join(target, file));
+  for (const file of candidates) {
+    const destination = path.join(target, file);
+    // Go's module cache contains read-only files; replace the previous copy
+    // rather than trying to overwrite its preserved read-only permissions.
+    rmSync(destination, { force: true });
+    copyFileSync(path.join(directory, file), destination);
+  }
 }
 // Select linked modules, including replacement module paths, rather than every
 // graph-only tool/test dependency (which may not be downloaded).
