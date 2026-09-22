@@ -110,3 +110,16 @@ func TestExpiredDerivedNameYieldsToFreshDiscovery(t *testing.T) {
 		assert.Equal(t, "Old cached name", mergeDiscovered(old, live, now).Name)
 	}
 }
+
+func TestServiceIdentifiersDoNotOutrankUsefulDeviceLabels(t *testing.T) {
+	now := time.Now()
+	n := Name{Name: "android.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "android.local", Evidence: []Evidence{
+		{Source: "dns-sd", Hostname: "android.local", Label: "Display-0123456789abcdef0123456789abcdef", Expires: now.Add(time.Minute)},
+		{Source: "dns-sd", Hostname: "android.local", Label: "Example Television", Expires: now.Add(time.Minute)},
+	}}}
+	assert.Equal(t, "Example Television", enrichDiscovered(n, now).Name)
+	for _, label := range []string{"SpotifyConnect", "SpotifyConnect #2", "amazon #0000"} {
+		n.Device.Evidence = []Evidence{{Source: "dns-sd", Hostname: "android.local", Label: label, Expires: now.Add(time.Minute)}}
+		assert.Equal(t, "android.local", enrichDiscovered(n, now).Name, label)
+	}
+}
