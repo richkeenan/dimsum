@@ -39,20 +39,7 @@ func (c *Client) dohClient(e Endpoint) *http.Client {
 		defer cancel()
 		stop := context.AfterFunc(c.lifetime, cancel)
 		defer stop()
-		conn, err := c.dialEndpoint(ctx, e)
-		if err != nil {
-			return nil, err
-		}
-		conn, err = c.connections.track(conn)
-		if err != nil {
-			return nil, err
-		}
-		secure := tls.Client(conn, tr.TLSClientConfig)
-		if err = secure.HandshakeContext(ctx); err != nil {
-			conn.Close()
-			return nil, err
-		}
-		return secure, nil
+		return c.dialEndpoint(ctx, e)
 	}
 	h := &http.Client{Transport: tr, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	c.httpClients[e] = h
