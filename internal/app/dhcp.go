@@ -199,8 +199,8 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 		return s.publishApplied(next, g)
 	}
 	if r != nil {
-		if err := r.Status().Error; err != "" {
-			return failed(errors.New(err + "; disable and re-enable to recover"))
+		if err := r.Err(); err != nil {
+			return failed(errors.New(err.Error() + "; disable and re-enable to recover"))
 		}
 		if r.Status().Generation == g {
 			// Completion may have raced the previous caller's deadline. The owner

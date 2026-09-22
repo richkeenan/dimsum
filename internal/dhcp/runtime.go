@@ -80,6 +80,7 @@ type Runtime struct {
 	apply         chan applyRequest
 	mu            sync.RWMutex
 	status        RuntimeStatus
+	terminalErr   error
 	projection    Projection
 	leases        []Lease
 	leaseRevision uint64
@@ -163,6 +164,16 @@ func (r *Runtime) Status() RuntimeStatus {
 	s.Transport = r.transport.Stats()
 	return s
 }
+
+// Err reports a terminal ingress/storage failure that requires closing and
+// recovering the runtime. A recoverable reply-send error is status only: it
+// must not prevent the live owner from accepting configuration changes.
+func (r *Runtime) Err() error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.terminalErr
+}
+
 func (r *Runtime) Projection() Projection {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -234,6 +245,7 @@ func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link
 	defer ticker.Stop()
 	fail := func(err error, storage bool) {
 		r.mu.Lock()
+		r.terminalErr = err
 		r.status.Error = err.Error()
 		if storage {
 			r.status.Storage = "failed"
@@ -258,9 +270,14 @@ func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link
 			if err == nil {
 				err = link.Send(ctx, w)
 			}
+			// The owner loop continues after failed delivery. Expose degradation
+			// until a successful reply, without latching a terminal failure.
+			r.mu.Lock()
+			r.status.Error = ""
 			if err != nil {
-				fail(err, false)
+				r.status.Error = err.Error()
 			}
+			r.mu.Unlock()
 		}
 	}
 	var pending *applyRequest

@@ -433,6 +433,78 @@ func TestDHCPReconcileRecognizesCompletedOwnerSwitch(t *testing.T) {
 	assert.EqualValues(t, 2, s.Status().AppliedGeneration)
 }
 
+type recoveringDHCPLink struct {
+	appDHCPPacketLink
+	failNext atomic.Bool
+	replies  chan dhcp.WireReply
+}
+
+func (l *recoveringDHCPLink) Send(ctx context.Context, reply dhcp.WireReply) error {
+	if l.failNext.Swap(false) {
+		return errors.New("temporary send failure")
+	}
+	select {
+	case l.replies <- reply:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestDHCPTransientSendFailureAllowsApplyAndRecovers(t *testing.T) {
+	s := NewDHCPSupervisor(t.TempDir(), []string{"0.0.0.0:53"})
+	link := &recoveringDHCPLink{
+		appDHCPPacketLink: appDHCPPacketLink{appDHCPLink: appDHCPLink{done: make(chan struct{})}, packets: make(chan []byte, 1)},
+		replies:           make(chan dhcp.WireReply, 1),
+	}
+	link.failNext.Store(true)
+	s.openLink = func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
+		return link, func(context.Context, netip.Addr) (bool, error) { return false, nil }, nil
+	}
+	t.Cleanup(func() { _ = s.Close(context.Background()) })
+	settings := dhcpSettings()
+	require.NoError(t, s.Reconcile(context.Background(), settings, 1))
+	// INFORM exercises reply delivery without depending on a lease/probe timer.
+	request := make([]byte, 244)
+	request[0], request[1], request[2] = 1, 1, 6
+	binary.BigEndian.PutUint32(request[4:8], 42)
+	copy(request[12:16], []byte{192, 0, 2, 100})
+	copy(request[28:34], []byte{2, 0, 0, 0, 0, 1})
+	copy(request[236:], []byte{99, 130, 83, 99, 53, 1, 8, 255})
+	link.packets <- request
+	require.Eventually(t, func() bool {
+		return s.Status().Runtime.Error == "temporary send failure"
+	}, time.Second, time.Millisecond)
+	assert.Equal(t, "degraded", s.Status().State)
+
+	settings.LeaseSeconds = 120
+	require.NoError(t, s.Reconcile(context.Background(), settings, 2), "a recoverable egress error must not block configuration")
+	assert.EqualValues(t, 2, s.Status().AppliedGeneration)
+	assert.EqualValues(t, 120, s.View().Settings().LeaseSeconds)
+	assert.Equal(t, "degraded", s.Status().State, "applying settings is not proof that delivery recovered")
+	link.packets <- request
+	select {
+	case <-link.replies:
+	case <-time.After(time.Second):
+		t.Fatal("reply delivery did not recover")
+	}
+	require.Eventually(t, func() bool { return s.Status().State == "running" }, time.Second, time.Millisecond)
+	assert.Empty(t, s.Status().LastError)
+	assert.Empty(t, s.Status().Runtime.Error)
+
+	// Losing ingress is terminal, unlike a dropped reply. It must still block
+	// configuration even after earlier sends recovered successfully.
+	require.NoError(t, link.Close())
+	select {
+	case <-s.runtime.Done():
+	case <-time.After(time.Second):
+		t.Fatal("failed ingress did not stop runtime")
+	}
+	require.Error(t, s.Reconcile(context.Background(), settings, 3))
+	assert.EqualValues(t, 2, s.Status().AppliedGeneration)
+	assert.Equal(t, "degraded", s.Status().State)
+}
+
 func TestDHCPShutdownFencesSuccessfulPublication(t *testing.T) {
 	for _, stage := range []string{"prepared", "applied"} {
 		for _, timeout := range []bool{false, true} {
