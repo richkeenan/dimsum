@@ -12,6 +12,65 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestDHCPDomainExplicitEmptyNonterminalsAndAliases(t *testing.T) {
+	now := time.Now()
+	z, err := localdns.Build(nil, []localdns.Record{
+		{Name: "printer.room.home.arpa", Type: "A", Value: "192.0.2.9", TTL: 60},
+		{Name: "to-room.test", Type: "CNAME", Value: "room.home.arpa", TTL: 60},
+		{Name: "chain.test", Type: "CNAME", Value: "to-room.test", TTL: 60},
+		{Name: "to-missing.test", Type: "CNAME", Value: "missing.home.arpa", TTL: 60},
+	})
+	require.NoError(t, err)
+	v := localdns.BuildLeases(1, "home.arpa", nil, nil, z)
+	for _, tc := range []struct {
+		name          string
+		typ           uint16
+		code, answers int
+	}{
+		{"room.home.arpa.", dns.TypeA, 0, 0},
+		{"room.home.arpa.", dns.TypeAAAA, 0, 0},
+		{"room.home.arpa.", dns.TypeSOA, 0, 0},
+		{"to-room.test.", dns.TypeA, 0, 1},
+		{"to-room.test.", dns.TypeAAAA, 0, 1},
+		{"to-room.test.", dns.TypeSOA, 0, 1},
+		{"chain.test.", dns.TypeA, 0, 2},
+		{"missing.home.arpa.", dns.TypeA, 3, 0},
+		{"child.room.home.arpa.", dns.TypeA, 3, 0},
+		{"to-missing.test.", dns.TypeA, 3, 1},
+	} {
+		t.Run(tc.name+dns.TypeToString[tc.typ], func(t *testing.T) {
+			q := new(dns.Msg)
+			q.SetQuestion(tc.name, tc.typ)
+			b, e := q.Pack()
+			require.NoError(t, e)
+			var m dnswire.Message
+			require.NoError(t, dnswire.ParseRequest(b, &m))
+			out := make([]byte, 1232)
+			n, ok, e := z.AnswerWithLeases(out, &m, v, now)
+			require.NoError(t, e)
+			require.True(t, ok)
+			var got dns.Msg
+			require.NoError(t, got.Unpack(out[:n]))
+			assert.Equal(t, tc.code, got.Rcode)
+			require.Len(t, got.Answer, tc.answers)
+			require.Len(t, got.Ns, 1)
+			assert.Equal(t, "home.arpa.", got.Ns[0].Header().Name)
+			assert.EqualValues(t, 30, got.Ns[0].Header().Ttl)
+			assert.Nil(t, z.ContinuationWithLeases(&m, v, now), "terminal local negatives must not trigger upstream alias completion")
+			if tc.answers == 0 {
+				// Prepared existence indexes also preserve direct-path allocation goals.
+				allocs := testing.AllocsPerRun(100, func() { n, ok, e = v.Answer(out, &m, now) })
+				require.NoError(t, e)
+				require.True(t, ok)
+				assert.Zero(t, allocs)
+				require.NoError(t, got.Unpack(out[:n]))
+				assert.Equal(t, tc.code, got.Rcode)
+				assert.Empty(t, got.Answer)
+			}
+		})
+	}
+}
+
 func TestLeaseAnswersPrecedenceAndExpiry(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	z, err := localdns.Build([]localdns.Zone{{Name: "home.arpa", NegativeTTL: 42}}, []localdns.Record{

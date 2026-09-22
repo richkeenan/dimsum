@@ -28,12 +28,13 @@ type leaseRecord struct {
 // Leases is an immutable, generation-compatible publication separate from policy
 // and the upstream cache. All wire data is prepared on publication, not lookup.
 type Leases struct {
-	generation uint64
-	domain     string
-	domainWire []byte
-	records    map[string]leaseRecord
-	names      map[netip.Addr]Lease
-	negative   [31]dnswire.SyntheticRecord
+	generation     uint64
+	domain         string
+	domainWire     []byte
+	records        map[string]leaseRecord
+	names          map[netip.Addr]Lease
+	explicitExists map[string]bool
+	negative       [31]dnswire.SyntheticRecord
 }
 
 func (v *Leases) Generation() uint64 { return v.generation }
@@ -70,6 +71,18 @@ func BuildLeases(generation uint64, domain string, rows []Lease, reservations ma
 	v := &Leases{generation: generation, domain: domain, domainWire: wire(domain), records: make(map[string]leaseRecord), names: make(map[netip.Addr]Lease)}
 	for ttl := range v.negative {
 		v.negative[ttl] = dnswire.NegativeSOA(v.domainWire, uint32(ttl))
+	}
+	// DHCP may be the only owner of this domain. Zones only indexes ancestors
+	// inside its own configured zones, so capture explicit descendants here too.
+	// These are existence markers, not lease records or evidence of live leases.
+	if explicit != nil {
+		v.explicitExists = make(map[string]bool)
+		for name := range explicit.records {
+			for name != domain && strings.HasSuffix(name, "."+domain) {
+				v.explicitExists[string(wire(name))] = true
+				_, name, _ = strings.Cut(name, ".")
+			}
+		}
 	}
 	reserved := make(map[string]netip.Addr)
 	counts := make(map[string]int)
@@ -198,10 +211,11 @@ func (v *Leases) Answer(dst []byte, q *dnswire.Message, now time.Time) (int, boo
 		}
 	} else if owned {
 		code = 3
-		if string(name) == string(v.domainWire) {
+		apex := string(name) == string(v.domainWire)
+		if apex || v.explicitExists[string(name)] {
 			code = 0
 		}
-		if code == 0 && q.Question.Type == 6 {
+		if apex && q.Question.Type == 6 {
 			answers[0] = v.negative[30]
 			a = answers[:]
 		} else {

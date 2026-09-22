@@ -284,7 +284,7 @@ func (z *Zones) AnswerWithLeases(dst []byte, q *dnswire.Message, leases *Leases,
 			} else if len(rr) > 0 {
 				authority = append(authority, dnswire.NegativeSOA([]byte{0}, 2))
 			} else if leases != nil && leases.owns(wire(name)) {
-				if name != leases.domain {
+				if name != leases.domain && !leases.explicitExists[string(wire(name))] {
 					code = 3
 				}
 				authority = append(authority, dnswire.NegativeSOA(leases.domainWire, 30))
