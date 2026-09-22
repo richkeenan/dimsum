@@ -4,9 +4,13 @@
 |---|---|---|
 | `build-web.sh` | `.goreleaser.yaml`, CI | Install pinned frontend dependencies and generate the embedded UI. |
 | `artifact-metadata.mjs` | `.goreleaser.yaml`, `deploy/Dockerfile` | Record build inputs and collect dependency license notices for packages. |
+| `source-inputs.mjs` | `artifact-metadata.mjs` | Hash tracked source inputs and report checkout state without including ignored files. |
 | `install-service.sh` | `install.sh` | Install a verified release archive and roll back a failed upgrade. |
 | `qualification.mjs` | `.github/workflows/local-artifacts.yaml` | Run a bounded DNS smoke test with isolated loopback fixtures. |
 | `dhcp-qualification.py` | Developer | Snapshot current sources and run offline Linux DHCP qualification with JSON and Markdown evidence. |
+
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for build prerequisites and package
+commands. Run the source-input boundary tests with `node --test scripts/*.test.mjs`.
 
 ## Automated DHCP qualification
 

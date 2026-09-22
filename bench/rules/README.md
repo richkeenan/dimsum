@@ -29,4 +29,5 @@ Pi performance, process RSS limits, or release qualification. Publish hardware,
 toolchain, repetition ranges, accounting versus measured heap, and remaining
 targets alongside captured results before making performance claims.
 
-See [the measured candidate decision](results-2026-09-21.md).
+Record the measured source commit with each result. Keep raw output available
+alongside any published summary so readers can reproduce the comparison.

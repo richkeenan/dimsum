@@ -1,123 +1,81 @@
-# dimsum administration UI
+# Dashboard development
 
-React/TypeScript, Vite, Tailwind CSS v4, and locally copied shadcn/ui components
-using the Radix primitive family. All direct dependencies are exact versions;
-`package-lock.json` pins the transitive graph. Node is build/test-time only.
+The dimsum dashboard uses React, TypeScript, TanStack Router/Start, Vite, and
+Tailwind CSS. It builds as a static SPA embedded in the Go executable. Node is
+required for development and builds, not for running an installed server.
 
-## Development and verification
+## Setup
+
+Use Node 24.21.0 and npm. From `web/`:
 
 ```sh
-cd web
 npm ci
+npm run dev
+```
+
+Vite serves the dashboard on `http://127.0.0.1:5173` and proxies `/api` and
+`/session` to `http://127.0.0.1:8080`. Start an isolated dimsum backend with the
+[development configuration](../guides/configuration.md#minimal-local-development-configuration)
+and bootstrap its password first. That configuration admits the Vite Host/Origin.
+To use a different backend:
+
+```sh
+DIMSUM_API_URL=http://127.0.0.1:18080 npm run dev
+```
+
+Use local test configuration and data directories. The dev proxy sends real
+administrative requests to its backend.
+
+## Checks and builds
+
+```sh
 npm run api:generate
 npm run typecheck
-npm run test
+npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
 
-`npm run dev` serves the UI and proxies `/api` and `/session` to
-`http://127.0.0.1:8080`. The authenticated server must allow the browser's exact
-Host/Origin when using that proxy. `npm run preview` serves built assets only;
-Playwright fixtures intercept requests and never enter the production bundle.
+The build copies `web/dist/client/` into `internal/webassets/dist/` for embedding.
+Both directories are ignored. From the repository root,
+`sh scripts/build-web.sh` installs dependencies and builds the UI; run it before
+Go tests on a fresh checkout or after frontend changes. GoReleaser and Docker
+builds generate assets as part of their build process.
 
-The production output is **`internal/webassets/dist/`**. Git ignores this directory.
-Run `sh scripts/build-web.sh` from the repository root before compiling or testing
-Go packages on a fresh checkout. GoReleaser and the container build generate the
-assets before compiling; the executable embeds them and serves the UI without Node.
-Playwright uses two workers; for constrained build hosts set
-`NODE_OPTIONS=--max-old-space-size=1536` and `GOMAXPROCS=2`.
-A Pi build has not been measured.
+`npm run preview` serves built frontend output. It is useful for the fixture
+browser tests; use `npm run dev` with its proxy for interactive backend development.
 
-From the repository root, run the opt-in real API browser harness:
+## Test modes
+
+- `npm test`: component, formatting, API-client, and hook tests.
+- `npm run test:e2e`: Playwright scenarios with intercepted API responses.
+- Go API browser tests: real sessions, CSRF, configuration edits, conflicts,
+  streaming, and managed DNS/history/backup flows on temporary local listeners.
+
+Run both real API browser scenarios from the repository root:
 
 ```sh
-DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run TestBrowserAgainstGoAPI -v -count=1
-DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run TestBrowserAgainstManagedRuntime -v -count=1
-go test ./internal/webassets
+DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run 'TestBrowserAgainst(GoAPI|ManagedRuntime)$' -v -count=1
 ```
 
-The harness starts the real admin HTTP adapter and configuration coordinator on
-an ephemeral local HTTP listener with a temporary config. It does not start DNS
-or use production network settings. It verifies cookie/CSRF login and logout,
-scalar edits preserving comments, client names, rules/test, local records,
-upstream creation, conflicts, atomic external edits, and invalid-file diagnostics.
-The `real-api.spec.ts` test skips in the ordinary fixture run by design.
+They skip in ordinary Go/fixture runs. Screenshots and reports go to ignored
+`web/test-results/` directories; see [screenshots/README.md](screenshots/README.md).
+The scenarios use synthetic traffic and do not require a household server.
 
-The managed harness uses `dimsum bootstrap` with an owner-only temporary password
-file, starts `app.Service.StartManaged` on ephemeral local DNS/admin ports, and
-sends 122 actual UDP DNS requests for fixture local records and blocked names.
-`managed-api.spec.ts` then verifies SQLite-backed summary/chart data, cursor paging,
-filters and details, observed client names, an authenticated binary backup download,
-restore conflict after archive selection, and successful restore after reselecting.
-No response mocking or synthetic provider is used in this managed test. Both Go
-browser scenarios skip in the ordinary fixture run; output is separated under
-`test-results/fixtures`, `test-results/go-api`, and `test-results/managed`.
+## API and generated files
 
-## Contract boundary
+`api/openapi.yaml` is the HTTP contract. Commit `src/lib/openapi.d.ts` after
+`npm run api:generate`. Vite updates `src/routeTree.gen.ts` during development and
+builds; commit route changes with their generated tree. Keeping these files in
+Git lets editors and standalone typechecks work before a build.
 
-`ClientIdentity` renders the server-selected name and device category in Devices,
-Top clients, and query rows. Devices opens an evidence dialog; missing metadata
-uses the generic Device icon. Discovery settings edit `naming.mdns.enabled` and
-the interface string array through the shared revision-checked settings API.
-The backend keeps explicit names authoritative. Run `dimsum control help` for CLI
-commands and consult `api/openapi.yaml` for the API contract.
+`src/lib/api.ts` handles sessions, CSRF, structured errors, and activation status.
+Preserve decimal strings for large counters and IDs. Configuration editors must
+use the revision captured when the draft opened and handle conflicts explicitly.
+See [the contributor guide](../CONTRIBUTING.md) for shared backend conventions.
 
-We track generated `src/lib/openapi.d.ts` and `src/routeTree.gen.ts` so editors and
-standalone typechecks can resolve API and route types before a build. Regenerate
-the API types with `npm run api:generate`; Vite updates the route tree during
-development and builds. `src/lib/openapi.d.ts` comes from `api/openapi.yaml`.
-`src/lib/api.ts`
-normalizes nested activation status for visual components, preserves large
-decimal counters, and handles CSRF/session expiry and structured errors.
-Collection PATCH requests contain only changed scalar fields and use the index
-and revision captured when the editor opened. This also avoids writing redacted
-list URLs back while changing an enabled flag. Conflict reload closes collection
-editors so an old index cannot target a different item. Settings drafts survive
-reload and require another explicit save.
+## Visual design and licenses
 
-Statistics types and fixture shapes now derive from the concrete OpenAPI schemas
-matching `internal/app/provider.go`: `queries`/`fresh` summary counters, nested
-`points[].outcomes`, decimal `duration_us`, string IDs/generations, and separate
-configured/observed client collections. Null gap counters remain gaps. Query
-filters include only the supported nonempty name/client/outcome/qtype fields;
-empty cursors are omitted. Ranges remain exact across every panel, including
-partial first/last buckets, and the chosen chart resolution keeps requests below
-1500 points. Microseconds are formatted using integer/string arithmetic; IDs and
-counter values are never converted through unsafe JavaScript numbers. Numeric
-conversion is confined to bounded percentage/plot geometry. Configured names and
-DNS-observed addresses are not presented as a physical-device inventory.
-
-Jobs send the documented `backup`, `restore`, or `refresh` kind. Completed backup
-jobs expose an authenticated same-origin download link; superseded artifacts are
-marked expired. Restore selects a real `.tar` file (maximum 2 MiB), reads the saved
-revision at file selection, and sends `{revision, archive}` with base64 archive
-bytes. The captured revision is not silently refreshed at submit. Job status
-polling is bounded to active jobs. An absent hook produces a visible API error.
-Upstream probes and support-bundle exports are not implemented
-by the current API, so the UI does not fabricate results for them. Settings can
-edit existing scalar paths for cache, listener, naming, and retention values;
-the coordinator reports unsupported/missing-path edits precisely.
-
-## UI evidence and outstanding acceptance
-
-Fixture browser checks cover desktop light/dark, 390px layout without horizontal
-page overflow, consistent time ranges, cursor filters/detail, explicit exact vs
-suffix preview, authentication expiry, incomplete history, unavailable storage,
-conflicts, rejected regex, manual names, pending list edits/failed refresh, timed
-pause, and failed backup. Hook tests cover request cancellation and bounded SSE
-updates, reconnect status, and stream cleanup. Playwright writes screenshots to
-the ignored `test-results/` directory. See `screenshots/README.md` for capture
-scenarios and regeneration commands.
-
-No one-hour browser heap soak, household 200-row p95 measurement, DNS coexistence
-load test, Pi build, household discovery coverage, or release qualification is
-claimed. Those longer acceptance checks remain integration work.
-
-Verified on 2026-09-21: typecheck, 11 unit/hook tests, production build, 11 fixture
-browser scenarios, and both opt-in real Go API browser scenarios passed. Embedded
-SPA/cache/HEAD/ETag/namespace tests also passed in a compiled Go test binary with
-`PATH=/nonexistent`, proving that asset serving does not invoke Node. Diagnostics,
-chart, and job chunks are loaded separately. These are local build results, not LAN
-performance measurements.
+Follow [DESIGN.md](DESIGN.md) for layout and typography. Copied components live in
+`src/components/ui/`; retain the notices in [THIRD_PARTY.md](THIRD_PARTY.md).

@@ -17,8 +17,8 @@ export default defineConfig({
   preview: { host: "127.0.0.1" },
   server: {
     proxy: {
-      "/api": process.env.DIMSUM_API_URL || "http://127.0.0.1:18080",
-      "/session": process.env.DIMSUM_API_URL || "http://127.0.0.1:18080",
+      "/api": process.env.DIMSUM_API_URL || "http://127.0.0.1:8080",
+      "/session": process.env.DIMSUM_API_URL || "http://127.0.0.1:8080",
     },
   },
   test: {

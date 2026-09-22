@@ -18,6 +18,6 @@ missing buckets. Avoid decorative gradients and rounded-card repetition. Use
 borders to group related operational information. Tables remain the primary
 interaction; drawers preserve log position. All counters originate in the API.
 
-Mockup and acceptance screenshots use isolated Playwright fixtures, never
-bundled sample data. API contracts are isolated in src/lib/api.ts pending
-integration with the concurrently authored OpenAPI contract.
+Use isolated Playwright fixtures for screenshots. Keep fixture data out of the
+production bundle. The API client in `src/lib/api.ts` uses generated types from
+`api/openapi.yaml`; preserve those types at feature boundaries.

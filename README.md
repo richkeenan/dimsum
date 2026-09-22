@@ -9,28 +9,36 @@ server or Raspberry Pi, point your devices at it for DNS, and manage filtering
 through a web dashboard, CLI, or your AI agent.
 
 - Block ads and trackers with filter lists, custom rules, and allow rules.
-- Configure local DNS records and view query history, clients, and upstream health.
-- Back up and restore your configuration.
-- Manage the same server through the browser, CLI, JSON API, or HTTP MCP.
+- Configure local DNS records and inspect query history, clients, and upstream health.
+- Back up and restore configuration.
+- Manage the server through the browser, CLI, JSON API, or HTTP MCP.
+- Optionally provide DHCPv4 leases on Linux.
 
 A single executable includes the dashboard. Configuration lives in a
-comment-preserving YAML file; statistics and downloaded lists live separately.
+comment-preserving YAML file; statistics, leases, and downloaded lists live separately.
 
 ## Install
 
-On a **64-bit Linux server or Raspberry Pi with systemd**:
+On **64-bit Linux with systemd** (amd64 or arm64):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/richkeenan/dimsum/main/install.sh | sudo sh
 ```
 
-The installer downloads the latest release, sets up dimsum, and starts it at boot.
-Open the dashboard URL it prints, sign in with **`admin`**, and change your password
-in **Settings**. Choose subscriptions in **Filter lists**, then set your router’s
-DNS server to this machine’s IP address.
+The installer downloads the latest release, configures the service, and starts
+it at boot. **Save the random administrator password printed during setup.**
+Open the dashboard URL it prints and sign in with that password. Choose
+subscriptions in **Filter lists**, then set your router's DNS server to this
+machine's IP address.
 
-**Upgrade:** run the same command again. Your settings, password, and history stay
-in place.
+The installer checks for conflicts on DNS port 53 and dashboard port 8080. See
+the [deployment guide](guides/deployment.md) for port conflicts, containers,
+manual setup, password recovery, and HTTPS. The default HTTP dashboard is for a
+trusted private network; use HTTPS when credentials cross an untrusted network.
+
+**Upgrade:** run the installer again. Existing configuration, credentials, and
+history are preserved. For package-managed installations, upgrade using the
+downloaded `.deb` instead.
 
 [Download releases](https://github.com/richkeenan/dimsum/releases).
 
@@ -42,12 +50,12 @@ in place.
 3. Set the header to `Authorization: Bearer YOUR_TOKEN`.
 
 Ask “Which devices made the most DNS requests in the last hour?” or “Why is this
-domain blocked?” Your agent can inspect traffic and manage configuration through
-typed tools. Tokens grant administrator access; revoke them in Settings.
+domain blocked?” Tokens grant administrator access; revoke them in Settings.
+Protect their transport just as you would a dashboard password.
 
 ## Command-line control
 
-On the server:
+On a native installation:
 
 ```sh
 sudo -u dimsum dimsum control help
@@ -55,184 +63,40 @@ sudo -u dimsum dimsum control diagnostics
 sudo -u dimsum dimsum control settings
 ```
 
-Run `dimsum control help` for available commands. The server exposes its OpenAPI
-specification at `/api/v1/openapi.json` to authenticated clients.
+The CLI uses a permission-protected Unix socket. Authenticated HTTP clients can
+retrieve the OpenAPI specification at `/api/v1/openapi.json`.
 
-## Optional DHCPv4 (Linux)
+## Guides
 
-The DHCP page pre-fills blank settings from the server’s IPv4 interface and
-default route, with a 24-hour lease and `home.arpa` local domain. It shows a
-summary first; **Edit settings** exposes every field. Saved values are preserved,
-and suggestions are only written when you save. Ambiguous networks fall back to
-manual entry. Detection reads local metadata only, without sending probes.
+- [Deployment and password setup](guides/deployment.md)
+- [Configuration and supported settings](guides/configuration.md)
+- [Optional DHCPv4](guides/dhcp.md)
+- [Building and contributing](CONTRIBUTING.md)
+- [Frontend development](web/README.md)
+- [Security reporting](SECURITY.md)
 
-The suggested range excludes the server, router, other detected local addresses,
-and configured reservations. It cannot account for leases or reservations held
-by your previous DHCP server. The fixed-address indicator describes the address
-currently installed on the server; ensure its network configuration keeps that
-address across reboots. The CLI (`dimsum control dhcp`) and MCP (`get_dhcp`) return
-the same proposal under `setup`, alongside the authoritative saved `config`.
+## Build from source
 
-DHCP is **disabled by default**. The **DHCP** dashboard page manages settings,
-reservations, lease inspection and an explicit environment-check job. A saved
-change is not proof of service: inspect **Desired**, **Applied**, the pending
-generation and any error. DHCP failure leaves DNS and administration available.
-
-### Prepare the network and service
-
-Use a permanent/static IPv4 address on an up Ethernet-compatible LAN interface.
-The configured subnet prefix must match that interface. dimsum advertises its
-server IP as DNS: DNS must listen on that IP **port 53** or `0.0.0.0:53`, with
-UDP and TCP reachable from clients. An IPv6-only wildcard is insufficient.
-The gateway is your router, not dimsum. Use a domain such as `home.arpa`, not
-`.local`. Account for static devices and existing DHCP leases when choosing a
-pool; quiet ARP or DHCP discovery cannot prove an address is unused.
-
-dimsum checks new candidate addresses with three ARP probes over 1.5 seconds
-before offering them, and quarantines detected conflicts. Existing unexpired
-leases retain ownership without requiring a probe response. Keep manually
-assigned addresses outside the dynamic pool, or reserve them for their devices.
-
-The DNS-only systemd unit retains only `CAP_NET_BIND_SERVICE`. To opt into DHCP,
-install [deploy/dhcp-capabilities.conf](deploy/dhcp-capabilities.conf) as
-`/etc/systemd/system/dimsum.service.d/20-dhcp.conf`. It adds **CAP_NET_RAW** and
-**AF_PACKET** for interface-bound link-layer replies and ARP probes. AF_NETLINK
-is already allowed for interface/address inspection. **CAP_NET_ADMIN is not
-needed by the service**; configure interfaces separately through the host's
-network manager. Review existing local unit overrides before installing it.
-
-After adding or removing this privilege override, run `systemctl daemon-reload`
-and `systemctl restart dimsum` once. Configuration toggles cannot grant a running
-process new privileges. The restart also restarts DNS; normal DHCP enable/disable,
-pool and reservation changes subsequently apply without a DNS restart.
-The installer does not install this opt-in override or enable DHCP.
-Native packages supply the inactive example in
-`/usr/share/doc/dimsum/dhcp-capabilities.conf`; release archives include it under
-`deploy/` for offline use.
-
-Synthetic configuration example (replace documentation addresses for your LAN):
-
-```yaml
-dhcp:
-  enabled: false
-  interface: eth0
-  server_ip: 192.0.2.2
-  subnet: 192.0.2.0/24
-  gateway: 192.0.2.1
-  range_start: 192.0.2.100
-  range_end: 192.0.2.199
-  lease_seconds: 86400
-  local_domain: home.arpa
-  max_leases: 1024
-  reservations:
-    - id: lab-printer
-      mac: '02:00:00:00:00:10'
-      address: 192.0.2.20
-      hostname: lab-printer
-```
-
-Incomplete network settings can be saved while disabled. Reservations use exactly
-one MAC or hex client ID; addresses must be in the subnet and may be inside or
-outside the dynamic pool. Reservation edits/removal do not revoke live leases.
-Ownership conflicts can appear during application after a successful save:
-inspect the error, address owner, expiry and held-until time before choosing a
-different address. Interface, server IP, subnet and domain changes require saving
-DHCP disabled and waiting for the applied disable first. Disabling preserves
-durable ownership and removes dynamic DHCP DNS/name publication.
-
-### Handoff, containers and rollback
-
-Prepare the disabled configuration, permissions and DNS first. Run the explicit
-environment check; the optional other-server check sends one DISCOVER, never a
-REQUEST. It may be unavailable if a host DHCP client owns UDP/68. Neither check
-proves firewall reachability or absence of another DHCP server.
-
-For an authorized cutover, stop the router's DHCP service before enabling dimsum.
-Use a non-overlapping pool or wait out prior grants; turning the old server off
-does not revoke its clients' leases. Confirm applied running state, client
-renewal, advertised router/DNS and DNS queries from the LAN. For rollback, disable
-dimsum and wait for the applied disable before restoring the previous DHCP
-server. That server must still avoid addresses in unexpired dimsum grants.
-
-DHCP needs direct access to LAN broadcasts, ARP and link-layer unicast before a
-client has an IP. Publishing UDP/67 through an ordinary NAT bridge is insufficient.
-On native Linux, host networking or a deliberately configured LAN-facing network
-namespace can provide this connectivity, with NET_RAW and NET_BIND_SERVICE and
-the permanent server address visible inside that namespace. Mount persistent
-data storage. Docker Desktop host networking is not equivalent to a native Linux
-LAN interface. Isolated Linux container tests cover veth broadcast/direct replies,
-ARP, real client acquisition and the two-capability service adapter; host-network
-or macvlan deployments on a physical LAN have not been qualified by those tests.
-
-### Lease persistence and backups
-
-Lease ownership is separate operational state in **`<paths.data_dir>/dhcp`**:
-preserve the **whole directory**, including its initialization marker and SQLite
-sidecar files. Configuration backup/restore includes DHCP settings and reservations,
-but **does not include or reset leases**. Keep the data directory across upgrades,
-container replacement and disable/re-enable. The running supervisor pins its data
-directory at startup; changing that path requires a planned stopped-service move.
-
-For a host move, fully stop the old service, copy the entire lease-state directory
-and configuration with correct ownership/permissions to the new host, and keep
-the old server stopped. Never run two writers/servers from cloned ownership state.
-A stale lease backup can omit newer grants and is not automatically safe. If
-current state cannot be transferred, wait out all prior possible grants before
-reusing addresses; do not delete an initialized directory to bypass recovery
-errors. Trustworthy host time is required. Storage failure suspends service and
-preserves ownership; correct the cause, then disable and re-enable to recover.
-
-### CLI and agent parity
-
-Every dashboard operation uses the shared `/api/v1/dhcp` operations. Read the
-saved revision before each mutation; after a timeout, inspect state instead of
-blindly replaying. MCP tools are `get_dhcp`, `update_dhcp`, `get_dhcp_status`,
-`list_dhcp_leases`, `list_dhcp_reservations`, `add_dhcp_reservation`,
-`update_dhcp_reservation`, `remove_dhcp_reservation`, plus `create_job`/`list_jobs`.
-
-```sh
-dimsum control dhcp
-dimsum control dhcp-status
-dimsum control patch dhcp '{"revision":"READ_SAVED_REVISION","edits":[{"path":["enabled"],"value":false}]}'
-dimsum control dhcp-reservations
-dimsum control add dhcp/reservations '{"revision":"READ_SAVED_REVISION","item":{"id":"lab-printer","mac":"02:00:00:00:00:10","address":"192.0.2.20"}}'
-dimsum control patch dhcp/reservations/lab-printer '{"revision":"READ_SAVED_REVISION","edits":[{"path":["hostname"],"value":"lab-printer"}]}'
-dimsum control delete dhcp/reservations/lab-printer '{"revision":"READ_SAVED_REVISION"}'
-dimsum control dhcp-leases --query 'limit=100&state=bound'
-dimsum control job '{"kind":"dhcp-check","input":{"probe_other_servers":false}}'
-dimsum control jobs
-```
-
-Lease pages use opaque cursors (maximum 256 rows). On `lease_cursor_expired`,
-restart without a cursor; changing a filter also starts a new page sequence.
-Disabled/unavailable live inspection does not prove preserved ownership is empty.
-There is deliberately no force-release operation.
-
-## Development
-
-Install Go **1.26.8**, Node **24.21.0** with npm, GoReleaser **2.18.2**,
-and Git. Build from the repository root:
+Install Go **1.26.8**, Node **24.21.0** with npm, GoReleaser **2.18.2**, and Git.
+On a **Linux amd64 or arm64** development machine:
 
 ```sh
 goreleaser build --snapshot --clean --single-target --output dist/dimsum
 ./dist/dimsum version
 ```
 
-GoReleaser builds the frontend before embedding it in the executable. Git ignores
-the generated bundles. Before running Go tests on a fresh checkout, generate them:
+On macOS, select a Linux target explicitly, for example:
 
 ```sh
-sh scripts/build-web.sh
-go test ./...
-go vet ./...
-npm --prefix web test
+GOOS=linux GOARCH=arm64 goreleaser build --snapshot --clean --single-target --output dist/dimsum
 ```
 
-See [web/README.md](web/README.md) for frontend development and browser tests.
-Use `goreleaser release --snapshot --clean --skip=publish,docker` to build local
-packages. The packaging hooks write
-dependency notices and build metadata under `artifacts/packaging-metadata/`.
+Run that binary on a Linux arm64 host. Go tests and frontend development can run
+on macOS; the release configuration does not produce a native macOS executable.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and package builds.
 
 ## License
 
-dimsum is licensed under the [MIT License](LICENSE).
+dimsum and its project artwork are licensed under the [MIT License](LICENSE).
+[Copied UI components](web/THIRD_PARTY.md) retain their original notices.
+Downloaded blocklists retain their publishers' terms.

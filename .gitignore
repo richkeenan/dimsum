@@ -3,6 +3,12 @@
 .superpowers/
 superpowers/
 /docs/
+/data/
+/secrets/
+/testdata/config/data/
+/testdata/config/secrets/
+/testdata/config/*.state*
+/testdata/config/control.sock
 /web/node_modules/
 /web/.vite/
 /web/.tanstack/

@@ -15,7 +15,7 @@ version and reviewed hashes; tests must not regenerate expected hashes.
   arrivals, permuted by seed. Approximately 80% of names select eight hot keys;
   the remainder select 256 other keys. This is synthetic skew, not measured
   household frequency, meaningful reverse lookups, or a burst replay.
-- **Hot-key:** one A key repeated, suitable for later cache/coalescing experiments.
+- **Hot-key:** one A key repeated, useful for cache/coalescing experiments.
 - **Churn:** unique A keys with seeded mixed labels and a unique index suffix.
 
 The manifest's answer/upstream expectations apply to the **sequential preflight**
@@ -67,6 +67,6 @@ workers); the trace generator retains only its spec. Runtime is bounded by the
 schedule plus timeout **only when the supplied handler honors cancellation**.
 The driver cannot forcibly stop arbitrary Go callbacks.
 
-This foundation has no percentile aggregator, CLI load generator, transport
-adapter, warm-up protocol, system resource sampler, or sustained benchmark suite
-yet. Its exported Go API and `go test` commands are the current entry points.
+The exported Go API and `go test` commands are the entry points for this driver.
+Use `scripts/qualification.mjs` for the separate bounded resolver smoke test;
+its workload and measurements are not interchangeable with these manifests.
