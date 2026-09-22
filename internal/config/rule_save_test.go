@@ -110,8 +110,14 @@ func TestRuleSaveDoesNotReuseSpecialRulesAsSubscriptionMembers(t *testing.T) {
 }
 
 func BenchmarkRuleSaveWithSubscription(b *testing.B) {
+	for _, count := range []int{1, 1000, 76000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) { benchmarkRuleSaveWithSubscription(b, count) })
+	}
+}
+
+func benchmarkRuleSaveWithSubscription(b *testing.B, count int) {
 	var feed strings.Builder
-	for i := range 76000 {
+	for i := range count {
 		fmt.Fprintf(&feed, "ads%d.example\n", i)
 	}
 	body := feed.String()

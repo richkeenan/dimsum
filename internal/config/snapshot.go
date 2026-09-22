@@ -10,11 +10,12 @@ import (
 // Snapshot is immutable. A request loads it once and holds that pointer through
 // all name checks. No generation registry retains retired snapshots.
 type Snapshot struct {
-	document   *Document
-	policy     *policy.PolicySnapshot
-	generation uint64
-	local      *localdns.Zones
-	names      *clients.View
+	document      *Document
+	policy        *policy.PolicySnapshot
+	generation    uint64
+	local         *localdns.Zones
+	names         *clients.View
+	subscriptions *subscriptionState
 }
 
 func (s *Snapshot) Config() Config                 { return s.document.Config() }

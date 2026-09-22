@@ -41,7 +41,7 @@ func (s *Store) Watch(ctx context.Context) {
 					continue
 				}
 			}
-			_, _ = s.Reload(ctx)
+			_, _ = s.reload(ctx, !due)
 			nextRefresh = time.Now().Add(s.jitter())
 		}
 	}

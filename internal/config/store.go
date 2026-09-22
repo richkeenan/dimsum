@@ -2,13 +2,11 @@ package config
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"io"
 	"os"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -129,11 +127,22 @@ func (s *Store) begin(rev string) {
 	s.mu.Unlock()
 }
 func (s *Store) Reload(ctx context.Context) (ActivationResult, error) {
+	return s.reload(ctx, false)
+}
+
+// The changed-file path rechecks after acquiring build: a queued watcher may
+// have observed Save's text publication before its memory publication.
+func (s *Store) reload(ctx context.Context, changedOnly bool) (ActivationResult, error) {
 	s.build.Lock()
 	defer s.build.Unlock()
 	b, err := readConfig(s.path)
 	if err != nil {
 		return s.fail(err)
+	}
+	if changedOnly {
+		if active := s.Snapshot(); active != nil && active.Revision() == revision(b) {
+			return s.Inspect(), nil
+		}
 	}
 	s.begin(revision(b))
 	d, err := Parse(b)
@@ -200,100 +209,19 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err != nil {
 		return s.fail(err)
 	}
-	rules := c.PolicyRules()
-	var reusable map[string]lists.Version
-	if save {
-		reusable = s.reusableSources(c.Lists)
+	subs, err := s.prepareSubscriptions(ctx, c, !save)
+	if err != nil {
+		return s.fail(err)
 	}
-	fetcher := s.options.Fetcher
-	if fetcher == nil {
-		var err error
-		fetcher, err = lists.NewFetcherWithUpstreams(c.DNS.Upstreams)
-		if err != nil {
-			return s.fail(err)
-		}
-		defer fetcher.Client.CloseIdleConnections()
-	}
-	var statuses []SourceStatus
-	var retained *recovery
-	for _, sub := range c.Lists {
-		if err := ctx.Err(); err != nil {
-			return s.fail(err)
-		}
-		status := SourceStatus{ID: sub.ID, Enabled: sub.Enabled}
-		if sub.Enabled {
-			v, reused := reusable[sub.ID]
-			var err error
-			if !reused {
-				v, err = fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
-			}
-			prior, wasUsable := s.previousSource(sub)
-			if !reused && err == nil && wasUsable && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
-				err = fmt.Errorf("source deletion requires review: %d -> %d rules", prior.Rules, len(v.Rules))
-				v = lists.Version{}
-			}
-			if err != nil && wasUsable {
-				warning := err.Error()
-				if retained == nil {
-					previous, e := s.readRecovery()
-					if e != nil {
-						return s.fail(fmt.Errorf("source %s: cache and recovery unavailable: %w", sub.ID, e))
-					}
-					old := s.Snapshot()
-					if previous.Generation != old.Generation() || previous.Revision != old.Revision() {
-						return s.fail(fmt.Errorf("source %s: recovery generation mismatch", sub.ID))
-					}
-					retained = &previous
-				}
-				for _, rule := range retained.Rules {
-					if rule.SourceID == sub.ID {
-						v.Rules = append(v.Rules, rule)
-					}
-				}
-				for _, status := range retained.Sources {
-					if status.ID == sub.ID {
-						v.SHA256 = status.SHA256
-					}
-				}
-				if len(v.Rules) == 0 {
-					return s.fail(fmt.Errorf("source %s: recovery membership missing", sub.ID))
-				}
-				v.Warning = "retained active source: " + warning
-				err = nil
-			}
-			if err != nil {
-				status.Error = err.Error()
-			} else {
-				if len(v.Rules) > policy.DefaultSnapshotOptions().MaxRules-len(rules) {
-					return s.fail(fmt.Errorf("enabled source rule budget exceeded"))
-				}
-				status.Usable = true
-				status.SHA256 = v.SHA256
-				status.Rules = len(v.Rules)
-				status.Error = v.Warning
-				rules = append(rules, v.Rules...)
-			}
-		}
-		statuses = append(statuses, status)
-	}
-	compiled, err := policy.CompileSnapshot(generation, rules, policy.DefaultLimits())
+	compiled, err := policy.CompileOverlay(generation, c.PolicyRules(), subs.policy, policy.DefaultLimits())
 	if err != nil {
 		return s.fail(err)
 	}
 	if err = ctx.Err(); err != nil {
 		return s.fail(err)
 	}
-	artifact := recovery{Generation: generation, Revision: d.Revision(), Config: d.Bytes(), Rules: rules, Sources: statuses}
-	payload, err := json.Marshal(artifact)
+	stage, err := s.stageManifest(d, generation, subs)
 	if err != nil {
-		return s.fail(err)
-	}
-	if len(payload) > maxRecoveryBytes {
-		return s.fail(fmt.Errorf("recovery input artifact exceeds 256 MiB"))
-	}
-	// Stage the complete recovery unit before touching either published pointer.
-	stage := filepath.Join(s.state, "candidate.artifact")
-	if err = lists.WriteArtifact(stage, payload); err != nil {
 		return s.fail(err)
 	}
 	defer os.Remove(stage)
@@ -313,19 +241,13 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err = ctx.Err(); err != nil {
 		return s.fail(err)
 	}
-	if err = os.Rename(stage, filepath.Join(s.state, "active.artifact")); err != nil {
+	if err = s.commitManifest(stage); err != nil {
 		return s.fail(err)
 	}
-	dir, err := os.Open(s.state)
-	if err != nil {
-		return s.fail(err)
+	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: generation, subscriptions: subs}, subs.sources, false)
+	if !save {
+		s.cleanupSubscriptions(subs.artifact.Name)
 	}
-	err = dir.Sync()
-	_ = dir.Close()
-	if err != nil {
-		return s.fail(err)
-	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: generation}, statuses, false)
 	return s.Inspect(), nil
 }
 
@@ -359,7 +281,7 @@ func (s *Store) reusableSources(subs []lists.Subscription) map[string]lists.Vers
 		return reusable
 	}
 	for number := uint32(1); ; number++ {
-		rule, ok := old.Policy().RuleAt(number)
+		rule, ok := old.subscriptions.policy.RuleAt(number)
 		if !ok {
 			break
 		}
@@ -384,49 +306,6 @@ func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) 
 		}
 	}
 }
-func (s *Store) recover() error {
-	a, err := s.readRecovery()
-	if err != nil {
-		return err
-	}
-	d, err := Parse(a.Config)
-	if err != nil {
-		return err
-	}
-	if err := s.validateDocumentSecrets(d); err != nil {
-		return err
-	}
-	compiled, err := policy.CompileSnapshot(a.Generation, a.Rules, policy.DefaultLimits())
-	if err != nil {
-		return err
-	}
-	local, err := localdns.Build(d.value.Zones, d.value.Records)
-	if err != nil {
-		return err
-	}
-	names, err := clients.NewView(d.value.Naming, d.value.Clients, local.Names())
-	if err != nil {
-		return err
-	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: a.Generation}, a.Sources, true)
-	return nil
-}
-
-func (s *Store) readRecovery() (recovery, error) {
-	b, err := lists.ReadArtifact(filepath.Join(s.state, "active.artifact"), maxRecoveryBytes)
-	if err != nil {
-		return recovery{}, err
-	}
-	var a recovery
-	if err = json.Unmarshal(b, &a); err != nil {
-		return recovery{}, err
-	}
-	if a.Generation == 0 || a.Revision != revision(a.Config) || len(a.Config) > maxConfigBytes {
-		return recovery{}, fmt.Errorf("recovery: invalid configuration identity")
-	}
-	return a, nil
-}
-
 func (s *Store) previousSource(sub lists.Subscription) (SourceStatus, bool) {
 	old := s.Snapshot()
 	if old == nil {

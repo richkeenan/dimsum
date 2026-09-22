@@ -149,7 +149,7 @@ func TestSecretRestoreLateSaveFailureRetainsPublishedGeneration(t *testing.T) {
 	archive, err := BackupWithSecrets(d, map[string][]byte{AdminSecretName: fixtureSecret(2)})
 	require.NoError(t, err)
 	// Force the recovery rename to fail AFTER Publish has replaced config.yaml.
-	artifact := filepath.Join(s.state, "active.artifact")
+	artifact := filepath.Join(s.state, "active.manifest")
 	require.NoError(t, os.Remove(artifact))
 	require.NoError(t, os.Mkdir(artifact, 0700))
 	require.NoError(t, os.WriteFile(filepath.Join(artifact, "obstacle"), []byte("x"), 0600))
