@@ -75,12 +75,10 @@ it("saves incomplete disabled configuration without silently enabling and preser
     <DHCPForm applied={unavailable} refresh={() => {}} />,
     initial,
   );
-  expect(screen.getByLabelText("Lease duration (seconds)")).toBeValid();
-  expect(screen.getByLabelText("Enable DHCPv4")).not.toBeChecked();
-  await userEvent.type(screen.getByLabelText("LAN interface"), "eth0");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Save DHCP settings" }),
-  );
+  expect(screen.getByLabelText("Lease duration")).toBeValid();
+  expect(screen.getByLabelText("Enable DHCP")).not.toBeChecked();
+  await userEvent.type(screen.getByLabelText("Network interface"), "eth0");
+  await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
   expect(send).toHaveBeenCalledWith("dhcp", "PATCH", {
     revision: "one",
     edits: [{ path: ["interface"], value: "eth0" }],
@@ -94,17 +92,17 @@ it("saves incomplete disabled configuration without silently enabling and preser
       status: { ...activation, saved_revision: "two" },
     });
   });
-  expect(screen.getByLabelText("LAN interface")).toHaveValue("eth0");
+  expect(screen.getByLabelText("Network interface")).toHaveValue("eth0");
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     ).toBeDisabled(),
   );
   await userEvent.click(
-    screen.getByRole("button", { name: "Reload saved settings" }),
+    screen.getByRole("button", { name: "Reload settings" }),
   );
   expect(get).toHaveBeenCalledWith("dhcp", expect.any(AbortSignal));
-  expect(screen.getByLabelText("LAN interface")).toHaveValue("");
+  expect(screen.getByLabelText("Network interface")).toHaveValue("");
 });
 
 it.each(["held", "failed"])(
@@ -147,11 +145,11 @@ it.each(["held", "failed"])(
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+      expect(screen.getByLabelText("Network interface")).toBeEnabled(),
     );
-    await userEvent.type(screen.getByLabelText("LAN interface"), "draft0");
+    await userEvent.type(screen.getByLabelText("Network interface"), "draft0");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Settings changed",
@@ -164,23 +162,23 @@ it.each(["held", "failed"])(
     });
     await waitFor(() => expect(calls).toBe(1));
     await userEvent.click(
-      screen.getByRole("button", { name: "Reload saved settings" }),
+      screen.getByRole("button", { name: "Reload settings" }),
     );
-    expect(screen.getByLabelText("LAN interface")).toBeDisabled();
-    expect(screen.getByLabelText("LAN interface")).toHaveValue("draft0");
+    expect(screen.getByLabelText("Network interface")).toBeDisabled();
+    expect(screen.getByLabelText("Network interface")).toHaveValue("draft0");
     await act(async () => {
       reload.resolve(updated);
       await reload.promise;
     });
     await waitFor(() =>
-      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+      expect(screen.getByLabelText("Network interface")).toBeEnabled(),
     );
-    expect(screen.getByLabelText("LAN interface")).toHaveValue("fresh0");
+    expect(screen.getByLabelText("Network interface")).toHaveValue("fresh0");
     expect(screen.getByLabelText("Local domain")).toHaveValue("home.arpa");
     expect(client.getQueryData(key)).toEqual(updated);
     expect(signals[0]?.aborted).toBe(true);
     expect(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     ).toBeDisabled();
     expect(calls).toBe(2); // Reload must not start a second invalidation/refetch.
     await act(async () => {
@@ -202,10 +200,10 @@ it.each(["held", "failed"])(
         await laterRequest;
       });
     }
-    await userEvent.clear(screen.getByLabelText("LAN interface"));
-    await userEvent.type(screen.getByLabelText("LAN interface"), "next0");
+    await userEvent.clear(screen.getByLabelText("Network interface"));
+    await userEvent.type(screen.getByLabelText("Network interface"), "next0");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     );
     expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
       revision: "two",
@@ -238,11 +236,11 @@ it.each([false, true])(
       <DHCPForm applied={unavailable} refresh={() => {}} />,
       initial,
     );
-    await userEvent.type(screen.getByLabelText("LAN interface"), "saved0");
+    await userEvent.type(screen.getByLabelText("Network interface"), "saved0");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     );
-    expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+    expect(screen.getByLabelText("Network interface")).toBeDisabled();
     await waitFor(() => expect(get).toHaveBeenCalled());
     await act(async () => {
       if (fails) read.reject(new APIError(400, "bad_request", "Read failed"));
@@ -250,22 +248,22 @@ it.each([false, true])(
     });
     if (fails) {
       await screen.findByText(/saved.*reload.*before editing/i);
-      expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+      expect(screen.getByLabelText("Network interface")).toBeDisabled();
       await userEvent.click(
-        screen.getByRole("button", { name: "Save DHCP settings" }),
+        screen.getByRole("button", { name: "Save settings" }),
       );
       expect(send).toHaveBeenCalledTimes(1);
       await userEvent.click(
-        screen.getByRole("button", { name: "Reload saved settings" }),
+        screen.getByRole("button", { name: "Reload settings" }),
       );
     }
     await waitFor(() =>
-      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+      expect(screen.getByLabelText("Network interface")).toBeEnabled(),
     );
-    expect(screen.getByLabelText("LAN interface")).toHaveValue("saved0");
-    await userEvent.type(screen.getByLabelText("LAN interface"), "1");
+    expect(screen.getByLabelText("Network interface")).toHaveValue("saved0");
+    await userEvent.type(screen.getByLabelText("Network interface"), "1");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save DHCP settings" }),
+      screen.getByRole("button", { name: "Save settings" }),
     );
     expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
       revision: "two",
@@ -400,14 +398,14 @@ it.each(["settings", "reservations"])(
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+      expect(screen.getByLabelText("Network interface")).toBeEnabled(),
     );
     if (!settings)
       await userEvent.click(
         await screen.findByRole("button", { name: "Edit reservation printer" }),
       );
     const input = screen.getByLabelText(
-      settings ? "LAN interface" : "Hostname (optional)",
+      settings ? "Network interface" : "Hostname (optional)",
     );
     await userEvent.clear(input);
     await userEvent.type(input, "saved0");
@@ -417,7 +415,7 @@ it.each(["settings", "reservations"])(
     await waitFor(() => expect(signals).toHaveLength(1));
     await userEvent.click(
       screen.getByRole("button", {
-        name: settings ? "Save DHCP settings" : "Save reservation",
+        name: settings ? "Save settings" : "Save reservation",
       }),
     );
     await waitFor(() => expect(signals).toHaveLength(3));
@@ -447,9 +445,41 @@ it.each(["settings", "reservations"])(
 
 it("requires complete enable fields and keeps topology locked until disable is applied", async () => {
   resource(<DHCPForm applied={unavailable} refresh={() => {}} />, initial);
-  await userEvent.click(screen.getByLabelText("Enable DHCPv4"));
-  expect(screen.getByLabelText("Static server IPv4 address")).toBeRequired();
-  expect(screen.getByLabelText("Static server IPv4 address")).toBeInvalid();
+  await userEvent.click(screen.getByLabelText("Enable DHCP"));
+  expect(screen.getByLabelText("Server IP address")).toBeRequired();
+  expect(screen.getByLabelText("Server IP address")).toBeInvalid();
+  expect(screen.getByLabelText("Lease duration")).toBeRequired();
+  expect(screen.getByLabelText("Lease duration")).toBeInvalid();
+});
+
+it("saves friendly lease durations in seconds and supports custom values", async () => {
+  const send = vi
+    .spyOn(api, "send")
+    .mockRejectedValue(new Error("Write unavailable"));
+  resource(<DHCPForm applied={unavailable} refresh={() => {}} />, initial);
+  await userEvent.selectOptions(
+    screen.getByLabelText("Lease duration"),
+    "86400",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
+    revision: "one",
+    edits: [{ path: ["lease_seconds"], value: 86400 }],
+  });
+  await userEvent.selectOptions(
+    screen.getByLabelText("Lease duration"),
+    "custom",
+  );
+  await userEvent.clear(screen.getByLabelText("Custom duration (seconds)"));
+  await userEvent.type(
+    screen.getByLabelText("Custom duration (seconds)"),
+    "5400",
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
+    revision: "one",
+    edits: [{ path: ["lease_seconds"], value: 5400 }],
+  });
 });
 it("retains the draft on reload failure and leaves successful reloads clean for later polls", async () => {
   const newer = {
@@ -465,17 +495,17 @@ it("retains the draft on reload failure and leaves successful reloads clean for 
     <DHCPForm applied={unavailable} refresh={() => {}} />,
     initial,
   );
-  await userEvent.type(screen.getByLabelText("LAN interface"), "draft0");
+  await userEvent.type(screen.getByLabelText("Network interface"), "draft0");
   await userEvent.click(
-    screen.getByRole("button", { name: "Reload saved settings" }),
+    screen.getByRole("button", { name: "Reload settings" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent("Reload failed");
-  expect(screen.getByLabelText("LAN interface")).toHaveValue("draft0");
+  expect(screen.getByLabelText("Network interface")).toHaveValue("draft0");
   await userEvent.click(
-    screen.getByRole("button", { name: "Reload saved settings" }),
+    screen.getByRole("button", { name: "Reload settings" }),
   );
   await waitFor(() =>
-    expect(screen.getByLabelText("LAN interface")).toHaveValue("fresh0"),
+    expect(screen.getByLabelText("Network interface")).toHaveValue("fresh0"),
   );
   await act(async () => {
     client.setQueryData(["api", "dhcp", "dhcp"], {
@@ -485,12 +515,10 @@ it("retains the draft on reload failure and leaves successful reloads clean for 
     });
   });
   await waitFor(() =>
-    expect(screen.getByLabelText("LAN interface")).toHaveValue("polled0"),
+    expect(screen.getByLabelText("Network interface")).toHaveValue("polled0"),
   );
-  await userEvent.type(screen.getByLabelText("LAN interface"), "1");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Save DHCP settings" }),
-  );
+  await userEvent.type(screen.getByLabelText("Network interface"), "1");
+  await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
   expect(send).toHaveBeenCalledWith("dhcp", "PATCH", {
     revision: "three",
     edits: [{ path: ["interface"], value: "polled01" }],
@@ -501,8 +529,8 @@ it("unchecking enabled does not unlock topology before a saved disable", async (
     ...initial,
     config: { ...initial.config, enabled: true },
   });
-  await userEvent.click(screen.getByLabelText("Enable DHCPv4"));
-  expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+  await userEvent.click(screen.getByLabelText("Enable DHCP"));
+  expect(screen.getByLabelText("Network interface")).toBeDisabled();
 });
 
 it("shows desired/applied lag and actionable ownership failures without reporting success", () => {
@@ -534,9 +562,13 @@ it("shows desired/applied lag and actionable ownership failures without reportin
     },
   };
   render(<DHCPState value={value} />);
-  expect(screen.getByRole("status")).toHaveTextContent("Pending generation 3");
+  expect(
+    screen.getByRole("heading", { name: "DHCP needs attention" }),
+  ).toBeVisible();
   expect(screen.getByRole("alert")).toHaveTextContent("192.0.2.100 owned by");
-  expect(screen.getByText(/Enabled · generation 2/)).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "DHCP is on" }),
+  ).not.toBeInTheDocument();
 });
 
 it("reservation identity switch uses grouped edits; failure keeps the form and never deletes a lease", async () => {
@@ -565,7 +597,7 @@ it("reservation identity switch uses grouped edits; failure keeps the form and n
     await screen.findByRole("button", { name: "Edit reservation printer" }),
   );
   await userEvent.selectOptions(
-    screen.getByLabelText("Identity type"),
+    screen.getByLabelText("Identify device by"),
     "client_id",
   );
   await userEvent.type(screen.getByLabelText("Client ID (hex)"), "aabb");
@@ -604,11 +636,8 @@ it("reservation create and delete failures retain input and require an explicit 
   await userEvent.click(
     screen.getByRole("button", { name: "Add reservation" }),
   );
-  await userEvent.type(screen.getByLabelText("Reservation ID"), "camera");
-  await userEvent.type(
-    screen.getByLabelText("Reserved IPv4 address"),
-    "192.0.2.21",
-  );
+  await userEvent.type(screen.getByLabelText("Reservation name"), "camera");
+  await userEvent.type(screen.getByLabelText("IP address"), "192.0.2.21");
   await userEvent.type(
     screen.getByLabelText("MAC address"),
     "02:00:00:00:00:11",
@@ -619,13 +648,13 @@ it("reservation create and delete failures retain input and require an explicit 
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Write unavailable",
   );
-  expect(screen.getByLabelText("Reservation ID")).toHaveValue("camera");
+  expect(screen.getByLabelText("Reservation name")).toHaveValue("camera");
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
   await userEvent.click(
     screen.getByRole("button", { name: "Remove reservation printer" }),
   );
   expect(
-    screen.getByText(/Lease ownership and expiry remain intact/),
+    screen.getByText(/The device can keep its current address/),
   ).toBeVisible();
   await userEvent.click(
     screen.getByRole("button", { name: "Confirm removal" }),
@@ -645,21 +674,21 @@ it("invalidates obsolete lease cursors instead of rendering old rows as the next
     return { runtime_available: false, items: [], next_cursor: "opaque" };
   });
   resource(<Leases tick={0} />);
-  await screen.findByText(/Live lease inspection is unavailable/);
-  await userEvent.click(screen.getByRole("button", { name: "Next leases" }));
+  await screen.findByText(/The live address list is unavailable/);
+  await userEvent.click(screen.getByRole("button", { name: "Next addresses" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Lease ownership changed",
+    "The address list changed",
   );
-  expect(screen.getByRole("button", { name: "Next leases" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Next addresses" })).toBeDisabled();
   await userEvent.click(
-    screen.getByRole("button", { name: "Restart lease pagination" }),
+    screen.getByRole("button", { name: "Reload address list" }),
   );
-  await screen.findByText("Page 1 · up to 100 leases");
+  await screen.findByText("Page 1");
   await waitFor(() =>
     expect(get.mock.calls.at(-1)?.[0]).toBe("dhcp/leases?limit=100"),
   );
   await userEvent.type(
-    screen.getByLabelText("Filter lease IPv4 address"),
+    screen.getByLabelText("Filter by IP address"),
     "192.0.2.20",
   );
   await waitFor(() =>
@@ -678,7 +707,8 @@ it("uses the shared explicit job with active discovery off by default", async ()
     error: "Static address required",
   });
   resource(<DHCPCheck />);
-  await userEvent.click(screen.getByRole("button", { name: "Run DHCP check" }));
+  await userEvent.click(screen.getByText("Troubleshooting"));
+  await userEvent.click(screen.getByRole("button", { name: "Check setup" }));
   expect(send).toHaveBeenCalledWith("jobs", "POST", {
     kind: "dhcp-check",
     input: { probe_other_servers: false, timeout_ms: 1000 },

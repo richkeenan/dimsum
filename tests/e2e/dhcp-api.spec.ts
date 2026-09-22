@@ -29,35 +29,35 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
   try {
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("link", { name: "DHCP", exact: true }).click();
-    await expect(page.getByLabel("Enable DHCPv4")).not.toBeChecked();
-    await page.getByLabel("Subnet (CIDR)").fill("192.0.2.0/24");
+    await expect(page.getByLabel("Enable DHCP")).not.toBeChecked();
+    await page.getByLabel("Subnet").fill("192.0.2.0/24");
     await page.getByLabel("Local domain", { exact: true }).fill("home.arpa");
-    await page.getByRole("button", { name: "Save DHCP settings" }).click();
-    await expect(page.getByText(/DHCP settings saved/)).toBeVisible();
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByText(/Settings saved/)).toBeVisible();
     const saved = await call("get_dhcp");
     expect(saved.config.enabled).toBe(false);
     expect(saved.config.subnet).toBe("192.0.2.0/24");
     // Hold a UI draft across an agent mutation; it must not rebase silently.
-    await page.getByLabel("LAN interface").fill("draft0");
+    await page.getByLabel("Network interface").fill("draft0");
     await call("update_dhcp", {
       body: {
         revision: saved.status.saved_revision,
         edits: [{ path: ["interface"], value: "fixture0" }],
       },
     });
-    await page.getByRole("button", { name: "Save DHCP settings" }).click();
+    await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByRole("alert")).toContainText("Settings changed");
-    await expect(page.getByLabel("LAN interface")).toHaveValue("draft0");
-    await page.getByRole("button", { name: "Reload saved settings" }).click();
-    await expect(page.getByLabel("LAN interface")).toHaveValue("fixture0");
+    await expect(page.getByLabel("Network interface")).toHaveValue("draft0");
+    await page.getByRole("button", { name: "Reload settings" }).click();
+    await expect(page.getByLabel("Network interface")).toHaveValue("fixture0");
     // The first edit after reload must use the fetched document's revision.
-    await page.getByLabel("LAN interface").fill("fixture1");
-    await page.getByRole("button", { name: "Save DHCP settings" }).click();
-    await expect(page.getByText(/DHCP settings saved/)).toBeVisible();
+    await page.getByLabel("Network interface").fill("fixture1");
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByText(/Settings saved/)).toBeVisible();
     expect((await call("get_dhcp")).config.interface).toBe("fixture1");
     await page.getByRole("button", { name: "Add reservation" }).click();
-    await page.getByLabel("Reservation ID").fill("lab-printer");
-    await page.getByLabel("Reserved IPv4 address").fill("192.0.2.20");
+    await page.getByLabel("Reservation name").fill("lab-printer");
+    await page.getByLabel("IP address", { exact: true }).fill("192.0.2.20");
     await page.getByLabel("Hostname (optional)").fill("lab-printer");
     await page
       .getByLabel("MAC address", { exact: true })
@@ -74,11 +74,11 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
       },
     });
     await expect(
-      page.getByRole("cell", { name: "office-printer", exact: true }),
+      page.getByRole("cell", { name: /office-printer/ }),
     ).toBeVisible({ timeout: 10000 });
     expect((await call("list_dhcp_leases")).runtime_available).toBe(false);
     await expect(
-      page.getByText(/Live lease inspection is unavailable/),
+      page.getByText(/The live address list is unavailable/),
     ).toBeVisible();
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1100 });
@@ -99,7 +99,7 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
       .click();
     await page.getByRole("button", { name: "Confirm removal" }).click();
     await expect(
-      page.getByRole("cell", { name: "office-printer", exact: true }),
+      page.getByRole("cell", { name: /office-printer/ }),
     ).not.toBeVisible();
     expect((await call("list_dhcp_reservations")).items).toEqual([]);
     expect((await call("get_dhcp")).config.enabled).toBe(false);

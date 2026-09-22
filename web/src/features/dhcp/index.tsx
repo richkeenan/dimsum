@@ -1,5 +1,12 @@
 import { useState } from "react";
 import {
+  CircleCheck,
+  CircleHelp,
+  LoaderCircle,
+  Power,
+  TriangleAlert,
+} from "lucide-react";
+import {
   api,
   APIError,
   type Activation,
@@ -14,19 +21,42 @@ import { Input } from "@/components/ui/input";
 import { Reservations, Leases, DHCPCheck } from "./operations";
 
 export const panel =
-  "mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5";
-const fields = [
-  ["interface", "LAN interface", "eth0"],
-  ["server_ip", "Static server IPv4 address", "192.0.2.2"],
-  ["subnet", "Subnet (CIDR)", "192.0.2.0/24"],
-  ["gateway", "Router IPv4 address", "192.0.2.1"],
-  ["range_start", "Pool start", "192.0.2.100"],
-  ["range_end", "Pool end", "192.0.2.199"],
-  ["local_domain", "Local domain", "home.arpa"],
-  ["lease_seconds", "Lease duration (seconds)", "86400"],
-  ["max_leases", "Lease-state capacity", "1024"],
+  "min-w-0 rounded-lg border border-border bg-background p-5 sm:p-6";
+const networkFields = [
+  [
+    "interface",
+    "Network interface",
+    "eth0",
+    "The wired or wireless interface connected to your network.",
+  ],
+  [
+    "server_ip",
+    "Server IP address",
+    "192.0.2.2",
+    "The fixed IPv4 address of the device running dimsum.",
+  ],
+  [
+    "gateway",
+    "Router IP address",
+    "192.0.2.1",
+    "The router your devices use to reach the internet.",
+  ],
+  [
+    "subnet",
+    "Subnet",
+    "192.0.2.0/24",
+    "Your network address and prefix, for example /24.",
+  ],
 ] as const;
 const topology = new Set(["interface", "server_ip", "subnet", "local_domain"]);
+const leaseDurations = [
+  [3600, "1 hour"],
+  [43200, "12 hours"],
+  [86400, "24 hours"],
+  [604800, "7 days"],
+] as const;
+const selectClass =
+  "h-11 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-50";
 
 export function DHCPError({ error }: { error: Error }) {
   return (
@@ -41,13 +71,15 @@ export function DHCPError({ error }: { error: Error }) {
         }
       />
       {error instanceof APIError && error.fields != null && (
-        <Details value={error.fields} />
+        <details className="my-3 text-xs">
+          <summary className="py-2 font-medium">Error details</summary>
+          <Details value={error.fields} />
+        </details>
       )}
       {error instanceof APIError &&
         (error.status === 0 || error.status >= 500) && (
           <p className="my-3 text-xs">
-            The outcome may be unknown. Inspect status and reload the saved
-            revision before retrying this change.
+            Couldn’t confirm the save. Reload settings before trying again.
           </p>
         )}
     </>
@@ -55,79 +87,79 @@ export function DHCPError({ error }: { error: Error }) {
 }
 
 export function DHCPState({ value }: { value: DHCPStatusResponse }) {
-  const d = value.dhcp;
+  const d = value.runtime_available ? value.dhcp : null;
+  const error = value.status.error || d?.last_error || d?.runtime.error;
+  const paused = d?.runtime.clock_suspended;
+  const attention = !!error || d?.state === "error" || d?.state === "degraded";
+  const pending =
+    value.status.pending ||
+    d?.state === "starting" ||
+    (!!d?.pending_generation && d.pending_generation !== "0") ||
+    (!!d && d.desired_enabled !== d.applied_enabled);
+  const title = !d
+    ? "DHCP status unavailable"
+    : paused
+      ? "DHCP is paused"
+      : attention
+        ? "DHCP needs attention"
+        : pending
+          ? d.desired_enabled !== d.applied_enabled || d.state === "starting"
+            ? d.desired_enabled
+              ? "Starting DHCP…"
+              : "Stopping DHCP…"
+            : "Updating DHCP…"
+          : d.applied_enabled
+            ? "DHCP is on"
+            : "DHCP is off";
+  const Icon = !d
+    ? CircleHelp
+    : paused || attention
+      ? TriangleAlert
+      : pending
+        ? LoaderCircle
+        : d.applied_enabled
+          ? CircleCheck
+          : Power;
+  const description = !d
+    ? "Can’t read the server’s current status. Try refreshing the page."
+    : paused
+      ? "Check the server’s date and time to resume assigning addresses."
+      : attention
+        ? "Review the error below or run a setup check in Troubleshooting."
+        : pending
+          ? "Applying your saved settings."
+          : d.applied_enabled
+            ? `Assigning addresses on ${d.interface} (${d.server_ip}).`
+            : "Set up your network below to start assigning IP addresses.";
   return (
-    <section className={panel} aria-label="DHCP runtime status">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-medium">Service status</h2>
-        <span className="rounded-md bg-muted px-3 py-1 text-xs capitalize">
-          {d?.state ?? "Runtime unavailable"}
-        </span>
+    <section
+      className="flex items-start gap-3 px-1 py-1"
+      aria-label="DHCP status"
+    >
+      <div
+        className={`flex size-11 shrink-0 items-center justify-center rounded-full ${paused || attention ? "bg-destructive/10 text-destructive" : d?.applied_enabled || pending ? "bg-accent text-primary" : "bg-muted text-muted-foreground"}`}
+      >
+        <Icon aria-hidden="true" size={22} strokeWidth={1.5} />
       </div>
-      <dl className="mt-4 grid gap-4 text-xs sm:grid-cols-2 lg:grid-cols-4 [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:break-all [&_dd]:tabular-nums">
-        <div>
-          <dt>Desired</dt>
-          <dd>
-            {d ? (d.desired_enabled ? "Enabled" : "Disabled") : "Unavailable"} ·
-            generation {d?.desired_generation ?? "—"}
-          </dd>
-        </div>
-        <div>
-          <dt>Applied</dt>
-          <dd>
-            {d ? (d.applied_enabled ? "Enabled" : "Disabled") : "Unavailable"} ·
-            generation {d?.applied_generation ?? "—"}
-          </dd>
-        </div>
-        <div>
-          <dt>Applied interface / address</dt>
-          <dd>
-            {d?.interface || "—"} / {d?.server_ip || "—"}
-          </dd>
-        </div>
-        <div>
-          <dt>Lease storage</dt>
-          <dd>
-            {d?.runtime.storage || "Unopened"} · {d?.runtime.held ?? "0"} held /{" "}
-            {d?.runtime.capacity ?? "0"} capacity
-          </dd>
-        </div>
-      </dl>
-      {(value.status.pending ||
-        (d?.pending_generation && d.pending_generation !== "0")) && (
-        <p className="mt-4 text-xs" role="status">
-          Applying saved changes… Pending generation{" "}
-          {d?.pending_generation ?? value.status.active_generation}. DHCP may
-          still be using the previous configuration.
+      <div className="min-w-0" aria-live="polite">
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        <p className="mt-1 text-xs text-muted-foreground wrap-anywhere">
+          {description}
         </p>
-      )}
-      {(value.status.error || d?.last_error || d?.runtime.error) && (
-        <div
-          role="alert"
-          className="mt-4 space-y-2 text-xs text-destructive wrap-anywhere"
-        >
-          <p>{value.status.error || d?.last_error || d?.runtime.error}</p>
-          <p>
-            Review the saved settings and lease ownership below, then run the
-            environment check. A failed change does not release existing leases.
+        {error && (
+          <p
+            role="alert"
+            className="mt-2 text-xs text-destructive wrap-anywhere"
+          >
+            {error}
           </p>
-        </div>
-      )}
-      {d?.runtime.clock_suspended && (
-        <p role="alert" className="mt-3 text-xs">
-          Allocation is suspended. Restore a trustworthy host clock before
-          retrying.
-        </p>
-      )}
-      {value.status.restart_required && (
-        <p role="status" className="mt-3 text-xs">
-          Listener changes require a service restart.
-        </p>
-      )}
-      <p className="mt-4 text-xs text-muted-foreground">
-        Saving configuration does not confirm that DHCP is serving. DNS health
-        is independent.
-      </p>
+        )}
+        {value.status.restart_required && (
+          <p role="status" className="mt-2 text-xs">
+            Restart dimsum to finish applying your network changes.
+          </p>
+        )}
+      </div>
     </section>
   );
 }
@@ -152,6 +184,7 @@ export function DHCPForm({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<Activation>();
   const [needsReload, setNeedsReload] = useState(false);
+  const [customLease, setCustomLease] = useState(false);
   const blocked = busy || needsReload;
   const value = state.data;
   if (!value)
@@ -172,15 +205,64 @@ export function DHCPForm({
     });
     setSaved(undefined);
   };
+  const customDuration =
+    customLease ||
+    (Number(config.lease_seconds) !== 0 &&
+      !leaseDurations.some(
+        ([seconds]) => seconds === Number(config.lease_seconds),
+      ));
+  const field = (
+    key: keyof DHCPSettings,
+    label: string,
+    placeholder: string,
+    help?: string,
+  ) => (
+    <div className="min-w-0" key={key}>
+      <label htmlFor={`dhcp-${key}`} className="mb-2 block text-xs font-medium">
+        {label}
+      </label>
+      <Input
+        id={`dhcp-${key}`}
+        className="h-11"
+        placeholder={placeholder}
+        value={String(config[key] ?? "")}
+        disabled={blocked || (locked && topology.has(key))}
+        required={config.enabled && key !== "max_leases"}
+        type={
+          key === "lease_seconds" || key === "max_leases" ? "number" : "text"
+        }
+        min={
+          key === "lease_seconds"
+            ? config.enabled
+              ? 60
+              : 0
+            : key === "max_leases"
+              ? 0
+              : undefined
+        }
+        max={
+          key === "lease_seconds"
+            ? 604800
+            : key === "max_leases"
+              ? 4096
+              : undefined
+        }
+        aria-describedby={help ? `dhcp-${key}-help` : undefined}
+        onChange={(e) => change(key, e.target.value)}
+      />
+      {help && (
+        <p
+          id={`dhcp-${key}-help`}
+          className="mt-1.5 text-[13px] text-muted-foreground"
+        >
+          {help}
+        </p>
+      )}
+    </div>
+  );
   return (
     <Resource state={state} retry={refresh}>
       <section className={panel}>
-        <h2 className="mb-3 text-sm font-medium">DHCPv4 settings</h2>
-        <p className="mb-4 max-w-[80ch] text-xs text-muted-foreground">
-          Assign IPv4 addresses on one LAN. DHCP is off by default. Choose a
-          pool that excludes static devices and the router’s existing leases.
-          DNS must listen on the server address or 0.0.0.0, port 53.
-        </p>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -226,76 +308,144 @@ export function DHCPForm({
             }
           }}
         >
-          <label className="flex min-h-11 items-center gap-3 text-sm">
-            <input
-              type="checkbox"
-              checked={config.enabled}
-              disabled={blocked}
-              onChange={(e) => change("enabled", e.target.checked)}
-            />
-            Enable DHCPv4
-          </label>
-          {locked && (
-            <p className="my-3 text-xs text-muted-foreground">
-              To change interface, server address, subnet or domain, save DHCP
-              as disabled and wait for Applied to show Disabled first.
+          <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-start">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Network settings
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Let dimsum give your devices an IP address automatically.
+              </p>
+            </div>
+            <label className="relative inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-3 self-start text-xs font-medium">
+              <input
+                type="checkbox"
+                role="switch"
+                className="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                checked={config.enabled}
+                disabled={blocked}
+                onChange={(e) => change("enabled", e.target.checked)}
+              />
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-11 items-center rounded-full bg-muted-foreground/40 p-0.5 transition-colors duration-150 peer-checked:bg-primary peer-checked:[&>span]:translate-x-5 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-ring peer-disabled:opacity-50"
+              >
+                <span className="size-5 rounded-full bg-white shadow-sm transition-transform duration-150" />
+              </span>
+              Enable DHCP
+            </label>
+          </div>
+          <fieldset className="mt-6 min-w-0">
+            <legend className="mb-4 text-sm font-medium">Your network</legend>
+            {locked && (
+              <p className="mb-4 text-xs text-muted-foreground">
+                Save with DHCP off to change the interface, server address,
+                subnet or domain.
+              </p>
+            )}
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              {networkFields.map(([key, label, placeholder, help]) =>
+                field(key, label, placeholder, help),
+              )}
+            </div>
+          </fieldset>
+          <fieldset className="mt-7 min-w-0 border-t border-border pt-5">
+            <legend className="pr-3 text-sm font-medium">
+              Addresses for devices
+            </legend>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Choose a range that excludes your router, server and other fixed
+              addresses.
+            </p>
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              {field("range_start", "First IP address", "192.0.2.100")}
+              {field("range_end", "Last IP address", "192.0.2.199")}
+              <div>
+                <label
+                  htmlFor="dhcp-duration"
+                  className="mb-2 block text-xs font-medium"
+                >
+                  Lease duration
+                </label>
+                <select
+                  id="dhcp-duration"
+                  className={selectClass}
+                  value={
+                    customDuration
+                      ? "custom"
+                      : String(config.lease_seconds || "")
+                  }
+                  disabled={blocked}
+                  required={config.enabled}
+                  aria-describedby="dhcp-duration-help"
+                  onChange={(e) => {
+                    setCustomLease(e.target.value === "custom");
+                    if (e.target.value !== "custom")
+                      change("lease_seconds", e.target.value || "0");
+                  }}
+                >
+                  <option value="">Choose duration</option>
+                  {leaseDurations.map(([seconds, label]) => (
+                    <option key={seconds} value={seconds}>
+                      {label}
+                    </option>
+                  ))}
+                  <option value="custom">Custom duration</option>
+                </select>
+                <p
+                  id="dhcp-duration-help"
+                  className="mt-1.5 text-[13px] text-muted-foreground"
+                >
+                  How long a device keeps its address before renewing.
+                </p>
+                {customDuration && (
+                  <div className="mt-3">
+                    {field(
+                      "lease_seconds",
+                      "Custom duration (seconds)",
+                      "86400",
+                      "From 60 seconds to 7 days.",
+                    )}
+                  </div>
+                )}
+              </div>
+              {field(
+                "local_domain",
+                "Local domain",
+                "home.arpa",
+                "Used for device names, such as printer.home.arpa.",
+              )}
+            </div>
+          </fieldset>
+          <details className="mt-6 border-t border-border pt-2">
+            <summary className="w-fit py-3 text-xs font-medium">
+              Advanced settings
+            </summary>
+            <div className="max-w-sm pb-4 pt-1">
+              {field(
+                "max_leases",
+                "Maximum leases",
+                "1024",
+                "Use 0 for the default of 1,024. Maximum: 4,096.",
+              )}
+            </div>
+          </details>
+          {config.enabled && !value.config.enabled && (
+            <p className="my-4 rounded-md bg-accent px-4 py-3 text-xs">
+              Turn off DHCP on your router before enabling it here.
             </p>
           )}
-          <div className="my-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {fields.map(([key, label, placeholder]) => (
-              <label
-                key={key}
-                className="flex min-w-0 flex-col gap-1.5 text-xs"
-              >
-                {label}
-                <Input
-                  placeholder={placeholder}
-                  value={config[key] ?? ""}
-                  disabled={blocked || (locked && topology.has(key))}
-                  required={config.enabled && key !== "max_leases"}
-                  type={
-                    key === "lease_seconds" || key === "max_leases"
-                      ? "number"
-                      : "text"
-                  }
-                  min={
-                    key === "lease_seconds"
-                      ? config.enabled
-                        ? 60
-                        : 0
-                      : key === "max_leases"
-                        ? 0
-                        : undefined
-                  }
-                  max={
-                    key === "lease_seconds"
-                      ? 604800
-                      : key === "max_leases"
-                        ? 4096
-                        : undefined
-                  }
-                  onChange={(e) => change(key, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            All network fields and lease duration are required to enable.
-            Incomplete settings may be saved while disabled. Capacity 0 uses
-            1,024; maximum 4,096. Use a local domain such as home.arpa, never
-            .local.
-          </p>
           {outdated && (
             <p role="status" className="my-3 text-xs">
-              Configuration changed. Your draft is preserved; reload the saved
-              revision before editing again.
+              Settings have changed elsewhere. Reload to use the latest
+              settings.
             </p>
           )}
           {needsReload && (
             <p role="status" className="my-3 text-xs">
               {busy
-                ? "Settings saved. Refreshing saved settings…"
-                : "Settings saved. Reload the saved settings before editing again."}
+                ? "Saved. Refreshing settings…"
+                : "Settings saved, but couldn’t refresh. Reload settings before editing again."}
             </p>
           )}
           {error &&
@@ -304,45 +454,61 @@ export function DHCPForm({
             ) : (
               <DHCPError error={error} />
             ))}
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={blocked || !draft || outdated}>
-              Save DHCP settings
-            </Button>
+          <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-5">
             <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  // Cancel any older poll and await installation in this query's
-                  // cache. A failed reload must leave the existing draft intact.
-                  await state.refetch({
-                    cancelRefetch: true,
-                    throwOnError: true,
-                  });
-                  // Reload is not an edit: the next actual change captures a
-                  // revision, so later reservation saves cannot stale a clean form.
-                  setDraft(undefined);
-                  setNeedsReload(false);
-                  setError(undefined);
-                  setSaved(undefined);
-                } catch (e) {
-                  setError(e as Error);
-                } finally {
-                  setBusy(false);
-                }
-              }}
+              className="min-h-11"
+              disabled={blocked || !draft || outdated}
             >
-              Reload saved settings
+              {busy
+                ? "Saving…"
+                : config.enabled !== value.config.enabled
+                  ? config.enabled
+                    ? "Save and enable"
+                    : "Save and disable"
+                  : "Save settings"}
             </Button>
+            {(draft || error || needsReload) && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-h-11"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    // Cancel any older poll and await installation in this query's
+                    // cache. A failed reload must leave the existing draft intact.
+                    await state.refetch({
+                      cancelRefetch: true,
+                      throwOnError: true,
+                    });
+                    // Reload is not an edit: the next actual change captures a
+                    // revision, so later reservation saves cannot stale a clean form.
+                    setDraft(undefined);
+                    setNeedsReload(false);
+                    setError(undefined);
+                    setSaved(undefined);
+                    setCustomLease(false);
+                  } catch (e) {
+                    setError(e as Error);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Reload settings
+              </Button>
+            )}
+            {draft && !busy && !needsReload && !outdated && (
+              <span className="text-xs text-muted-foreground">
+                Unsaved changes
+              </span>
+            )}
           </div>
-          {saved && (
+          {saved && !needsReload && (
             <p role="status" className="mt-3 text-xs">
-              DHCP settings saved.{" "}
-              {saved.error
-                ? `Activation failed: ${saved.error}`
-                : "Check Applied status before relying on this change."}
+              Settings saved.{" "}
+              {saved.error ? `Couldn’t apply changes: ${saved.error}` : ""}
             </p>
           )}
         </form>
@@ -356,13 +522,13 @@ export default function DHCP() {
   const status = useResource<DHCPStatusResponse>("dhcp/status", tick);
   const refresh = () => setTick((t) => t + 1);
   return (
-    <div className="min-w-0 [&_p]:leading-relaxed">
+    <div className="min-w-0 max-w-6xl space-y-6 [&_p]:leading-relaxed">
       <Resource state={status} retry={refresh}>
         {status.data && <DHCPState value={status.data} />}
       </Resource>
       <DHCPForm applied={status.data} refresh={refresh} tick={tick} />
+      <Leases tick={tick} enabled={status.data?.dhcp?.applied_enabled} />
       <Reservations tick={tick} refresh={refresh} />
-      <Leases tick={tick} />
       <DHCPCheck />
     </div>
   );
