@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
@@ -9,7 +9,7 @@ import {
   type DHCPConfigResponse,
   type DHCPStatusResponse,
 } from "@/lib/api";
-import { DHCPForm, DHCPState } from "./index";
+import DHCP, { DHCPForm, DHCPState } from "./index";
 import { Reservations, Leases, DHCPCheck } from "./operations";
 
 const activation: Activation = {
@@ -43,13 +43,24 @@ const unavailable: DHCPStatusResponse = {
   runtime_available: false,
 };
 afterEach(() => vi.restoreAllMocks());
-function resource(ui: React.ReactNode) {
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+function resource(ui: React.ReactNode, config?: DHCPConfigResponse) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
-  );
+  if (config) client.setQueryData(["api", "dhcp", "dhcp"], config);
+  return {
+    client,
+    ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>),
+  };
 }
 
 it("saves incomplete disabled configuration without silently enabling and preserves conflict drafts", async () => {
@@ -60,8 +71,9 @@ it("saves incomplete disabled configuration without silently enabling and preser
     ...initial,
     status: { ...activation, saved_revision: "two" },
   });
-  const view = render(
-    <DHCPForm value={initial} applied={unavailable} refresh={() => {}} />,
+  const view = resource(
+    <DHCPForm applied={unavailable} refresh={() => {}} />,
+    initial,
   );
   expect(screen.getByLabelText("Lease duration (seconds)")).toBeValid();
   expect(screen.getByLabelText("Enable DHCPv4")).not.toBeChecked();
@@ -76,37 +88,194 @@ it("saves incomplete disabled configuration without silently enabling and preser
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Settings changed",
   );
-  view.rerender(
-    <DHCPForm
-      applied={unavailable}
-      value={{ ...initial, status: { ...activation, saved_revision: "two" } }}
-      refresh={() => {}}
-    />,
-  );
+  await act(async () => {
+    view.client.setQueryData(["api", "dhcp", "dhcp"], {
+      ...initial,
+      status: { ...activation, saved_revision: "two" },
+    });
+  });
   expect(screen.getByLabelText("LAN interface")).toHaveValue("eth0");
-  expect(
-    screen.getByRole("button", { name: "Save DHCP settings" }),
-  ).toBeDisabled();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    ).toBeDisabled(),
+  );
   await userEvent.click(
     screen.getByRole("button", { name: "Reload saved settings" }),
   );
-  expect(get).toHaveBeenCalledWith("dhcp");
+  expect(get).toHaveBeenCalledWith("dhcp", expect.any(AbortSignal));
   expect(screen.getByLabelText("LAN interface")).toHaveValue("");
 });
 
+it.each(["held", "failed"])(
+  "installs reload before immediate editing despite an old poll and a %s background fetch",
+  async (background) => {
+    const key = ["api", "dhcp", "dhcp"];
+    const client = new QueryClient();
+    client.setQueryData(key, initial);
+    const updated: DHCPConfigResponse = {
+      status: { ...activation, saved_revision: "two" },
+      config: {
+        ...initial.config,
+        interface: "fresh0",
+        local_domain: "home.arpa",
+      },
+    };
+    const oldPoll = deferred<DHCPConfigResponse>();
+    const reload = deferred<DHCPConfigResponse>();
+    const laterPoll = deferred<DHCPConfigResponse>();
+    const signals: (AbortSignal | undefined)[] = [];
+    let calls = 0;
+    vi.spyOn(api, "get").mockImplementation(async (path, signal) => {
+      if (path === "dhcp") {
+        signals.push(signal);
+        return (
+          [oldPoll.promise, reload.promise, laterPoll.promise][calls++] ??
+          updated
+        );
+      }
+      if (path === "dhcp/status") return unavailable;
+      return { status: activation, items: [], runtime_available: false };
+    });
+    const send = vi
+      .spyOn(api, "send")
+      .mockRejectedValueOnce(new APIError(409, "revision_conflict", "stale"))
+      .mockResolvedValue(updated.status);
+    const view = render(
+      <QueryClientProvider client={client}>
+        <DHCP />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+    );
+    await userEvent.type(screen.getByLabelText("LAN interface"), "draft0");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Settings changed",
+    );
+
+    // A periodic refetch began before reload and could return revision one late.
+    let oldRequest!: Promise<void>;
+    act(() => {
+      oldRequest = client.invalidateQueries({ queryKey: key, exact: true });
+    });
+    await waitFor(() => expect(calls).toBe(1));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Reload saved settings" }),
+    );
+    expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+    expect(screen.getByLabelText("LAN interface")).toHaveValue("draft0");
+    await act(async () => {
+      reload.resolve(updated);
+      await reload.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+    );
+    expect(screen.getByLabelText("LAN interface")).toHaveValue("fresh0");
+    expect(screen.getByLabelText("Local domain")).toHaveValue("home.arpa");
+    expect(client.getQueryData(key)).toEqual(updated);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    ).toBeDisabled();
+    expect(calls).toBe(2); // Reload must not start a second invalidation/refetch.
+    await act(async () => {
+      oldPoll.resolve(initial);
+      await oldRequest;
+    });
+    expect(client.getQueryData(key)).toEqual(updated);
+
+    let laterRequest!: Promise<void>;
+    act(() => {
+      laterRequest = client.invalidateQueries({ queryKey: key, exact: true });
+    });
+    await waitFor(() => expect(calls).toBe(3));
+    if (background === "failed") {
+      await act(async () => {
+        laterPoll.reject(
+          new APIError(400, "bad_request", "Background read failed"),
+        );
+        await laterRequest;
+      });
+    }
+    await userEvent.clear(screen.getByLabelText("LAN interface"));
+    await userEvent.type(screen.getByLabelText("LAN interface"), "next0");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    );
+    expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
+      revision: "two",
+      edits: [{ path: ["interface"], value: "next0" }],
+    });
+    view.unmount();
+    client.clear();
+    if (background === "held") {
+      laterPoll.resolve(updated);
+      await laterRequest;
+    }
+  },
+);
+
 it("requires complete enable fields and keeps topology locked until disable is applied", async () => {
-  render(<DHCPForm value={initial} applied={unavailable} refresh={() => {}} />);
+  resource(<DHCPForm applied={unavailable} refresh={() => {}} />, initial);
   await userEvent.click(screen.getByLabelText("Enable DHCPv4"));
   expect(screen.getByLabelText("Static server IPv4 address")).toBeRequired();
   expect(screen.getByLabelText("Static server IPv4 address")).toBeInvalid();
 });
-it("unchecking enabled does not unlock topology before a saved disable", async () => {
-  render(
-    <DHCPForm
-      value={{ ...initial, config: { ...initial.config, enabled: true } }}
-      refresh={() => {}}
-    />,
+it("retains the draft on reload failure and leaves successful reloads clean for later polls", async () => {
+  const newer = {
+    ...initial,
+    status: { ...activation, saved_revision: "two" },
+    config: { ...initial.config, interface: "fresh0" },
+  };
+  vi.spyOn(api, "get")
+    .mockRejectedValueOnce(new APIError(400, "bad_request", "Reload failed"))
+    .mockResolvedValue(newer);
+  const send = vi.spyOn(api, "send").mockResolvedValue(activation);
+  const { client } = resource(
+    <DHCPForm applied={unavailable} refresh={() => {}} />,
+    initial,
   );
+  await userEvent.type(screen.getByLabelText("LAN interface"), "draft0");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Reload saved settings" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Reload failed");
+  expect(screen.getByLabelText("LAN interface")).toHaveValue("draft0");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Reload saved settings" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("LAN interface")).toHaveValue("fresh0"),
+  );
+  await act(async () => {
+    client.setQueryData(["api", "dhcp", "dhcp"], {
+      ...newer,
+      status: { ...activation, saved_revision: "three" },
+      config: { ...newer.config, interface: "polled0" },
+    });
+  });
+  await waitFor(() =>
+    expect(screen.getByLabelText("LAN interface")).toHaveValue("polled0"),
+  );
+  await userEvent.type(screen.getByLabelText("LAN interface"), "1");
+  await userEvent.click(
+    screen.getByRole("button", { name: "Save DHCP settings" }),
+  );
+  expect(send).toHaveBeenCalledWith("dhcp", "PATCH", {
+    revision: "three",
+    edits: [{ path: ["interface"], value: "polled01" }],
+  });
+});
+it("unchecking enabled does not unlock topology before a saved disable", async () => {
+  resource(<DHCPForm refresh={() => {}} />, {
+    ...initial,
+    config: { ...initial.config, enabled: true },
+  });
   await userEvent.click(screen.getByLabelText("Enable DHCPv4"));
   expect(screen.getByLabelText("LAN interface")).toBeDisabled();
 });

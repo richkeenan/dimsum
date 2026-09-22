@@ -52,6 +52,7 @@ export function useResource<T>(path: string, refresh = 0) {
     isPlaceholderData: query.isPlaceholderData,
     updatedAt: query.dataUpdatedAt,
     reload: query.refetch,
+    refetch: query.refetch,
   };
 }
 

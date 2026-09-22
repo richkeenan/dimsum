@@ -133,14 +133,17 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
 }
 
 export function DHCPForm({
-  value,
   applied,
   refresh,
+  tick = 0,
 }: {
-  value: DHCPConfigResponse;
   applied?: DHCPStatusResponse;
   refresh: () => void;
+  tick?: number;
 }) {
+  // Own the query alongside form state: releasing busy after refetch renders
+  // the new cached document and revision, never stale props from a parent.
+  const state = useResource<DHCPConfigResponse>("dhcp", tick);
   const [draft, setDraft] = useState<{
     revision: string;
     config: DHCPSettings;
@@ -148,6 +151,13 @@ export function DHCPForm({
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<Activation>();
+  const value = state.data;
+  if (!value)
+    return (
+      <Resource state={state} retry={refresh}>
+        {null}
+      </Resource>
+    );
   const config = draft?.config ?? value.config;
   const outdated = !!draft && draft.revision !== value.status.saved_revision;
   // Saving disable is a separate boundary; unchecking the draft cannot unlock topology.
@@ -161,162 +171,170 @@ export function DHCPForm({
     setSaved(undefined);
   };
   return (
-    <section className={panel}>
-      <h2 className="mb-3 text-sm font-medium">DHCPv4 settings</h2>
-      <p className="mb-4 max-w-[80ch] text-xs text-muted-foreground">
-        Assign IPv4 addresses on one LAN. DHCP is off by default. Choose a pool
-        that excludes static devices and the router’s existing leases. DNS must
-        listen on the server address or 0.0.0.0, port 53.
-      </p>
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (!draft) return;
-          setBusy(true);
-          setError(undefined);
-          setSaved(undefined);
-          try {
-            const edits = Object.entries(draft.config)
-              .filter(
-                ([key, v]) =>
-                  key !== "reservations" &&
-                  v !== value.config[key as keyof DHCPSettings],
-              )
-              .map(([key, v]) => {
-                if (key === "lease_seconds" || key === "max_leases") {
-                  if (
-                    String(v).trim() === "" ||
-                    !Number.isSafeInteger(Number(v))
-                  )
-                    throw new Error(
-                      `Enter a whole number for ${key === "lease_seconds" ? "lease duration" : "capacity"}.`,
-                    );
-                  v = Number(v);
-                }
-                return { path: [key], value: v };
-              });
-            if (!edits.length) throw new Error("No settings have changed.");
-            const result = await api.send<Activation>("dhcp", "PATCH", {
-              revision: draft.revision,
-              edits,
-            });
-            setSaved(result);
-            setDraft(undefined);
-            refresh();
-          } catch (e) {
-            setError(e as Error);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <label className="flex min-h-11 items-center gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={config.enabled}
-            disabled={busy}
-            onChange={(e) => change("enabled", e.target.checked)}
-          />
-          Enable DHCPv4
-        </label>
-        {locked && (
-          <p className="my-3 text-xs text-muted-foreground">
-            To change interface, server address, subnet or domain, save DHCP as
-            disabled and wait for Applied to show Disabled first.
-          </p>
-        )}
-        <div className="my-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {fields.map(([key, label, placeholder]) => (
-            <label key={key} className="flex min-w-0 flex-col gap-1.5 text-xs">
-              {label}
-              <Input
-                placeholder={placeholder}
-                value={config[key] ?? ""}
-                disabled={busy || (locked && topology.has(key))}
-                required={config.enabled && key !== "max_leases"}
-                type={
-                  key === "lease_seconds" || key === "max_leases"
-                    ? "number"
-                    : "text"
-                }
-                min={
-                  key === "lease_seconds"
-                    ? config.enabled
-                      ? 60
-                      : 0
-                    : key === "max_leases"
-                      ? 0
-                      : undefined
-                }
-                max={
-                  key === "lease_seconds"
-                    ? 604800
-                    : key === "max_leases"
-                      ? 4096
-                      : undefined
-                }
-                onChange={(e) => change(key, e.target.value)}
-              />
-            </label>
-          ))}
-        </div>
-        <p className="mb-4 text-xs text-muted-foreground">
-          All network fields and lease duration are required to enable.
-          Incomplete settings may be saved while disabled. Capacity 0 uses
-          1,024; maximum 4,096. Use a local domain such as home.arpa, never
-          .local.
+    <Resource state={state} retry={refresh}>
+      <section className={panel}>
+        <h2 className="mb-3 text-sm font-medium">DHCPv4 settings</h2>
+        <p className="mb-4 max-w-[80ch] text-xs text-muted-foreground">
+          Assign IPv4 addresses on one LAN. DHCP is off by default. Choose a
+          pool that excludes static devices and the router’s existing leases.
+          DNS must listen on the server address or 0.0.0.0, port 53.
         </p>
-        {outdated && (
-          <p role="status" className="my-3 text-xs">
-            Configuration changed. Your draft is preserved; reload the saved
-            revision before editing again.
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!draft) return;
+            setBusy(true);
+            setError(undefined);
+            setSaved(undefined);
+            try {
+              const edits = Object.entries(draft.config)
+                .filter(
+                  ([key, v]) =>
+                    key !== "reservations" &&
+                    v !== value.config[key as keyof DHCPSettings],
+                )
+                .map(([key, v]) => {
+                  if (key === "lease_seconds" || key === "max_leases") {
+                    if (
+                      String(v).trim() === "" ||
+                      !Number.isSafeInteger(Number(v))
+                    )
+                      throw new Error(
+                        `Enter a whole number for ${key === "lease_seconds" ? "lease duration" : "capacity"}.`,
+                      );
+                    v = Number(v);
+                  }
+                  return { path: [key], value: v };
+                });
+              if (!edits.length) throw new Error("No settings have changed.");
+              const result = await api.send<Activation>("dhcp", "PATCH", {
+                revision: draft.revision,
+                edits,
+              });
+              setSaved(result);
+              setDraft(undefined);
+              refresh();
+            } catch (e) {
+              setError(e as Error);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <label className="flex min-h-11 items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={config.enabled}
+              disabled={busy}
+              onChange={(e) => change("enabled", e.target.checked)}
+            />
+            Enable DHCPv4
+          </label>
+          {locked && (
+            <p className="my-3 text-xs text-muted-foreground">
+              To change interface, server address, subnet or domain, save DHCP
+              as disabled and wait for Applied to show Disabled first.
+            </p>
+          )}
+          <div className="my-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {fields.map(([key, label, placeholder]) => (
+              <label
+                key={key}
+                className="flex min-w-0 flex-col gap-1.5 text-xs"
+              >
+                {label}
+                <Input
+                  placeholder={placeholder}
+                  value={config[key] ?? ""}
+                  disabled={busy || (locked && topology.has(key))}
+                  required={config.enabled && key !== "max_leases"}
+                  type={
+                    key === "lease_seconds" || key === "max_leases"
+                      ? "number"
+                      : "text"
+                  }
+                  min={
+                    key === "lease_seconds"
+                      ? config.enabled
+                        ? 60
+                        : 0
+                      : key === "max_leases"
+                        ? 0
+                        : undefined
+                  }
+                  max={
+                    key === "lease_seconds"
+                      ? 604800
+                      : key === "max_leases"
+                        ? 4096
+                        : undefined
+                  }
+                  onChange={(e) => change(key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            All network fields and lease duration are required to enable.
+            Incomplete settings may be saved while disabled. Capacity 0 uses
+            1,024; maximum 4,096. Use a local domain such as home.arpa, never
+            .local.
           </p>
-        )}
-        {error && <DHCPError error={error} />}
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={busy || !draft || outdated}>
-            Save DHCP settings
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await api.get<DHCPConfigResponse>("dhcp");
-                // Reload is not an edit: the next actual change captures a
-                // revision, so later reservation saves cannot stale a clean form.
-                setDraft(undefined);
-                setError(undefined);
-                setSaved(undefined);
-                refresh();
-              } catch (e) {
-                setError(e as Error);
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Reload saved settings
-          </Button>
-        </div>
-        {saved && (
-          <p role="status" className="mt-3 text-xs">
-            DHCP settings saved.{" "}
-            {saved.error
-              ? `Activation failed: ${saved.error}`
-              : "Check Applied status before relying on this change."}
-          </p>
-        )}
-      </form>
-    </section>
+          {outdated && (
+            <p role="status" className="my-3 text-xs">
+              Configuration changed. Your draft is preserved; reload the saved
+              revision before editing again.
+            </p>
+          )}
+          {error && <DHCPError error={error} />}
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={busy || !draft || outdated}>
+              Save DHCP settings
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  // Cancel any older poll and await installation in this query's
+                  // cache. A failed reload must leave the existing draft intact.
+                  await state.refetch({
+                    cancelRefetch: true,
+                    throwOnError: true,
+                  });
+                  // Reload is not an edit: the next actual change captures a
+                  // revision, so later reservation saves cannot stale a clean form.
+                  setDraft(undefined);
+                  setError(undefined);
+                  setSaved(undefined);
+                } catch (e) {
+                  setError(e as Error);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Reload saved settings
+            </Button>
+          </div>
+          {saved && (
+            <p role="status" className="mt-3 text-xs">
+              DHCP settings saved.{" "}
+              {saved.error
+                ? `Activation failed: ${saved.error}`
+                : "Check Applied status before relying on this change."}
+            </p>
+          )}
+        </form>
+      </section>
+    </Resource>
   );
 }
 
 export default function DHCP() {
   const [tick, setTick] = useState(0);
-  const config = useResource<DHCPConfigResponse>("dhcp", tick);
   const status = useResource<DHCPStatusResponse>("dhcp/status", tick);
   const refresh = () => setTick((t) => t + 1);
   return (
@@ -324,15 +342,7 @@ export default function DHCP() {
       <Resource state={status} retry={refresh}>
         {status.data && <DHCPState value={status.data} />}
       </Resource>
-      <Resource state={config} retry={refresh}>
-        {config.data && (
-          <DHCPForm
-            value={config.data}
-            applied={status.data}
-            refresh={refresh}
-          />
-        )}
-      </Resource>
+      <DHCPForm applied={status.data} refresh={refresh} tick={tick} />
       <Reservations tick={tick} refresh={refresh} />
       <Leases tick={tick} />
       <DHCPCheck />

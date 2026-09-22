@@ -50,6 +50,11 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
     await expect(page.getByLabel("LAN interface")).toHaveValue("draft0");
     await page.getByRole("button", { name: "Reload saved settings" }).click();
     await expect(page.getByLabel("LAN interface")).toHaveValue("fixture0");
+    // The first edit after reload must use the fetched document's revision.
+    await page.getByLabel("LAN interface").fill("fixture1");
+    await page.getByRole("button", { name: "Save DHCP settings" }).click();
+    await expect(page.getByText(/DHCP settings saved/)).toBeVisible();
+    expect((await call("get_dhcp")).config.interface).toBe("fixture1");
     await page.getByRole("button", { name: "Add reservation" }).click();
     await page.getByLabel("Reservation ID").fill("lab-printer");
     await page.getByLabel("Reserved IPv4 address").fill("192.0.2.20");
