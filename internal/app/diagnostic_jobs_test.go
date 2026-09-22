@@ -2,8 +2,12 @@ package app
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,6 +20,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/stats"
 	"github.com/richkeenan/dimsum/internal/testutil"
+	"github.com/richkeenan/dimsum/internal/upstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -131,6 +136,132 @@ func TestDiagnosticProbeRejectsUnconfiguredEndpointsWithoutSending(t *testing.T)
 	case <-server.Requests():
 		t.Fatal("invalid probe sent a packet")
 	default:
+	}
+}
+
+func TestDiagnosticEncryptedProbeUsesBootstrapAndReportsTLSFailure(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("untrusted HTTPS server must not receive a DNS request")
+	}))
+	defer server.Close()
+	for _, scheme := range []string{"https", "tls"} {
+		t.Run(scheme, func(t *testing.T) {
+			endpoint := strings.Replace(server.URL, "https://", scheme+"://", 1)
+			if scheme == "https" {
+				endpoint += "/dns-query"
+			}
+			m, _ := diagnosticFixture(t, endpoint, true)
+			value, err := m.upstreamProbe(t.Context(), json.RawMessage(fmt.Sprintf(`{"endpoint":%q}`, endpoint)))
+			require.NoError(t, err)
+			result := value.(upstreamProbeResult)
+			assert.Equal(t, scheme, result.Transport)
+			assert.False(t, result.Responding)
+			assert.False(t, result.Healthy)
+			assert.Contains(t, result.Error, "certificate")
+			assert.Equal(t, endpoint, result.Endpoint)
+		})
+	}
+	bootstrap, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response { return diagnosticReply(r, 3, false) })
+	require.NoError(t, err)
+	defer bootstrap.Close()
+	endpoint := "https://probe.example/dns-query"
+	m, _ := diagnosticFixture(t, endpoint, false)
+	_, err = m.control.Mutate(t.Context(), "settings", "PATCH", control.Mutation{Revision: m.store.Snapshot().Revision(), Edits: []config.Edit{{Path: []string{"dns", "bootstrap_dns"}, Value: []any{bootstrap.Address()}}}})
+	require.NoError(t, err)
+	value, err := m.upstreamProbe(t.Context(), json.RawMessage(fmt.Sprintf(`{"endpoint":%q}`, endpoint)))
+	require.NoError(t, err)
+	result := value.(upstreamProbeResult)
+	assert.Equal(t, "https", result.Transport)
+	assert.False(t, result.Responding)
+	assert.Contains(t, result.Error, "bootstrap")
+	select {
+	case request := <-bootstrap.Requests():
+		var parsed dnswire.Message
+		require.NoError(t, dnswire.ParseRequest(request.Wire, &parsed))
+		assert.Contains(t, []uint16{1, 28}, parsed.Question.Type)
+	default:
+		t.Fatal("probe ignored configured bootstrap")
+	}
+}
+
+func TestDiagnosticHTTPSProbeRequiresValidatedDNS(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(fmt.Sprint(mismatch), func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				wire, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if len(wire) != 17 {
+					t.Errorf("unexpected query length %d", len(wire))
+					return
+				}
+				wire[2] |= 0x80
+				if mismatch {
+					wire[len(wire)-3] = 1
+				}
+				w.Header().Set("Content-Type", "application/dns-message")
+				_, _ = w.Write(wire)
+			}))
+			defer server.Close()
+			roots := x509.NewCertPool()
+			roots.AddCert(server.Certificate())
+			endpoint, err := upstream.ParseEndpoint(server.URL + "/dns-query")
+			require.NoError(t, err)
+			m := &managedRuntime{}
+			value, err := m.probeEndpoint(t.Context(), endpoint, upstream.Options{RootCAs: roots}, t.Context(), 7, 500)
+			require.NoError(t, err)
+			result := value.(upstreamProbeResult)
+			assert.Equal(t, "https", result.Transport)
+			assert.Equal(t, "7", result.Generation)
+			assert.Equal(t, !mismatch, result.Healthy)
+			assert.Equal(t, !mismatch, result.Responding)
+			if mismatch {
+				assert.NotEmpty(t, result.Error)
+			} else {
+				assert.Equal(t, "healthy", result.State)
+			}
+		})
+	}
+}
+
+func TestDiagnosticHTTPSProbeRetiresWithTransportLifetime(t *testing.T) {
+	started, closed := make(chan struct{}), make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		close(started)
+		<-r.Context().Done()
+		close(closed)
+	}))
+	defer server.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(server.Certificate())
+	endpoint, err := upstream.ParseEndpoint(server.URL + "/dns-query")
+	require.NoError(t, err)
+	lifetime, retire := context.WithCancel(t.Context())
+	defer retire()
+	done := make(chan error, 1)
+	go func() {
+		_, err := (&managedRuntime{}).probeEndpoint(t.Context(), endpoint, upstream.Options{RootCAs: roots}, lifetime, 1, 3000)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("probe did not reach HTTPS fixture")
+	}
+	retire()
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("retired probe kept HTTPS request open")
+	}
+	select {
+	case err := <-done:
+		assert.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("retired probe did not finish")
 	}
 }
 

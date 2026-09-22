@@ -1474,7 +1474,7 @@ export interface paths {
       };
     };
     put?: never;
-    /** @description Append one item using revision and item */
+    /** @description Add an encrypted or standard endpoint, or expand a provider preset atomically. No implicit plaintext downgrade. */
     post: {
       parameters: {
         query?: never;
@@ -1484,7 +1484,7 @@ export interface paths {
       };
       requestBody: {
         content: {
-          "application/json": components["schemas"]["Mutation"];
+          "application/json": components["schemas"]["UpstreamAdd"];
         };
       };
       responses: {
@@ -1882,13 +1882,15 @@ export interface components {
       default_enabled: boolean;
     };
     UpstreamProbeInput: {
-      /** @description Literal IP:port currently configured in the active primary or fallback pool; arbitrary destinations are rejected */
+      /** @description IP:port, https://host/path or tls://host[:port] currently configured in the active primary or fallback pool; arbitrary destinations are rejected */
       endpoint: string;
       /** @default 1000 */
       timeout_ms: number;
     };
     /**
-     * @description One isolated root NS check using the validated DNS exchange engine. UDP
+     * @description One isolated root NS check using the validated DNS exchange engine, configured
+     *     bootstrap resolvers and normal TLS certificate verification. Encrypted checks
+     *     never downgrade to plaintext. Transport settings reload closes the private client. UDP
      *     may retry over TCP on truncation, at most two attempts within one deadline.
      *     Live configuration, cache, and upstream circuit state are unchanged. All
      *     actual attempts count once as non-client health probes; no client traffic
@@ -1910,10 +1912,10 @@ export interface components {
       healthy: boolean;
       rcode?: number;
       /**
-       * @description Omitted when validated response transport is unavailable
+       * @description Actual transport on success; configured transport when no successful exchange is available. This field alone does not imply connectivity.
        * @enum {string}
        */
-      transport?: "udp" | "tcp";
+      transport?: "udp" | "tcp" | "tls" | "https";
       attempts: components["schemas"]["Decimal"];
       diagnostic_probes: components["schemas"]["Decimal"];
       duration_us: components["schemas"]["Decimal"];
@@ -2432,16 +2434,31 @@ export interface components {
         [key: string]: string;
       };
     };
+    UpstreamAdd: {
+      revision: string;
+      item:
+        | string
+        | {
+            /** @enum {string} */
+            preset: "cloudflare" | "google" | "quad9";
+            /**
+             * @description https adds the provider DoH URL; plain adds the standard IPv4 pair. Omitted transport retains legacy plaintext behavior. Existing entries are skipped.
+             * @default plain
+             * @enum {string}
+             */
+            transport: "https" | "plain";
+          };
+    };
     Mutation: {
       revision: string;
       /** @description For PATCH /records only, without edits/item/index: accept this saved local A/AAAA name for dashboard access. Rechecks local interface and admin listener, persists admin.allowed_hosts, and activates without restart. */
       accept_admin_host?: string;
       edits?: {
         path: string[];
-        /** @description String arrays are accepted only for naming.mdns.interfaces; other paths require scalars. */
+        /** @description String arrays are accepted only for naming.mdns.interfaces (up to 8 names, 64 characters each) and dns.bootstrap_dns (1–16 literal IP:port resolvers). Set bootstrap_dns to ["1.1.1.1:53","9.9.9.9:53"] to reset to defaults. An empty bootstrap list is invalid; other paths require scalars. */
         value: (string | number | boolean) | string[];
       }[];
-      /** @description Collection item. For upstreams, accepts a literal IP (default port 53), IP:port, or {"preset":"cloudflare|google|quad9"}. Presets add both standard IPv4 servers atomically, skipping existing addresses. */
+      /** @description Collection item. For upstreams see UpstreamAdd: a literal IP (default port 53), IP:port, HTTPS/TLS URL, or provider preset with optional transport https or plain. Omitted transport retains plaintext behavior. */
       item?: unknown;
       index?: number;
     };

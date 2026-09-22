@@ -16,8 +16,8 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 	current := d
 	seen := make(map[string]bool)
 	for _, edit := range edits {
-		if discoveryInterfacesPath(edit.Path) {
-			value, err := discoveryInterfacesValue(edit.Value)
+		if editableStringListPath(edit.Path) {
+			value, err := stringListValue(edit.Value)
 			if err != nil {
 				return nil, err
 			}
@@ -39,8 +39,8 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 		var source []byte
 		var err error
 		if _, nodeErr := current.node(edit.Path); nodeErr == nil {
-			if discoveryInterfacesPath(edit.Path) {
-				source, err = current.editDiscoveryInterfaces(edit)
+			if editableStringListPath(edit.Path) {
+				source, err = current.editStringList(edit)
 			} else {
 				source, err = current.editSource([]Edit{edit})
 			}
@@ -86,8 +86,8 @@ func (d *Document) insertScalar(edit Edit) ([]byte, error) {
 		switch edit.Value.(type) {
 		case string, int, int64, bool:
 		case []string:
-			if !discoveryInterfacesPath(edit.Path) {
-				return nil, fmt.Errorf("edit: only discovery interfaces accept sequences")
+			if !editableStringListPath(edit.Path) {
+				return nil, fmt.Errorf("edit: only discovery interfaces and bootstrap DNS accept sequences")
 			}
 		default:
 			return nil, fmt.Errorf("edit: unsupported scalar %T", edit.Value)

@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/netip"
 	"time"
@@ -11,7 +12,7 @@ import (
 func (c *Client) dialEndpoint(ctx context.Context, e Endpoint) (net.Conn, error) {
 	addresses, err := c.bootstrapAddresses(ctx, e)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("upstream bootstrap for %s: %w", e.host, err)
 	}
 	var last error = ErrResponse
 	for i, a := range addresses {

@@ -48,11 +48,19 @@ Percentiles are histogram estimates (up to 3.125% error), null for legacy data
 without fine timing coverage. Admission rejections are excluded.
 Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
 Upstream presets (cloudflare, google, quad9):
-  add upstreams '{"revision":"...","item":{"preset":"cloudflare"}}'
-Adds both provider addresses together, skipping existing servers.
-Custom upstreams accept an IP address (port defaults to 53) or IP:port:
+  add upstreams '{"revision":"...","item":{"preset":"cloudflare","transport":"https"}}'
+Adds provider endpoints atomically, skipping existing servers.
+Provider transport is https (encrypted DoH) or plain (standard IPv4 pair).
+Omitting transport retains legacy plain behavior. Google and Quad9 are also available.
+Custom upstreams accept an IP address (port defaults to 53), IP:port,
+https://host/path (DoH), or tls://host[:port] (DoT, default port 853):
   add upstreams '{"revision":"...","item":"192.0.2.53"}'
+  add upstreams '{"revision":"...","item":"tls://dns.example"}'
 Test a saved server with job '{"kind":"upstream-probe","input":{"endpoint":"192.0.2.53:53"}}'.
+Encrypted failures never implicitly downgrade to plaintext. Bootstrap DNS resolves
+only encrypted server hostnames; omitted bootstrap settings use 1.1.1.1:53 and 9.9.9.9:53.
+Set or reset advanced bootstrap DNS through shared settings edits:
+  patch settings '{"revision":"...","edits":[{"path":["dns","bootstrap_dns"],"value":["1.1.1.1:53","9.9.9.9:53"]}]}'
 Exit: 0 success, 2 usage, 3 connection/I/O, 4 rejected request, 5 conflict, 6 unavailable.
 `
 

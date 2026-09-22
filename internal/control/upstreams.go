@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 // Presets expand in a single candidate so both addresses activate atomically.
@@ -16,27 +17,43 @@ func appendUpstream(d *config.Document, item any) (*config.Document, error) {
 	case string:
 		addresses = []string{value}
 	case map[string]any:
-		if len(value) != 1 {
-			return nil, fmt.Errorf("choose a preset or enter an IP address")
+		for key := range value {
+			if key != "preset" && key != "transport" {
+				return nil, fmt.Errorf("choose a preset and optional transport")
+			}
 		}
+		transport := "plain"
+		if v, exists := value["transport"]; exists {
+			if v != "plain" && v != "https" {
+				return nil, fmt.Errorf("preset transport must be https or plain")
+			}
+			transport = v.(string)
+		}
+		var encrypted string
 		switch value["preset"] {
 		case "cloudflare":
 			addresses = []string{"1.1.1.1:53", "1.0.0.1:53"}
+			encrypted = "https://cloudflare-dns.com/dns-query"
 		case "google":
 			addresses = []string{"8.8.8.8:53", "8.8.4.4:53"}
+			encrypted = "https://dns.google/dns-query"
 		case "quad9":
 			addresses = []string{"9.9.9.9:53", "149.112.112.112:53"}
+			encrypted = "https://dns.quad9.net/dns-query"
 		default:
 			return nil, fmt.Errorf("unknown upstream preset; choose cloudflare, google or quad9")
 		}
+		if transport == "https" {
+			addresses = []string{encrypted}
+		}
 	default:
-		return nil, fmt.Errorf("enter an IP address or choose an upstream preset")
+		return nil, fmt.Errorf("enter an IP address, HTTPS/TLS URL or choose an upstream preset")
 	}
-	seen := map[netip.AddrPort]bool{}
+	seen := map[string]bool{}
 	for _, address := range d.Config().DNS.Upstreams {
-		endpoint, err := netip.ParseAddrPort(address)
+		endpoint, err := canonicalUpstream(address)
 		if err == nil {
-			seen[netip.AddrPortFrom(endpoint.Addr().Unmap(), endpoint.Port())] = true
+			seen[endpoint.String()] = true
 		}
 	}
 	for _, address := range addresses {
@@ -44,12 +61,11 @@ func appendUpstream(d *config.Document, item any) (*config.Document, error) {
 		if ip, err := netip.ParseAddr(address); err == nil {
 			address = netip.AddrPortFrom(ip, 53).String()
 		}
-		endpoint, err := netip.ParseAddrPort(address)
-		if err != nil || endpoint.Port() == 0 || endpoint.Addr().IsUnspecified() || endpoint.Addr().IsMulticast() {
-			return nil, fmt.Errorf("enter a unicast IP address and a port from 1 to 65535, for example 192.0.2.53:53; URLs and hostnames are not supported")
+		endpoint, err := canonicalUpstream(address)
+		if err != nil {
+			return nil, fmt.Errorf("enter a unicast IP:port, https://host/path or tls://host[:port]: %w", err)
 		}
-		endpoint = netip.AddrPortFrom(endpoint.Addr().Unmap(), endpoint.Port())
-		if seen[endpoint] {
+		if seen[endpoint.String()] {
 			continue
 		}
 		candidate, err := d.Append([]string{"dns", "upstreams"}, endpoint.String())
@@ -60,7 +76,14 @@ func appendUpstream(d *config.Document, item any) (*config.Document, error) {
 			return nil, err
 		}
 		d = candidate
-		seen[endpoint] = true
+		seen[endpoint.String()] = true
 	}
 	return d, nil
+}
+
+func canonicalUpstream(address string) (upstream.Endpoint, error) {
+	if ap, err := netip.ParseAddrPort(address); err == nil {
+		address = netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port()).String()
+	}
+	return upstream.ParseEndpoint(address)
 }

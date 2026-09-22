@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/netip"
 	"net/url"
 	"runtime"
 	"runtime/debug"
@@ -75,11 +74,10 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	if err := diagnosticInput(input, &request); err != nil {
 		return nil, err
 	}
-	endpoint, err := netip.ParseAddrPort(request.Endpoint)
+	endpoint, err := upstream.ParseEndpoint(request.Endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("%w: endpoint must be a configured literal IP:port", control.BadRequest)
+		return nil, fmt.Errorf("%w: endpoint must be a configured IP:port, HTTPS or TLS URL", control.BadRequest)
 	}
-	endpoint = netip.AddrPortFrom(endpoint.Addr().Unmap(), endpoint.Port())
 	timeoutMS := 1000
 	if request.TimeoutMS != nil {
 		timeoutMS = *request.TimeoutMS
@@ -95,7 +93,7 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	configured := false
 	for _, pool := range [][]upstream.Endpoint{options.Endpoints, options.Fallback} {
 		for _, candidate := range pool {
-			if candidate.Transport() == "udp" && endpoint == netip.AddrPortFrom(candidate.Addr().Unmap(), candidate.Port()) {
+			if endpoint == candidate || (endpoint.Transport() == "udp" && candidate.Transport() == "udp" && endpoint.Addr().Unmap() == candidate.Addr().Unmap() && endpoint.Port() == candidate.Port()) {
 				configured = true
 			}
 		}
@@ -103,12 +101,18 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	if !configured {
 		return nil, fmt.Errorf("%w: endpoint is not an active configured primary or fallback upstream", control.BadRequest)
 	}
+	return m.probeEndpoint(ctx, endpoint, options, snapshot.UpstreamContext(), snapshot.Generation(), timeoutMS)
+}
+
+func (m *managedRuntime) probeEndpoint(ctx context.Context, endpoint upstream.Endpoint, options upstream.Options, lifetime context.Context, generation uint64, timeoutMS int) (any, error) {
 	timeout := time.Duration(timeoutMS) * time.Millisecond
-	client, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(endpoint)}, MaxOutstanding: 1, MaxAttempts: 2, Timeout: timeout, AttemptTimeout: timeout})
+	client, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{endpoint}, BootstrapDNS: options.BootstrapDNS, RootCAs: options.RootCAs, MaxOutstanding: 1, MaxAttempts: 2, Timeout: timeout, AttemptTimeout: timeout})
 	if err != nil {
 		return nil, err
 	}
 	defer client.Close()
+	stop := context.AfterFunc(lifetime, func() { _ = client.Close() })
+	defer stop()
 	run, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// ID is replaced cryptographically by the client. RD=1, root, NS, IN.
@@ -126,7 +130,8 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	if m.observations != nil {
 		m.observations.exchange(exchange, exchangeErr)
 	}
-	result := upstreamProbeResult{Endpoint: endpoint.String(), Generation: strconv.FormatUint(snapshot.Generation(), 10), Name: ".", QType: "NS", State: "no_valid_response", Attempts: strconv.Itoa(exchange.Attempts), DiagnosticProbes: strconv.Itoa(exchange.Attempts), DurationUS: strconv.FormatInt(time.Since(start).Microseconds(), 10), TimeoutMS: timeoutMS, CheckedAt: time.Now().UTC()}
+	result := upstreamProbeResult{Endpoint: endpoint.String(), Generation: strconv.FormatUint(generation, 10), Name: ".", QType: "NS", State: "no_valid_response", Attempts: strconv.Itoa(exchange.Attempts), DiagnosticProbes: strconv.Itoa(exchange.Attempts), DurationUS: strconv.FormatInt(time.Since(start).Microseconds(), 10), TimeoutMS: timeoutMS, CheckedAt: time.Now().UTC()}
+	result.Transport = probeTransport(endpoint.Transport())
 	if err = ctx.Err(); err != nil {
 		result.State = "cancelled"
 		result.Error = err.Error()
@@ -145,10 +150,7 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 		if result.Healthy {
 			result.State = "healthy"
 		}
-		result.Transport = "udp"
-		if exchange.TCP {
-			result.Transport = "tcp"
-		}
+		result.Transport = probeTransport(exchange.Transport)
 	} else {
 		result.Error = control.RedactMessage(exchangeErr.Error())
 		// The shared engine rejects SERVFAIL/REFUSED as forwarding results but its
@@ -170,6 +172,17 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	// A timeout/error response is a completed diagnostic finding. Parent
 	// cancellation above remains a failed job rather than a claimed measurement.
 	return result, nil
+}
+
+func probeTransport(transport string) string {
+	switch transport {
+	case "dot":
+		return "tls"
+	case "doh":
+		return "https"
+	default:
+		return transport
+	}
 }
 
 type supportBuild struct {

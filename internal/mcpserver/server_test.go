@@ -78,7 +78,12 @@ func TestToolsDerivedFromSpec(t *testing.T) {
 	settingsSchema, err := json.Marshal(tools["update_settings"].InputSchema)
 	require.NoError(t, err)
 	assert.Contains(t, string(settingsSchema), `naming.mdns.interfaces`)
-	assert.Contains(t, string(settingsSchema), `"maxItems":8`)
+	assert.Contains(t, string(settingsSchema), `dns.bootstrap_dns`)
+	assert.Contains(t, string(settingsSchema), `"maxItems":16`)
+	upstreamSchema, err := json.Marshal(tools["add_upstream"].InputSchema)
+	require.NoError(t, err)
+	assert.Contains(t, string(upstreamSchema), `"enum":["https","plain"]`)
+	assert.Contains(t, string(upstreamSchema), `"default":"plain"`)
 }
 
 func TestAdministrationInstructions(t *testing.T) {

@@ -541,6 +541,14 @@ paths:
         default: {$ref: '#/components/responses/Error'}
   /api/v1/upstreams:
     <<: *collection
+    post:
+      <<: *patch
+      description: Add an encrypted or standard endpoint, or expand a provider preset atomically. No implicit plaintext downgrade.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpstreamAdd'}
     x-mcp-tools:
       get: {name: list_upstreams, description: List configured upstream DNS servers}
       post: {name: add_upstream, description: Append an upstream DNS server using the current revision and item}
@@ -741,13 +749,15 @@ components:
       additionalProperties: false
       required: [endpoint]
       properties:
-        endpoint: {type: string, description: Literal IP:port currently configured in the active primary or fallback pool; arbitrary destinations are rejected}
+        endpoint: {type: string, description: 'IP:port, https://host/path or tls://host[:port] currently configured in the active primary or fallback pool; arbitrary destinations are rejected'}
         timeout_ms: {type: integer, minimum: 50, maximum: 3000, default: 1000}
     UpstreamProbeResult:
       type: object
       required: [endpoint, generation, name, qtype, state, responding, healthy, attempts, diagnostic_probes, duration_us, timeout_ms, checked_at]
       description: |
-        One isolated root NS check using the validated DNS exchange engine. UDP
+        One isolated root NS check using the validated DNS exchange engine, configured
+        bootstrap resolvers and normal TLS certificate verification. Encrypted checks
+        never downgrade to plaintext. Transport settings reload closes the private client. UDP
         may retry over TCP on truncation, at most two attempts within one deadline.
         Live configuration, cache, and upstream circuit state are unchanged. All
         actual attempts count once as non-client health probes; no client traffic
@@ -762,7 +772,7 @@ components:
         responding: {type: boolean, description: A validated DNS response was observed, not merely a reachable host}
         healthy: {type: boolean, description: This isolated check returned NOERROR; not a live circuit-state claim}
         rcode: {type: integer, minimum: 0, maximum: 65535}
-        transport: {type: string, enum: [udp, tcp], description: Omitted when validated response transport is unavailable}
+        transport: {type: string, enum: [udp, tcp, tls, https], description: Actual transport on success; configured transport when no successful exchange is available. This field alone does not imply connectivity.}
         attempts: {$ref: '#/components/schemas/Decimal'}
         diagnostic_probes: {$ref: '#/components/schemas/Decimal'}
         duration_us: {$ref: '#/components/schemas/Decimal'}
@@ -1277,6 +1287,21 @@ components:
         observation: {type: string, enum: [not_probed, failed, no_offer_observed, offers_observed]}
         warning: {type: string}
         checks: {type: object, additionalProperties: {type: string}}
+    UpstreamAdd:
+      type: object
+      additionalProperties: false
+      required: [revision, item]
+      properties:
+        revision: {type: string, minLength: 1}
+        item:
+          oneOf:
+            - {type: string, minLength: 1, description: 'Unicast literal IP (default port 53), IP:port, https://host/path or tls://host[:port]. URLs disallow credentials and fragments; TLS URLs disallow paths and queries.'}
+            - type: object
+              additionalProperties: false
+              required: [preset]
+              properties:
+                preset: {type: string, enum: [cloudflare, google, quad9]}
+                transport: {type: string, enum: [https, plain], default: plain, description: 'https adds the provider DoH URL; plain adds the standard IPv4 pair. Omitted transport retains legacy plaintext behavior. Existing entries are skipped.'}
     Mutation:
       type: object
       required: [revision]
@@ -1293,12 +1318,12 @@ components:
             properties:
               path: {type: array, items: {type: string}}
               value:
-                description: String arrays are accepted only for naming.mdns.interfaces; other paths require scalars.
+                description: 'String arrays are accepted only for naming.mdns.interfaces (up to 8 names, 64 characters each) and dns.bootstrap_dns (1–16 literal IP:port resolvers). Set bootstrap_dns to ["1.1.1.1:53","9.9.9.9:53"] to reset to defaults. An empty bootstrap list is invalid; other paths require scalars.'
                 oneOf:
                   - {type: [string, integer, boolean]}
-                  - {type: array, maxItems: 8, items: {type: string, minLength: 1, maxLength: 64}}
+                  - {type: array, maxItems: 16, items: {type: string, minLength: 1, maxLength: 64}}
         item:
-          description: 'Collection item. For upstreams, accepts a literal IP (default port 53), IP:port, or {"preset":"cloudflare|google|quad9"}. Presets add both standard IPv4 servers atomically, skipping existing addresses.'
+          description: 'Collection item. For upstreams see UpstreamAdd: a literal IP (default port 53), IP:port, HTTPS/TLS URL, or provider preset with optional transport https or plain. Omitted transport retains plaintext behavior.'
         index: {type: integer, minimum: 0}
     Job:
       type: object
