@@ -161,6 +161,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await page.getByRole("link", { name: "Upstreams", exact: true }).click();
   await page.getByRole("button", { name: "Add upstream" }).click();
   await page.getByLabel("DNS provider").selectOption("google");
+  await expect(page.getByRole("radio", { name: /Encrypted/ })).toBeChecked();
+  await page.getByRole("radio", { name: /Standard/ }).check();
   await page.screenshot({
     path: testInfo.outputPath("upstream-provider-desktop.png"),
   });
@@ -168,19 +170,20 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
     page.getByRole("cell", {
-      name: "Google Public DNS 8.8.8.8:53",
+      name: "Google Public DNS 8.8.8.8:53 Standard · unencrypted",
       exact: true,
     }),
   ).toBeVisible();
   await expect(
     page.getByRole("cell", {
-      name: "Google Public DNS 8.8.4.4:53",
+      name: "Google Public DNS 8.8.4.4:53 Standard · unencrypted",
       exact: true,
     }),
   ).toBeVisible();
   expect(await readFile(file, "utf8")).toContain("# keep upstream comment");
   await page.getByRole("button", { name: "Add upstream" }).click();
   await page.getByLabel("DNS provider").selectOption("google");
+  await page.getByRole("radio", { name: /Standard/ }).check();
   await expect(
     page.getByRole("button", { name: "Already configured" }),
   ).toBeDisabled();
@@ -207,7 +210,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await page.setViewportSize({ width: 1440, height: 1100 });
   await expect(
     page.getByRole("cell", {
-      name: "Custom DNS server 192.0.2.53:53",
+      name: "Custom DNS server 192.0.2.53:53 Standard · unencrypted",
       exact: true,
     }),
   ).toBeVisible();
@@ -228,7 +231,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
     page.getByRole("cell", {
-      name: "Custom DNS server [2001:db8::53]:53",
+      name: "Custom DNS server [2001:db8::53]:53 Standard · unencrypted",
       exact: true,
     }),
   ).not.toBeVisible();

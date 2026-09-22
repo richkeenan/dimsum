@@ -3,8 +3,8 @@
 ## Native Linux service
 
 The installer supports systemd on Linux amd64 and arm64. It checks ports 53 and
-8080, installs the service, and prints a unique initial administrator password.
-Store that password before closing the terminal. Upgrades preserve credentials.
+8080 and installs the service. Sign in with **`admin`** on a fresh installation.
+You can change your password in Settings. Upgrades preserve existing credentials.
 
 The native defaults use these paths:
 
@@ -18,8 +18,8 @@ The native defaults use these paths:
 
 If another resolver already owns port 53, choose which service should handle DNS
 before installing. Do not disable an existing resolver without a replacement
-plan. For custom listeners, prepare the configuration first and use explicit
-bootstrap as described below. The installer does not alter your router settings.
+plan. For custom listeners, prepare the configuration first. The installer does
+not alter your router settings.
 
 Inspect service failures with `journalctl -u dimsum -n 50`. Check readiness with:
 
@@ -27,9 +27,11 @@ Inspect service failures with `journalctl -u dimsum -n 50`. Check readiness with
 sudo -u dimsum dimsum control diagnostics
 ```
 
-## Manual credential setup
+## Optional initial password
 
-Before starting a manually installed server, create its administrator credential:
+Fresh installations create the default **`admin`** password on first startup.
+No separate credential setup is required. To choose a different initial password,
+you can optionally bootstrap one before starting the server:
 
 ```sh
 dimsum bootstrap -config /path/to/dimsum.yaml -generate
@@ -46,9 +48,8 @@ dimsum bootstrap -config /path/to/dimsum.yaml -password-file /path/to/password
 Use `-password-file -` to read from standard input. Remove the input file after
 bootstrapping. Run bootstrap as the user that will run the service.
 
-Without a bootstrapped credential, HTTP login returns unavailable; DNS and the
-permission-protected local control socket can still run. There is no default
-password.
+Startup preserves existing credentials, including passwords set through Settings
+or the CLI. It does not reset them to the default.
 
 ### Recovering access
 
@@ -103,10 +104,9 @@ docker compose -f deploy/compose.yaml build
 
 Prepare a configuration in `$DIMSUM_CONFIG_DIR/dimsum.yaml` with `data_dir`
 `/var/lib/dimsum/data`, `secrets_dir` `/etc/dimsum/secrets`, and control socket
-`/run/dimsum/control.sock`. Then bootstrap and start:
+`/run/dimsum/control.sock`. Then start and sign in with **`admin`**:
 
 ```sh
-docker compose -f deploy/compose.yaml run --rm dimsum bootstrap -config /etc/dimsum/dimsum.yaml -generate
 docker compose -f deploy/compose.yaml up -d
 ```
 

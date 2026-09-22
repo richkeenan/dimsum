@@ -35,6 +35,7 @@ import {
   UpstreamEditor,
   UpstreamName,
   UpstreamConnectionTest,
+  UpstreamPoolSummary,
 } from "./upstreams";
 type Field = {
   key: string;
@@ -336,6 +337,9 @@ export default function Configuration({
       <Resource state={settings}>
         <Revision value={settings.data} />
       </Resource>
+      {kind === "upstreams" && (
+        <UpstreamPoolSummary config={settings.data?.config} />
+      )}
       {kind === "clients" && (
         <Resource state={state}>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">

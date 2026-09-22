@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentAccess } from "./agents";
 import { DiscoverySettings } from "./discovery";
+import { BootstrapSettings } from "./bootstrap";
 
 export function Revision({ value }: { value?: Settings }) {
   if (
@@ -332,6 +333,10 @@ export default function SettingsView() {
             settings={state.data}
             refresh={() => setTick((t) => t + 1)}
             diagnostics={diagnostics.data?.naming as Row | undefined}
+          />
+          <BootstrapSettings
+            settings={state.data}
+            refresh={() => setTick((t) => t + 1)}
           />
           {state.error && (
             <ErrorNotice

@@ -26,8 +26,8 @@ curl -fsSL https://raw.githubusercontent.com/richkeenan/dimsum/main/install.sh |
 ```
 
 The installer downloads the latest release, configures the service, and starts
-it at boot. **Save the random administrator password printed during setup.**
-Open the dashboard URL it prints and sign in with that password. Choose
+it at boot. Open the dashboard URL it prints and sign in with **`admin`**.
+You can change your password in **Settings**. Choose
 subscriptions in **Filter lists**, then set your router's DNS server to this
 machine's IP address.
 

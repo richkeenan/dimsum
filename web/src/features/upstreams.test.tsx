@@ -1,9 +1,158 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { api, APIError } from "@/lib/api";
-import { UpstreamConnectionTest, UpstreamEditor } from "./upstreams";
+import {
+  UpstreamConnectionTest,
+  UpstreamEditor,
+  UpstreamPoolSummary,
+} from "./upstreams";
 
 afterEach(() => vi.restoreAllMocks());
+
+it.each(["https", "plain"])(
+  "adds a provider using the explicit %s choice",
+  async (transport) => {
+    const send = vi.spyOn(api, "send").mockResolvedValue({});
+    render(
+      <UpstreamEditor
+        revision="r1"
+        configured={[]}
+        close={() => {}}
+        saved={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("DNS provider"), {
+      target: { value: "cloudflare" },
+    });
+    expect(screen.getByRole("radio", { name: /Encrypted/ })).toBeChecked();
+    if (transport === "plain")
+      fireEvent.click(screen.getByRole("radio", { name: /Standard/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("upstreams", "POST", {
+        revision: "r1",
+        item: { preset: "cloudflare", transport },
+      }),
+    );
+  },
+);
+
+it.each([
+  "https://resolver.example/dns-query?profile=one",
+  "tls://resolver.example:8853",
+])(
+  "edits a saved encrypted endpoint without splitting its URL: %s",
+  async (address) => {
+    const send = vi.spyOn(api, "send").mockResolvedValue({});
+    render(
+      <UpstreamEditor
+        original={{ address, __index: 2 }}
+        revision="r1"
+        configured={[]}
+        close={() => {}}
+        saved={() => {}}
+      />,
+    );
+    expect(screen.getByLabelText("Encrypted server URL")).toHaveValue(address);
+    fireEvent.change(screen.getByLabelText("Encrypted server URL"), {
+      target: { value: "tls://other.example" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("upstreams", "PATCH", {
+        revision: "r1",
+        edits: [{ path: ["2"], value: "tls://other.example" }],
+      }),
+    );
+  },
+);
+
+it("adds a custom encrypted URL and rejects an insecure URL", async () => {
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  render(
+    <UpstreamEditor
+      revision="r1"
+      configured={[]}
+      close={() => {}}
+      saved={() => {}}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("DNS provider"), {
+    target: { value: "custom" },
+  });
+  fireEvent.change(screen.getByLabelText("Encrypted server URL"), {
+    target: { value: "http://resolver.example/dns-query" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    /https:\/\/.*tls:\/\//,
+  );
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Encrypted server URL"), {
+    target: { value: " https://resolver.example/dns-query " },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("upstreams", "POST", {
+      revision: "r1",
+      item: "https://resolver.example/dns-query",
+    }),
+  );
+});
+
+it("includes standard fallback servers in mixed-pool messaging", () => {
+  render(
+    <UpstreamPoolSummary
+      config={{
+        dns: {
+          upstreams: ["https://resolver.example/dns-query"],
+          fallback_upstreams: ["192.0.2.53:53"],
+        },
+      }}
+    />,
+  );
+  expect(
+    screen.getByText(/Some lookups may be sent unencrypted/),
+  ).toBeVisible();
+});
+
+it.each([
+  [
+    { healthy: true, transport: "https", duration_us: "12500" },
+    /Encrypted connection verified.*12.5 ms.*HTTPS/,
+  ],
+  [
+    {
+      healthy: false,
+      transport: "tls",
+      error: "x509: certificate has expired",
+    },
+    /certificate has expired/,
+  ],
+  [
+    {
+      healthy: false,
+      transport: "https",
+      error: "upstream bootstrap for resolver.example: timeout",
+    },
+    /bootstrap.*timeout/,
+  ],
+])(
+  "shows measured encryption or the actual diagnostic failure",
+  async (result, message) => {
+    vi.spyOn(api, "send").mockResolvedValue({
+      id: "8",
+      state: "succeeded",
+      result,
+    });
+    render(
+      <UpstreamConnectionTest address="https://resolver.example/dns-query" />,
+    );
+    expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(message);
+  },
+);
 
 it.each([
   [

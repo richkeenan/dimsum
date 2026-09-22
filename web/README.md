@@ -16,7 +16,7 @@ npm run dev
 Vite serves the dashboard on `http://127.0.0.1:5173` and proxies `/api` and
 `/session` to `http://127.0.0.1:8080`. Start an isolated dimsum backend with the
 [development configuration](../guides/configuration.md#minimal-local-development-configuration)
-and bootstrap its password first. That configuration admits the Vite Host/Origin.
+and sign in with `admin` on first startup. That configuration admits the Vite Host/Origin.
 To use a different backend:
 
 ```sh

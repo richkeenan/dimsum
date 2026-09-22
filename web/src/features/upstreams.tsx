@@ -17,6 +17,7 @@ const providers = [
     description:
       "General-purpose DNS without provider-level content filtering.",
     addresses: ["1.1.1.1:53", "1.0.0.1:53"],
+    encrypted: "https://cloudflare-dns.com/dns-query",
   },
   {
     id: "google",
@@ -24,6 +25,7 @@ const providers = [
     description:
       "General-purpose DNS without provider-level content filtering.",
     addresses: ["8.8.8.8:53", "8.8.4.4:53"],
+    encrypted: "https://dns.google/dns-query",
   },
   {
     id: "quad9",
@@ -31,16 +33,50 @@ const providers = [
     description:
       "Blocks known malicious domains in addition to your dimsum rules.",
     addresses: ["9.9.9.9:53", "149.112.112.112:53"],
+    encrypted: "https://dns.quad9.net/dns-query",
   },
 ];
 
+function isEncrypted(address: string) {
+  return /^(https|tls):\/\//.test(address);
+}
+
+export function UpstreamPoolSummary({ config }: { config?: Row }) {
+  const dns = config?.dns as Row | undefined;
+  const addresses = [
+    ...((dns?.upstreams as string[]) ?? []),
+    ...((dns?.fallback_upstreams as string[]) ?? []),
+  ];
+  if (!addresses.length) return null;
+  const encrypted = addresses.filter(isEncrypted).length;
+  return (
+    <p className="mb-4 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+      {encrypted === addresses.length
+        ? "All configured upstreams use encrypted DNS. Test connections below to check that they respond."
+        : encrypted > 0
+          ? "Mixed connections: some primary or fallback servers use standard DNS. Some lookups may be sent unencrypted."
+          : "Configured upstreams use standard DNS (unencrypted)."}
+      {" Encryption covers the connection from dimsum to the upstream server."}
+    </p>
+  );
+}
+
 export function UpstreamName({ address }: { address: string }) {
-  const provider = providers.find((p) => p.addresses.includes(address));
+  const provider = providers.find(
+    (p) => p.addresses.includes(address) || p.encrypted === address,
+  );
   return (
     <div className="flex flex-col gap-1">
       <span>{provider?.name ?? "Custom DNS server"}</span>
-      <span className="text-xs text-muted-foreground tabular-nums">
+      <span className="max-w-80 whitespace-normal text-xs text-muted-foreground tabular-nums [overflow-wrap:anywhere]">
         {address}
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {address.startsWith("https://")
+          ? "Encrypted · HTTPS (DoH)"
+          : address.startsWith("tls://")
+            ? "Encrypted · TLS (DoT)"
+            : "Standard · unencrypted"}
       </span>
     </div>
   );
@@ -56,11 +92,34 @@ function splitEndpoint(address: string) {
 
 class UpstreamInputError extends Error {
   constructor(
-    public field: "ip" | "port",
+    public field: "ip" | "port" | "url",
     message: string,
   ) {
     super(message);
   }
+}
+
+function encryptedEndpoint(value: string) {
+  const address = value.trim();
+  try {
+    const url = new URL(address);
+    if (
+      !isEncrypted(address) ||
+      !url.hostname ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      /\s/.test(address) ||
+      (url.protocol === "tls:" && (url.pathname || url.search))
+    )
+      throw new Error();
+  } catch {
+    throw new UpstreamInputError(
+      "url",
+      "Enter an https:// URL for DNS over HTTPS or tls://host[:port] for DNS over TLS, without credentials or fragments.",
+    );
+  }
+  return address;
 }
 
 function endpoint(ip: string, port: string): string {
@@ -107,14 +166,14 @@ function saveError(error: Error): Error {
       "You can configure up to 16 upstream servers. Remove a server before adding another provider.";
   else if (/expected unicast literal IP/.test(message))
     message =
-      "Enter a unicast IP address and a port from 1 to 65535. URLs and hostnames are not supported.";
+      "Enter a unicast IP address and a port from 1 to 65535 for standard DNS.";
   else if (
     /block sequence|block mapping|editable shape|explicit text edit/.test(
       message,
     )
   )
     message =
-      "This upstream list uses a configuration format the editor cannot change. Put each server on its own '- IP:port' line in the configuration, then try again.";
+      "This upstream list uses a configuration format the editor cannot change. Put each server on its own list line in the configuration, then try again.";
   if (message === error.message) return error;
   return new APIError(
     error instanceof APIError ? error.status : 400,
@@ -141,18 +200,31 @@ export function UpstreamEditor({
   close: () => void;
   saved: (result: Row) => void;
 }) {
-  const initial = original
-    ? splitEndpoint(String(original.address))
-    : { ip: "", port: "53" };
+  const originalEncrypted = isEncrypted(String(original?.address ?? ""));
+  const initial =
+    original && !originalEncrypted
+      ? splitEndpoint(String(original.address))
+      : { ip: "", port: "53" };
   const [provider, setProvider] = useState(original ? "custom" : "");
+  const [transport, setTransport] = useState<"https" | "plain">(
+    original && !originalEncrypted ? "plain" : "https",
+  );
+  const [url, setURL] = useState(
+    originalEncrypted ? String(original?.address) : "",
+  );
   const [ip, setIP] = useState(initial.ip);
   const [port, setPort] = useState(initial.port);
   const [error, setError] = useState<Error>();
-  const [invalid, setInvalid] = useState<"ip" | "port">();
+  const [invalid, setInvalid] = useState<"ip" | "port" | "url">();
   const [busy, setBusy] = useState(false);
   const preset = providers.find((p) => p.id === provider);
+  const addresses = preset
+    ? transport === "https"
+      ? [preset.encrypted]
+      : preset.addresses
+    : [];
   const missing =
-    preset?.addresses.filter(
+    addresses.filter(
       (address) => !configured.some((r) => r.address === address),
     ) ?? [];
   async function submit(remove = false) {
@@ -161,18 +233,25 @@ export function UpstreamEditor({
     let address = "";
     if (!remove && !preset) {
       try {
-        address = endpoint(ip, port);
+        address =
+          transport === "https" ? encryptedEndpoint(url) : endpoint(ip, port);
         if (
           configured.some(
             (r) => r.address === address && r.__index !== original?.__index,
           )
         )
           throw new Error(
-            "This server is already configured. Choose a different IP address or port.",
+            "This server is already configured. Choose a different server address.",
           );
       } catch (e) {
         setError(e as Error);
-        setInvalid(e instanceof UpstreamInputError ? e.field : "ip");
+        setInvalid(
+          e instanceof UpstreamInputError
+            ? e.field
+            : transport === "https"
+              ? "url"
+              : "ip",
+        );
         return;
       }
     }
@@ -193,7 +272,7 @@ export function UpstreamEditor({
               ? {
                   edits: [{ path: [String(original.__index)], value: address }],
                 }
-              : { item: preset ? { preset: preset.id } : address }),
+              : { item: preset ? { preset: preset.id, transport } : address }),
         },
       );
       saved(result);
@@ -214,7 +293,7 @@ export function UpstreamEditor({
         <DialogTitle>{original ? "Edit upstream" : "Add upstream"}</DialogTitle>
         <DialogDescription>
           {original
-            ? "Update the DNS server address or change its port."
+            ? "Update this server’s address and connection type."
             : "Choose a DNS provider, or use your own server. dimsum sends lookups here when it cannot answer locally."}
         </DialogDescription>
         <form
@@ -249,20 +328,67 @@ export function UpstreamEditor({
                       {p.name}
                     </option>
                   ))}
-                  <option value="custom">Custom DNS server</option>
+                  <option value="custom">Custom DNS server (advanced)</option>
                 </select>
               </div>
+            )}
+            {provider && (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-xs">Connection</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(
+                    [
+                      [
+                        "https",
+                        "Encrypted",
+                        "Private connection to the server.",
+                      ],
+                      [
+                        "plain",
+                        "Standard (unencrypted)",
+                        "Uses a plain IP address and port.",
+                      ],
+                    ] as const
+                  ).map(([value, label, help]) => (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm ${transport === value ? "border-ring bg-muted/50" : "border-border"}`}
+                    >
+                      <input
+                        type="radio"
+                        name="upstream-transport"
+                        value={value}
+                        checked={transport === value}
+                        onChange={() => {
+                          setTransport(value);
+                          setError(undefined);
+                          setInvalid(undefined);
+                        }}
+                        className="mt-1 accent-primary"
+                      />
+                      <span>
+                        {label}
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {help}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
             )}
             {preset && (
               <section className="space-y-3 rounded-md border border-border bg-muted/40 p-4 text-sm">
                 <p>{preset.description}</p>
                 <ul className="space-y-2">
-                  {preset.addresses.map((address) => (
+                  {addresses.map((address) => (
                     <li
                       key={address}
                       className="flex flex-wrap justify-between gap-2"
                     >
-                      <span className="tabular-nums">{address}</span>
+                      <span className="min-w-0 tabular-nums [overflow-wrap:anywhere]">
+                        {address}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {missing.includes(address)
                           ? "Will be added"
@@ -273,7 +399,40 @@ export function UpstreamEditor({
                 </ul>
               </section>
             )}
-            {provider === "custom" && (
+            {provider === "custom" && transport === "https" && (
+              <div className="space-y-2">
+                <label htmlFor="upstream-url" className="block text-xs">
+                  Encrypted server URL
+                </label>
+                <Input
+                  id="upstream-url"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={url}
+                  placeholder="https://resolver.example/dns-query"
+                  aria-invalid={invalid === "url"}
+                  aria-describedby={
+                    invalid === "url"
+                      ? "upstream-validation upstream-url-help"
+                      : "upstream-url-help"
+                  }
+                  onChange={(e) => {
+                    setURL(e.target.value);
+                    setError(undefined);
+                    setInvalid(undefined);
+                  }}
+                />
+                <p
+                  id="upstream-url-help"
+                  className="text-xs text-muted-foreground"
+                >
+                  Use https://host/path (DoH) or tls://host[:port] (DoT). Server
+                  certificates are verified. Hostnames are resolved
+                  automatically; bootstrap overrides are in Settings → Advanced.
+                </p>
+              </div>
+            )}
+            {provider === "custom" && transport === "plain" && (
               <div className="space-y-2">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_100px]">
                   <div className="space-y-2">
@@ -327,12 +486,18 @@ export function UpstreamEditor({
                   id="upstream-address-help"
                   className="text-xs leading-relaxed text-muted-foreground"
                 >
-                  IPv4 or IPv6 address. Standard DNS uses port 53. HTTPS URLs
-                  and hostnames are not supported.
+                  IPv4 or IPv6 address. Standard DNS uses port 53. For a URL,
+                  choose Encrypted.
                 </p>
               </div>
             )}
           </fieldset>
+          {provider && (
+            <p className="text-xs text-muted-foreground">
+              Save first, then test the connection from the upstream list.
+              Adding a server keeps your existing servers.
+            </p>
+          )}
           {error &&
             (invalid ? (
               <p
@@ -426,14 +591,14 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
   const running = starting || job?.state === "running";
   let message = "";
   if (job?.state === "failed")
-    message = "The test could not finish. Try again.";
+    message = `The test could not finish. ${job.error || "Try again."}`;
   else if (job?.state === "succeeded")
     message =
       result?.healthy === true
-        ? `Responded in ${(Number(result.duration_us) / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ms`
+        ? `${result.transport === "https" || result.transport === "tls" ? "Encrypted connection verified · " : ""}Responded in ${(Number(result.duration_us) / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ms${result.transport ? ` · ${String(result.transport).toUpperCase()}` : ""}`
         : result?.responding === true
           ? "Server responded with a DNS error. Try another server."
-          : "No valid response. Check the address, port and network connection.";
+          : "No valid response. Check the server address and network connection.";
   async function start() {
     setStarting(true);
     setError(undefined);
@@ -464,6 +629,16 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
       {message && (
         <div className="mt-2 space-y-1" role="status">
           <p>{message}</p>
+          {result?.healthy !== true && typeof result?.error === "string" && (
+            <p className="[overflow-wrap:anywhere]">
+              {result.error}
+              {/bootstrap/i.test(result.error)
+                ? " Check bootstrap DNS in Settings → Advanced."
+                : /certificate|x509/i.test(result.error)
+                  ? " Check the server hostname, certificate and system clock."
+                  : ""}
+            </p>
+          )}
         </div>
       )}
       {error && <ErrorNotice error={error} />}

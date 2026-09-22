@@ -49,8 +49,13 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 		if !os.IsNotExist(err) || c.Admin.SecretGeneration != "" {
 			return nil, err
 		}
-		// Leave HTTP login unavailable until an operator bootstraps a credential.
-		// DNS and the permission-protected local control socket remain available.
+		hash, err := admin.HashPassword("admin")
+		if err != nil {
+			return nil, err
+		}
+		if err = store.EnsureAdminSecret([]byte(hash + "\n")); err != nil {
+			return nil, err
+		}
 	}
 	m := &managedRuntime{store: store, observations: o}
 	tokens, err := admin.OpenTokenStore(filepath.Join(store.ResolvePath(c.Paths.SecretsDir), "api-tokens.json"))

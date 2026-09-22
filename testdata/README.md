@@ -9,7 +9,7 @@ LAN discovery tests and Linux namespace/capability tests have separate opt-ins.
 `config/dimsum.yaml` uses port zero for isolated listeners. Tests supply their own
 upstreams and temporary state. To experiment with a running server, use the
 [development configuration](../guides/configuration.md) in a temporary directory
-and bootstrap a password. Do not store real credentials or query history here.
+and sign in with `admin` on first startup. Do not store real credentials or query history here.
 Relative state and secret paths resolve against the configuration directory.
 
 ## Synthetic upstream

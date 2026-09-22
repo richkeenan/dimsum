@@ -91,12 +91,13 @@ it("adds a provider as one revision-checked mutation", async () => {
   fireEvent.change(screen.getByLabelText("DNS provider"), {
     target: { value: "cloudflare" },
   });
+  fireEvent.click(screen.getByRole("radio", { name: /Standard/ }));
   expect(screen.getByText(/1.0.0.1/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("upstreams", "POST", {
       revision: "original-revision",
-      item: { preset: "cloudflare" },
+      item: { preset: "cloudflare", transport: "plain" },
     }),
   );
   await waitFor(() =>
@@ -115,6 +116,7 @@ it("validates custom upstreams locally and formats IPv6 with the default port", 
   fireEvent.change(screen.getByLabelText("DNS provider"), {
     target: { value: "custom" },
   });
+  fireEvent.click(screen.getByRole("radio", { name: /Standard/ }));
   fireEvent.change(screen.getByLabelText("IP address"), {
     target: { value: "https://dns.example/dns-query" },
   });

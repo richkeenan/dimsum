@@ -33,13 +33,10 @@ set -- /packages/dimsum_*_"$arch".deb
 test "$#" -eq 1
 package=$1
 dpkg -i "$package" > /fixture/install-output
-password=$(sed -n 's/.*"password":"\([A-Za-z0-9_-]*\)".*/\1/p' /fixture/install-output)
-test "${#password}" -ge 32
 curl -fsS --unix-socket /run/dimsum/control.sock http://localhost/health/ready
 curl -fsS http://127.0.0.1:8080/ > /fixture/dashboard
 grep -qi '<!doctype html>' /fixture/dashboard
-printf '{"password":"%s"}' "$password" | curl -fsS -H 'Content-Type: application/json' -d @- http://127.0.0.1:8080/session > /fixture/login
-test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"password":"admin"}' http://127.0.0.1:8080/session)" = 401
+curl -fsS -H 'Content-Type: application/json' -d '{"password":"admin"}' http://127.0.0.1:8080/session > /fixture/login
 echo '# preserved by package upgrade' >> /etc/dimsum/dimsum.yaml
 cp /etc/dimsum/dimsum.yaml /fixture/config
 cp -a /etc/dimsum/secrets /fixture/secrets
@@ -57,12 +54,10 @@ diff -r /fixture/secrets /etc/dimsum/secrets
 mkdir /fixture/unpacked
 tar -xzf /packages/dimsum_*_linux_"$arch".tar.gz -C /fixture/unpacked
 rm -rf /etc/dimsum /var/lib/dimsum
-# Model an interrupted first install: YAML exists, but bootstrap never completed.
+# Model an interrupted first install: YAML exists, but first startup never completed.
 mkdir -p /etc/dimsum
 cp /fixture/unpacked/deploy/dimsum.example.yaml /etc/dimsum/dimsum.yaml
 sh /fixture/unpacked/scripts/install-service.sh /fixture/unpacked > /fixture/retry-output
-password=$(sed -n 's/.*"password":"\([A-Za-z0-9_-]*\)".*/\1/p' /fixture/retry-output)
-test "${#password}" -ge 32
-printf '{"password":"%s"}' "$password" | curl -fsS -H 'Content-Type: application/json' -d @- http://127.0.0.1:8080/session > /fixture/retry-login
+curl -fsS -H 'Content-Type: application/json' -d '{"password":"admin"}' http://127.0.0.1:8080/session > /fixture/retry-login
 curl -fsS --unix-socket /run/dimsum/control.sock http://localhost/health/ready
 echo 'Real package/archive installation, dashboard, login, reinstall and removal passed.'
