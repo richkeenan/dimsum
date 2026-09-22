@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import Queries from "./index";
 
 const mocks = vi.hoisted(() => ({ resource: vi.fn(), live: vi.fn() }));
@@ -20,18 +20,22 @@ const row = {
   duration_us: "1234",
 };
 beforeEach(() => {
+  vi.useFakeTimers();
   mocks.resource.mockReset();
   mocks.live.mockReset().mockReturnValue("Live");
   mocks.resource.mockImplementation((path: string) => ({
-    data: path.startsWith("queries/")
-      ? row
-      : { items: [row], next_cursor: "cursor-a", complete: true },
+    data: path.startsWith("clients?")
+      ? { items: [{ address: "192.0.2.1", name: "Study laptop" }] }
+      : path.startsWith("queries/")
+        ? row
+        : { items: [row], next_cursor: "cursor-a", complete: true },
     loading: false,
     isFetching: false,
   }));
 });
+afterEach(() => vi.useRealTimers());
 
-it("syncs URL filters without persisting them again, and persists user apply and clear", () => {
+it("syncs URL filters and debounces edits, cancelling pending edits on clear", () => {
   const onFilterChange = vi.fn();
   const props = {
     range: "from=one&to=two",
@@ -48,10 +52,69 @@ it("syncs URL filters without persisting them again, and persists user apply and
   fireEvent.change(screen.getByLabelText("Filter name"), {
     target: { value: "third.test" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+  expect(onFilterChange).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(350));
   expect(onFilterChange).toHaveBeenLastCalledWith({ name: "third.test" });
+  fireEvent.change(screen.getByLabelText("Filter name"), {
+    target: { value: "pending.test" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  act(() => vi.advanceTimersByTime(350));
   expect(onFilterChange).toHaveBeenLastCalledWith({});
+});
+
+it("selects a client by name with the keyboard and immediately resets pagination", () => {
+  const onFilterChange = vi.fn();
+  render(
+    <Queries
+      range="from=one&to=two"
+      initialFilter={{}}
+      refresh={0}
+      onLiveTick={vi.fn()}
+      onFilterChange={onFilterChange}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Next" }));
+  const client = screen.getByRole("combobox", { name: "Filter client" });
+  fireEvent.change(client, { target: { value: "study" } });
+  expect(
+    screen.getByRole("option", { name: /Study laptop.*192.0.2.1/ }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(client, { key: "ArrowDown" });
+  fireEvent.keyDown(client, { key: "Enter" });
+  expect(onFilterChange).toHaveBeenLastCalledWith({ client: "192.0.2.1" });
+  expect(screen.getByText("Page 1 · up to 100 queries")).toBeInTheDocument();
+});
+
+it("waits for scope before sending an advanced identity filter", () => {
+  const onFilterChange = vi.fn();
+  render(
+    <Queries
+      range="from=one&to=two"
+      initialFilter={{}}
+      refresh={0}
+      onLiveTick={vi.fn()}
+      onFilterChange={onFilterChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Filter rule_id"), {
+    target: { value: "9" },
+  });
+  act(() => vi.advanceTimersByTime(350));
+  expect(onFilterChange).not.toHaveBeenCalled();
+  expect(screen.getByText(/Add a boot ID and generation/)).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Filter boot_id"), {
+    target: { value: "boot-a" },
+  });
+  fireEvent.change(screen.getByLabelText("Filter generation"), {
+    target: { value: "42" },
+  });
+  act(() => vi.advanceTimersByTime(350));
+  expect(onFilterChange).toHaveBeenLastCalledWith({
+    rule_id: "9",
+    boot_id: "boot-a",
+    generation: "42",
+  });
 });
 
 it("captures cursor range and pauses polling until returning to the newest page", () => {
@@ -60,16 +123,18 @@ it("captures cursor range and pauses polling until returning to the newest page"
   expect(mocks.live).toHaveBeenLastCalledWith(true, expect.any(Function));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   view.rerender(<Queries {...props} range="from=three&to=four" />);
-  expect(mocks.resource).toHaveBeenLastCalledWith(
-    "queries?from=one&to=two&limit=100&cursor=cursor-a",
-    0,
-  );
+  expect(
+    mocks.resource.mock.calls
+      .filter(([path]) => path.startsWith("queries?"))
+      .at(-1),
+  ).toEqual(["queries?from=one&to=two&limit=100&cursor=cursor-a", 0]);
   expect(mocks.live).toHaveBeenLastCalledWith(false, expect.any(Function));
   fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-  expect(mocks.resource).toHaveBeenLastCalledWith(
-    "queries?from=three&to=four&limit=100",
-    0,
-  );
+  expect(
+    mocks.resource.mock.calls
+      .filter(([path]) => path.startsWith("queries?"))
+      .at(-1),
+  ).toEqual(["queries?from=three&to=four&limit=100", 0]);
   expect(mocks.live).toHaveBeenLastCalledWith(true, expect.any(Function));
 });
 

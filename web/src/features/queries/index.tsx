@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ClientFilter } from "./client-filter";
 import { ClientIdentity } from "@/components/client-identity";
 import type { Device } from "@/lib/api";
 import {
@@ -39,6 +40,9 @@ export default function Queries({
 }) {
   const [filters, setFilters] = useState(initialFilter);
   const [draft, setDraft] = useState(initialFilter);
+  const pendingFilter = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const [cursors, setCursors] = useState<string[]>([""]);
   const [selected, setSelected] = useState<string>();
   const [live, setLive] = useState(true);
@@ -55,6 +59,7 @@ export default function Queries({
   );
   const filterKey = JSON.stringify(Object.entries(initialFilter).sort());
   useEffect(() => {
+    clearTimeout(pendingFilter.current);
     const next = Object.fromEntries(JSON.parse(filterKey)) as Record<
       string,
       string
@@ -63,13 +68,29 @@ export default function Queries({
     setDraft(next);
     setCursors([""]);
     setSnapshot(undefined);
+    return () => clearTimeout(pendingFilter.current);
   }, [filterKey]);
   function applyFilters(next: Record<string, string>) {
+    clearTimeout(pendingFilter.current);
     setFilters(next);
     setDraft(next);
     setCursors([""]);
     setSnapshot(undefined);
     onFilterChange?.(next);
+  }
+  function missingScope(next: Record<string, string>) {
+    return (
+      !!(next.rule_id?.trim() || next.upstream_id?.trim()) &&
+      !(next.boot_id?.trim() && next.generation?.trim())
+    );
+  }
+  function changeFilter(key: string, value: string, immediate = false) {
+    const next = { ...draft, [key]: value };
+    setDraft(next);
+    clearTimeout(pendingFilter.current);
+    if (missingScope(next)) return;
+    if (immediate) applyFilters(next);
+    else pendingFilter.current = setTimeout(() => applyFilters(next), 300);
   }
   function inspect(row: Row) {
     setSnapshot(snapshot ?? range);
@@ -95,50 +116,68 @@ export default function Queries({
   return (
     <>
       <form
-        className="mb-[18px] flex flex-wrap items-end gap-2"
+        className="mb-4 space-y-3"
         onSubmit={(e) => {
           e.preventDefault();
-          applyFilters(draft);
+          if (!missingScope(draft)) applyFilters(draft);
         }}
       >
-        {["name", "client", "outcome"].map((key) => (
-          <label
-            className="mb-4 flex min-w-[100px] max-w-[190px] flex-1 flex-col gap-1.5 text-xs font-normal"
-            key={key}
-          >
-            {key === "name"
-              ? "Domain (exact)"
-              : key === "client"
-                ? "Client"
-                : "Result"}
-            {key === "outcome" ? (
-              <select
-                className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                aria-label="Filter outcome"
-                value={draft[key] ?? ""}
-                onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-              >
-                <option value="">All outcomes</option>
-                {outcomes.map((o) => (
-                  <option key={o} value={o}>
-                    {resultLabel(o)}
-                  </option>
-                ))}
-              </select>
+        <div className="grid min-w-0 grid-cols-1 items-end gap-3 min-[701px]:grid-cols-[minmax(0,1.2fr)_minmax(0,1.2fr)_minmax(0,1fr)_auto]">
+          {["name", "client", "outcome"].map((key) =>
+            key === "client" ? (
+              <div key={key} className="flex min-w-0 flex-col gap-1.5 text-xs">
+                <span>Client</span>
+                <ClientFilter
+                  value={draft.client ?? ""}
+                  range={range}
+                  refresh={refresh}
+                  onChange={(value) => changeFilter("client", value, true)}
+                />
+              </div>
             ) : (
-              <Input
-                aria-label={"Filter " + key}
-                value={draft[key] ?? ""}
-                onChange={(e) => setDraft({ ...draft, [key]: e.target.value })}
-              />
-            )}
-          </label>
-        ))}
-        <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-          <summary className="cursor-pointer text-muted-foreground">
+              <label
+                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
+                key={key}
+              >
+                {key === "name" ? "Domain (exact)" : "Result"}
+                {key === "outcome" ? (
+                  <select
+                    className="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    aria-label="Filter outcome"
+                    value={draft[key] ?? ""}
+                    onChange={(e) => changeFilter(key, e.target.value, true)}
+                  >
+                    <option value="">All outcomes</option>
+                    {outcomes.map((o) => (
+                      <option key={o} value={o}>
+                        {resultLabel(o)}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    aria-label={"Filter " + key}
+                    value={draft[key] ?? ""}
+                    onChange={(e) => changeFilter(key, e.target.value)}
+                  />
+                )}
+              </label>
+            ),
+          )}
+          <Button
+            className="justify-self-start"
+            type="button"
+            variant="outline"
+            onClick={() => applyFilters({})}
+          >
+            Clear
+          </Button>
+        </div>
+        <details className="min-w-0 border-b border-border pb-3 text-xs">
+          <summary className="w-fit cursor-pointer rounded-sm py-1 text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
             Advanced filters
           </summary>
-          <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
+          <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 min-[501px]:grid-cols-2 min-[1001px]:grid-cols-3">
             {Object.entries({
               qtype: "Type",
               source_id: "Source ID",
@@ -155,9 +194,7 @@ export default function Queries({
                 <Input
                   aria-label={"Filter " + key}
                   value={draft[key] ?? ""}
-                  onChange={(e) =>
-                    setDraft({ ...draft, [key]: e.target.value })
-                  }
+                  onChange={(e) => changeFilter(key, e.target.value)}
                 />
               </label>
             ))}
@@ -166,40 +203,37 @@ export default function Queries({
             Rule and upstream IDs need a boot ID and generation. Use query
             details to capture that scope. Source IDs match archived identities.
           </p>
+          {missingScope(draft) && (
+            <p className="mt-2 text-xs text-destructive" role="alert">
+              Add a boot ID and generation to update these filters. Results
+              still show the previous selection.
+            </p>
+          )}
         </details>
-        <Button className="mb-4" type="submit">
-          Apply filters
-        </Button>
-        <Button
-          className="mb-4"
-          type="button"
-          variant="outline"
-          onClick={() => {
-            applyFilters({});
-          }}
-        >
-          Clear
-        </Button>
       </form>
       <div className="my-[15px] flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span role="status">
-          {selected
-            ? "Paused while inspecting"
-            : cursors.length > 1
-              ? "Paused on older queries"
-              : !liveAllowed
-                ? "Fixed time range"
-                : !live
-                  ? "Live updates paused"
-                  : connection}
-        </span>
-        <Button
-          variant="outline"
-          disabled={!liveAllowed}
-          onClick={() => setLive(!live)}
-        >
-          {live ? "Pause live" : "Start live"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <span role="status">
+            {selected
+              ? "Paused while inspecting"
+              : cursors.length > 1
+                ? "Paused on older queries"
+                : !liveAllowed
+                  ? "Fixed time range"
+                  : !live
+                    ? "Live updates paused"
+                    : connection}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs"
+            disabled={!liveAllowed}
+            onClick={() => setLive(!live)}
+          >
+            {live ? "Pause live" : "Start live"}
+          </Button>
+        </div>
         <label className="flex flex-row items-center gap-1.5 text-xs font-normal">
           <input
             className="size-4 accent-primary"

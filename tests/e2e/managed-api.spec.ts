@@ -50,9 +50,6 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   await page.getByRole("button", { name: "Next", exact: true }).click();
   await expect(page.getByText("Page 2 · up to 100 queries")).toBeVisible();
   await page.getByLabel("Filter name").fill("ads.example.test");
-  await page
-    .getByRole("button", { name: "Apply filters", exact: true })
-    .click();
   await expect(
     page.getByRole("button", { name: "ads.example.test", exact: true }),
   ).toHaveCount(12);

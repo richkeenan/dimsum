@@ -93,7 +93,6 @@ test("filtered cursors preserve detail position and scope is explicit", async ({
   });
   await page.goto("/queries");
   await page.getByLabel("Filter name").fill("telemetry");
-  await page.getByRole("button", { name: "Apply filters", exact: true }).click();
   await expect
     .poll(() => requests.at(-1)?.searchParams.get("name"))
     .toBe("telemetry");
@@ -298,7 +297,6 @@ test("ordinary numeric URL filters preserve exact identities and round-trip edit
   await page.getByText("Advanced filters", { exact: true }).click();
   await expect(page.getByLabel("Filter rule_id")).toHaveValue("9007199254740993");
   await page.getByLabel("Filter name").fill(query.name);
-  await page.getByRole("button", { name: "Apply filters" }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("name")).toBe(query.name);
   await page.reload();
   await expect(page.getByLabel("Filter name")).toHaveValue(query.name);
@@ -306,6 +304,41 @@ test("ordinary numeric URL filters preserve exact identities and round-trip edit
   await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.has("rule_id")).toBe(false);
   await expect.poll(() => requests.at(-1)?.searchParams.has("rule_id")).toBe(false);
+});
+
+test("query filters update automatically with a searchable client picker and aligned advanced fields", async ({ page }, testInfo) => {
+  await page.goto("/queries");
+  const domain = page.getByLabel("Filter name");
+  const client = page.getByRole("combobox", { name: "Filter client" });
+  const result = page.getByLabel("Filter outcome");
+  await domain.fill("example.test");
+  await expect.poll(() => new URL(page.url()).searchParams.get("name")).toBe("example.test");
+  await client.fill("study");
+  await page.getByRole("option", { name: /Study laptop.*192.0.2.12/ }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("client")).toBe("192.0.2.12");
+  await result.selectOption("blocked");
+  await expect.poll(() => new URL(page.url()).searchParams.get("outcome")).toBe("blocked");
+  await client.fill("192.0.2.99");
+  await client.press("ArrowDown");
+  await client.press("Enter");
+  await expect.poll(() => new URL(page.url()).searchParams.get("client")).toBe("192.0.2.99");
+  const before = await domain.boundingBox();
+  await page.getByText("Advanced filters", { exact: true }).click();
+  expect((await domain.boundingBox())?.y).toBe(before?.y);
+  expect((await page.getByLabel("Filter qtype").boundingBox())!.y).toBeGreaterThan(before!.y + before!.height);
+  for (const theme of ["light", "dark"]) {
+    if (theme === "dark") await page.getByRole("button", { name: "Dark appearance" }).click();
+    const backgrounds = await page.locator('form [data-slot="input"], form select').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
+    expect(new Set(backgrounds).size).toBe(1);
+    expect(backgrounds[0]).not.toBe("rgba(0, 0, 0, 0)");
+    await page.screenshot({ path: testInfo.outputPath(`query-filters-${theme}.png`), fullPage: true });
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("query-filters-mobile.png"), fullPage: true });
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(domain).toHaveValue("");
+  await expect(client).toHaveValue("");
 });
 
 test("changing the range on page two resets the cursor and frozen bounds", async ({ page }) => {
