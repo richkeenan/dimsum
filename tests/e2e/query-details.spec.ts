@@ -56,9 +56,9 @@ test("blocking after an allow exception explains that the exception still wins",
   await page
     .getByRole("button", { name: "Allow " + query.name, exact: true })
     .click();
-  await expect(
-    page.getByText("Allow rule active", { exact: true }),
-  ).toBeVisible();
+  await expect.poll(() => actions).toEqual(["allow"]);
+  await expect(page.getByRole("button", { name: "Allow " + query.name, exact: true })).toHaveText("Allow");
+  await expect(page.getByRole("button", { name: "Allow " + query.name, exact: true })).toBeDisabled();
   outcome = "forwarded";
   await page.reload();
   await page
@@ -158,9 +158,8 @@ test("answers, historical TTLs and contextual blocking are useful without techni
       revision: activation.saved_revision,
       item: { action: "deny", kind: "exact", pattern: query.name },
     });
-  await expect(
-    page.getByText("Block rule active", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Block " + query.name, exact: true })).toHaveText("Block");
+  await expect(page.getByRole("button", { name: "Block " + query.name, exact: true })).toBeDisabled();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 });
 
@@ -217,10 +216,9 @@ test("inline blocking works when randomUUID is unavailable", async ({
   await page.goto("/queries");
   await page.getByRole("button", { name: "Block " + query.name }).click();
   await expect(page.getByRole("alert")).not.toBeVisible();
-  await expect(
-    page.getByText("Block rule active", { exact: true }),
-  ).toBeVisible();
-  expect(item?.id).toMatch(/^query-[0-9a-f]{24}$/);
+  await expect.poll(() => item?.id).toMatch(/^query-[0-9a-f]{24}$/);
+  await expect(page.getByRole("button", { name: "Block " + query.name })).toHaveText("Block");
+  await expect(page.getByRole("button", { name: "Block " + query.name })).toBeDisabled();
 });
 
 test("long query details can be scrolled to and operate their final action", async ({

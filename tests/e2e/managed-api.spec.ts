@@ -60,12 +60,8 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     .getByRole("button", { name: "ads.example.test", exact: true })
     .first()
     .click();
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByRole("paragraph")
-      .filter({ hasText: "custom:browser-block" }),
-  ).toBeVisible();
+  await page.getByRole("dialog").getByText("Matched rule details", { exact: true }).click();
+  await expect(page.getByRole("dialog").locator("pre")).toContainText("custom:browser-block");
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("link", { name: "Devices", exact: true }).click();
   await expect(

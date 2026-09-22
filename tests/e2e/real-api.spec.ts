@@ -106,7 +106,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     page.getByRole("status").filter({ hasText: "Settings saved." }),
   ).toBeVisible();
   const edited = await readFile(file, "utf8");
-  expect(edited).toContain("# Isolated local skeleton");
+  expect(edited).toContain("# Isolated test input");
   expect(edited).toContain("max_stale_seconds: 120");
   expect(edited.split("\n").filter((l) => l.trim().startsWith("#"))).toEqual(
     original.split("\n").filter((l) => l.trim().startsWith("#")),

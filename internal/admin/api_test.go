@@ -96,7 +96,7 @@ func TestStagingPauseAndResumePreserveText(t *testing.T) {
 	assert.False(t, store.Snapshot().Filtering().Paused(time.Now()))
 	b, e := os.ReadFile(path)
 	require.NoError(t, e)
-	assert.True(t, bytes.HasPrefix(b, []byte("# Isolated local skeleton")))
+	assert.True(t, bytes.HasPrefix(b, []byte("# Isolated test input")))
 }
 
 func TestUnavailableIsNotEmptyHistory(t *testing.T) {

@@ -1,4 +1,4 @@
-# Isolated local skeleton; port zero asks the OS for unused test ports.
+# Isolated test input; port zero asks the OS for unused ports.
 version: 1
 dns:
   listen: ["127.0.0.1:0"]

@@ -203,6 +203,7 @@ test("DNS popover fits a narrow screen and keeps IPv6 copy accessible", async ({
     storage: { available: true },
   } }));
   await page.goto("/");
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
   await page.getByRole("button", { name: "DNS server", exact: true }).click();
   const popover = page.getByRole("dialog", { name: "DNS addresses" });
   await expect(popover).toBeVisible();

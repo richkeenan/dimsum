@@ -51,7 +51,7 @@ func TestLocalRecordDashboardHostApproval(t *testing.T) {
 	d, err := config.Parse(b)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"dashboard.test:8080"}, d.Config().Admin.AllowedHosts)
-	assert.True(t, strings.HasPrefix(string(b), "# Isolated local skeleton"))
+	assert.True(t, strings.HasPrefix(string(b), "# Isolated test input"))
 	assert.Equal(t, 409, request(h, "PATCH", "/api/v1/records", approval).Code)
 	w = request(h, "PATCH", "/api/v1/records", mutation(t, store, map[string]any{"accept_admin_host": "attacker.test"}))
 	assert.Equal(t, 422, w.Code)

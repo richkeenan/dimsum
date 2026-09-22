@@ -136,7 +136,7 @@ func TestDHCPHTTPAndCLIRevisionCRUD(t *testing.T) {
 	after, e := os.ReadFile(path)
 	require.NoError(t, e)
 	assert.Equal(t, before, after)
-	assert.True(t, bytes.HasPrefix(after, []byte("# Isolated local skeleton")))
+	assert.True(t, bytes.HasPrefix(after, []byte("# Isolated test input")))
 	code, text = run("delete", "dhcp/reservations/printer", mutation(t, store, map[string]any{}))
 	require.Equal(t, 0, code, text)
 	w = request(h, "DELETE", "/api/v1/dhcp/reservations/printer", mutation(t, store, map[string]any{}))

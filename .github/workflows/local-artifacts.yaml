@@ -30,10 +30,13 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: sh scripts/build-web.sh
+      - run: node --test scripts/*.test.mjs
       - run: npm --prefix web test
       - run: npm exec --prefix web -- playwright install --with-deps chromium
       - run: npm --prefix web run test:e2e
       - run: go test ./...
+      - name: Browser integration against real Go APIs
+        run: DIMSUM_BROWSER_TEST=1 go test ./internal/webassets -run 'TestBrowserAgainst(GoAPI|ManagedRuntime)$' -v -count=1
       - run: go test -race ./...
       - run: go vet ./...
       - name: Bounded parser fuzz smoke
