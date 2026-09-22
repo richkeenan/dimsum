@@ -52,25 +52,32 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 					continue
 				}
 				e := Evidence{Source: "dns-sd", Hostname: host, ServiceType: strings.TrimSuffix(p.key.owner, ".local"), Label: p.label, Updated: srv.learned, Expires: minTime(a.expires, minTime(p.expires, srv.expires))}
-				for _, txt := range c.owners[recordGroup{iface, srv.key.owner, 16}] {
-					if txt.key.iface == iface && txt.key.owner == srv.key.owner && txt.key.kind == 16 && now.Before(txt.expires) {
-						// Conflicting TXT records do not supply classification metadata.
-						if e.Model != "" || e.Manufacturer != "" || e.DeviceType != "" {
-							e.Model = ""
-							e.Manufacturer = ""
-							e.DeviceType = ""
+				var txt mdnsRecord
+				txtCount := 0
+				for _, candidate := range c.owners[recordGroup{iface, srv.key.owner, 16}] {
+					if now.Before(candidate.expires) {
+						txt, txtCount = candidate, txtCount+1
+					}
+				}
+				// Conflicting TXT records supply neither labels nor classification.
+				if txtCount == 1 {
+					if txt.expires.Before(e.Expires) {
+						// Keep the independently valid service evidence when its
+						// optional TXT metadata has a shorter lifetime.
+						evidence = append(evidence, e)
+					}
+					for _, key := range []string{"model", "md", "am", "ty", "product"} {
+						if txt.txt[key] != "" {
+							e.Model = txt.txt[key]
 							break
 						}
-						for _, key := range []string{"model", "md", "am", "ty", "product"} {
-							if txt.txt[key] != "" {
-								e.Model = txt.txt[key]
-								break
-							}
-						}
-						e.Manufacturer = txt.txt["manufacturer"]
-						e.DeviceType = txt.txt["device_type"]
-						e.Expires = minTime(e.Expires, txt.expires)
 					}
+					e.Manufacturer = txt.txt["manufacturer"]
+					e.DeviceType = txt.txt["device_type"]
+					if friendly := txt.txt["fn"]; genericName(e.Label) && friendly != "" && !genericName(friendly) {
+						e.Label = friendly
+					}
+					e.Expires = minTime(e.Expires, txt.expires)
 				}
 				evidence = append(evidence, e)
 			}
@@ -98,7 +105,9 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 	result.Updated = first.Updated
 	result.Fresh = true
 	for _, e := range evidence {
-		result.Expires = minTime(result.Expires, e.Expires)
+		if e.Expires.After(result.Expires) {
+			result.Expires = e.Expires
+		}
 	}
 	result.Device = &Enrichment{Hostname: first.Hostname, Evidence: evidence}
 	return result

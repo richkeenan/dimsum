@@ -41,8 +41,12 @@ func cloneDevice(d *Enrichment) *Enrichment {
 // Apply authoritative name selection last, even when discovery refreshes first.
 func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 	primary.Device = cloneDevice(primary.Device)
+	if multicast.Device != nil && len(multicast.Device.Evidence) > 0 {
+		multicast = enrichDiscovered(multicast, now)
+	}
 	if now.Before(multicast.Expires) {
-		if primary.Name == "" {
+		staleDerived := !primary.Fresh && (primary.Source == "hosts" || primary.Source == "router-ptr")
+		if primary.Name == "" || staleDerived {
 			primary.Name = multicast.Name
 			primary.Source = multicast.Source
 			primary.Updated = multicast.Updated
@@ -68,7 +72,11 @@ func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 }
 
 func genericName(name string) bool {
-	n := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(name, "."), ".local"))
+	n := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "."), ".local")
+	// mDNS conflict resolution appends numeric suffixes to generic hostnames.
+	if base, suffix, ok := strings.Cut(n, "-"); ok && suffix != "" && strings.Trim(suffix, "0123456789") == "" {
+		n = base
+	}
 	switch n {
 	case "", "android", "linux", "home", "unknown", "device", "localhost", "none":
 		return true
@@ -92,6 +100,28 @@ func enrichDiscovered(n Name, now time.Time) Name {
 	slices.SortFunc(d.Evidence, func(a, b Evidence) int {
 		return strings.Compare(a.Label+"\x00"+a.ServiceType+"\x00"+a.Hostname, b.Label+"\x00"+b.ServiceType+"\x00"+b.Hostname)
 	})
+	if len(d.Evidence) > 0 {
+		// A cached display label may have depended on now-expired TXT metadata.
+		// Re-select from live evidence on every read, retaining the hostname when
+		// it is still supported so packet ordering cannot make it oscillate.
+		host := ""
+		for _, e := range d.Evidence {
+			if e.Hostname == "" {
+				continue
+			}
+			if host == "" || e.Hostname == d.Hostname {
+				host = e.Hostname
+			}
+			if host == d.Hostname {
+				break
+			}
+		}
+		if host != "" {
+			n.Name, d.Hostname = host, host
+		}
+		n.Source = d.Evidence[0].Source
+		d.Model, d.Manufacturer = "", ""
+	}
 	d.Fresh = true
 	for _, e := range d.Evidence {
 		if genericName(n.Name) && e.Label != "" && !genericName(e.Label) {

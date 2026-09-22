@@ -80,6 +80,33 @@ func TestEnrichmentSelectsUsefulLabelAndExpires(t *testing.T) {
 	assert.Empty(t, enrichDiscovered(n, now.Add(time.Hour)).Name)
 	n.Name = "homeassistant.local"
 	n.Device.Hostname = n.Name
+	n.Device.Evidence[0].Hostname = n.Name
 	n.Device.Evidence[0].Label = "Home"
 	assert.Equal(t, "homeassistant.local", enrichDiscovered(n, now).Name)
+}
+
+func TestNumberedGenericHostnamesPreferVerifiedLabels(t *testing.T) {
+	now := time.Now()
+	for _, hostname := range []string{"none-2.local", "Linux-12.local.", "android-3.local", "UNKNOWN-7.local", "01234567-89ab-cdef-0123-456789abcdef.local"} {
+		n := Name{Name: hostname, Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: hostname, Evidence: []Evidence{
+			{Source: "dns-sd", Label: "Example TV", ServiceType: "_airplay._tcp", Expires: now.Add(time.Minute)},
+		}}}
+		assert.Equal(t, "Example TV", enrichDiscovered(n, now).Name, hostname)
+	}
+	for _, hostname := range []string{"Office-2.local", "Kitchen-speaker-2.local", "Linux-lab.local"} {
+		assert.False(t, genericName(hostname), hostname)
+	}
+}
+
+func TestExpiredDerivedNameYieldsToFreshDiscovery(t *testing.T) {
+	now := time.Now()
+	for _, source := range []string{"hosts", "router-ptr"} {
+		old := Name{Name: "Old cached name", Source: source, Expires: now.Add(-time.Second)}
+		live := Name{Name: "Current device", Source: "mdns", Fresh: true, Expires: now.Add(time.Minute)}
+		got := mergeDiscovered(old, live, now)
+		assert.Equal(t, "Current device", got.Name)
+		assert.Equal(t, "mdns", got.Source)
+		old.Fresh = true
+		assert.Equal(t, "Old cached name", mergeDiscovered(old, live, now).Name)
+	}
 }
