@@ -30,6 +30,18 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
     await page.getByRole("button", { name: "Done", exact: true }).click();
     await page.getByRole("link", { name: "DHCP", exact: true }).click();
     await expect(page.getByLabel("Enable DHCP")).not.toBeChecked();
+    const inspected = await call("get_dhcp");
+    if (!inspected.availability.supported) {
+      await expect(page.getByRole("heading", { name: "DHCP is unavailable" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "DHCP status" }).getByText(inspected.availability.reason)).toBeVisible();
+      await expect(page.getByLabel("Enable DHCP")).toBeDisabled();
+      await expect(page.getByLabel("Subnet")).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Add reservation" })).toBeDisabled();
+      await page.getByText("Troubleshooting", { exact: true }).click();
+      await expect(page.getByRole("button", { name: "Check setup" })).toBeDisabled();
+      expect((await call("get_dhcp")).status.saved_revision).toBe(inspected.status.saved_revision);
+      return;
+    }
     await page.getByLabel("Subnet").fill("192.0.2.0/24");
     await page.getByLabel("Local domain", { exact: true }).fill("home.arpa");
     await page.getByRole("button", { name: "Save settings" }).click();
