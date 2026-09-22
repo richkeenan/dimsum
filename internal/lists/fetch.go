@@ -21,6 +21,8 @@ type Fetcher struct {
 	Timeout                    time.Duration
 }
 
+type fetchContextKey struct{}
+
 func NewFetcher(client *http.Client) *Fetcher {
 	if client == nil {
 		client = bootstrapClient(nil)
@@ -51,6 +53,11 @@ func NewFetcherWithUpstreams(upstreams []string) (*Fetcher, error) {
 // A lookup-scoped client owns and closes encrypted sockets after each dial;
 // the HTTP transport still reuses subscription connections normally.
 func NewFetcherWithOptions(options upstream.Options) (*Fetcher, error) {
+	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+	return newFetcherWithDial(options, dialer.DialContext)
+}
+
+func newFetcherWithDial(options upstream.Options, dial func(context.Context, string, string) (net.Conn, error)) (*Fetcher, error) {
 	if len(options.Endpoints) == 0 {
 		return NewFetcher(nil), nil
 	}
@@ -67,13 +74,30 @@ func NewFetcherWithOptions(options upstream.Options) (*Fetcher, error) {
 	}
 	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second}
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		// HTTP detaches dial cancellation from its request. Keep both the
+		// originating fetch lifetime and transport cancellation authoritative.
+		origin, _ := ctx.Value(fetchContextKey{}).(context.Context)
+		budget := 10 * time.Second
+		if origin != nil {
+			if deadline, ok := origin.Deadline(); ok {
+				budget = min(budget, time.Until(deadline))
+			}
+		}
+		ctx, cancel := context.WithTimeout(ctx, budget)
+		defer cancel()
+		if origin != nil {
+			stop := context.AfterFunc(origin, cancel)
+			defer stop()
+			if origin.Err() != nil {
+				return nil, origin.Err()
+			}
+		}
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
 			return nil, err
 		}
-		dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
 		if _, err := netip.ParseAddr(host); err == nil {
-			return dialer.DialContext(ctx, network, address)
+			return dial(ctx, network, address)
 		}
 		client, err := upstream.New(options)
 		if err != nil {
@@ -84,9 +108,22 @@ func NewFetcherWithOptions(options upstream.Options) (*Fetcher, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, a := range addresses {
-			conn, e := dialer.DialContext(ctx, network, net.JoinHostPort(a.String(), port))
+		addresses = alternateFamilies(addresses)
+		for i, a := range addresses {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			// Reserve a fair share for every remaining candidate, including
+			// candidates within one family. No literal gets a new ten seconds.
+			deadline, _ := ctx.Deadline()
+			candidate, stop := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(addresses)-i))
+			conn, e := dial(candidate, network, net.JoinHostPort(a.String(), port))
+			stop()
 			if e == nil {
+				if err := ctx.Err(); err != nil {
+					conn.Close()
+					return nil, err
+				}
 				return conn, nil
 			}
 			err = e
@@ -94,6 +131,32 @@ func NewFetcherWithOptions(options upstream.Options) (*Fetcher, error) {
 		return nil, err
 	}
 	return NewFetcher(&http.Client{Transport: transport}), nil
+}
+
+// Preserve the preferred family and within-family order, while giving the
+// other family its first opportunity immediately after the first candidate.
+func alternateFamilies(addresses []netip.Addr) []netip.Addr {
+	if len(addresses) < 2 {
+		return addresses
+	}
+	var preferred, alternate []netip.Addr
+	for _, a := range addresses {
+		if a.Is4() == addresses[0].Is4() {
+			preferred = append(preferred, a)
+		} else {
+			alternate = append(alternate, a)
+		}
+	}
+	out := make([]netip.Addr, 0, len(addresses))
+	for i := 0; i < max(len(preferred), len(alternate)); i++ {
+		if i < len(preferred) {
+			out = append(out, preferred[i])
+		}
+		if i < len(alternate) {
+			out = append(out, alternate[i])
+		}
+	}
+	return out
 }
 
 func bootstrapClient(endpoints []netip.AddrPort) *http.Client {
@@ -124,6 +187,7 @@ func (f *Fetcher) fetch(ctx context.Context, s Subscription, old *sourceArtifact
 	}
 	ctx, cancel := context.WithTimeout(ctx, f.Timeout)
 	defer cancel()
+	ctx = context.WithValue(ctx, fetchContextKey{}, ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.URL, nil)
 	if err != nil {
 		return nil, "", "", false, err
