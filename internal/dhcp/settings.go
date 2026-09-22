@@ -199,18 +199,31 @@ func ValidateTransition(old, next Settings) error {
 	return nil
 }
 
-// ValidateDNS checks configuration reachability; runtime must also check the
-// interface's static address and that the DNS listener actually started.
+// ValidateDNS accepts configured wildcard listeners which may be dual-stack.
+// Runtime must use ValidateBoundDNS with socket-verified IPv4 endpoints.
 func ValidateDNS(s Settings, listeners []string) error {
+	return validateDNS(s, listeners, true)
+}
+
+// ValidateBoundDNS requires actual IPv4 capability, never an IPv6 address alone.
+// The listener owner represents verified dual-stack sockets as 0.0.0.0:port.
+func ValidateBoundDNS(s Settings, listeners []string) error {
+	return validateDNS(s, listeners, false)
+}
+
+func validateDNS(s Settings, listeners []string, allowDualStack bool) error {
 	if !s.Enabled {
 		return nil
 	}
 	server, _ := netip.ParseAddr(s.ServerIP)
 	for _, v := range listeners {
 		a, err := netip.ParseAddrPort(v)
-		if err == nil && a.Port() == 53 && (a.Addr() == server || a.Addr() == netip.IPv4Unspecified()) {
+		if err == nil && a.Port() == 53 && (a.Addr() == server || a.Addr() == netip.IPv4Unspecified() || (allowDualStack && a.Addr() == netip.IPv6Unspecified())) {
 			return nil
 		}
 	}
-	return fmt.Errorf("dhcp: DNS must listen on server_ip:53 or 0.0.0.0:53")
+	if allowDualStack {
+		return fmt.Errorf("dhcp: DNS must listen on server_ip:53, 0.0.0.0:53 or dual-stack [::]:53")
+	}
+	return fmt.Errorf("dhcp: DNS needs IPv4-capable UDP and TCP listeners on server_ip:53 or all addresses")
 }

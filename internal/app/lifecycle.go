@@ -223,7 +223,7 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	if store != nil {
 		dataDir = store.ResolvePath(dataDir)
 	}
-	dhcpDNS := addresses.DNS
+	dhcpDNS := dhcpIPv4Listeners(sockets.TCP, sockets.UDP)
 	if server == nil {
 		dhcpDNS = nil
 	} // bound custom-handler sockets are not DNS readiness

@@ -11,6 +11,15 @@ func fixtureSettings() Settings {
 	return Settings{Enabled: true, Interface: "eth0", ServerIP: "192.0.2.2", Subnet: "192.0.2.0/24", Gateway: "192.0.2.1", RangeStart: "192.0.2.100", RangeEnd: "192.0.2.199", LeaseSeconds: 86400, LocalDomain: "home.arpa", MaxLeases: 1024}
 }
 
+func TestDNSConfigurationAcceptsDualStackWildcard(t *testing.T) {
+	for _, address := range []string{"192.0.2.2:53", "0.0.0.0:53", "[::]:53"} {
+		assert.NoError(t, ValidateDNS(fixtureSettings(), []string{address}), address)
+	}
+	for _, address := range []string{"[::1]:53", "[2001:db8::1]:53", "[::]:5353", "192.0.2.3:53", "127.0.0.1:53", "invalid"} {
+		assert.Error(t, ValidateDNS(fixtureSettings(), []string{address}), address)
+	}
+}
+
 func TestLocalDomainLeavesRoomForLeaseHostname(t *testing.T) {
 	s := fixtureSettings()
 	s.LocalDomain = strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 61)

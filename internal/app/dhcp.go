@@ -221,7 +221,7 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 	s.status.State = "starting"
 	s.status.Runtime = dhcp.RuntimeStatus{Storage: "unopened", Capacity: next.Capacity()}
 	s.mu.Unlock()
-	if err := dhcp.ValidateDNS(next, s.dns); err != nil {
+	if err := dhcp.ValidateBoundDNS(next, s.dns); err != nil {
 		return failed(err)
 	}
 	// Once preparation starts, the caller's deadline only stops its wait.

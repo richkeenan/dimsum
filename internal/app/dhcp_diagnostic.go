@@ -44,7 +44,13 @@ func dhcpDiagnostic(service *Service, storeSettings func() (dhcp.Settings, uint6
 		} else {
 			checks["configuration"] = "valid"
 		}
-		if err := dhcp.ValidateDNS(candidate, service.Addresses().DNS); err != nil {
+		service.mu.Lock()
+		var dns []string
+		if service.dhcp != nil {
+			dns = service.dhcp.dns
+		}
+		service.mu.Unlock()
+		if err := dhcp.ValidateBoundDNS(candidate, dns); err != nil {
 			checks["dns_listener"] = control.RedactMessage(err.Error())
 		} else {
 			checks["dns_listener"] = "bound configuration matches; firewall/LAN reachability not proven"

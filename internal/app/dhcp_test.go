@@ -306,13 +306,17 @@ func TestDHCPDisabledCreatesNoResourcesAndFailureIsLatched(t *testing.T) {
 }
 
 func TestDHCPRejectsDNSUnavailableBeforeOpening(t *testing.T) {
-	s := NewDHCPSupervisor(t.TempDir(), []string{"127.0.0.1:1053"})
-	s.openLink = func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
-		t.Fatal("opened socket without DNS")
-		return nil, nil, nil
+	for _, address := range []string{"127.0.0.1:1053", "[::]:53"} {
+		s := NewDHCPSupervisor(t.TempDir(), []string{address})
+		var opened atomic.Bool
+		s.openLink = func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
+			opened.Store(true)
+			return nil, nil, errors.New("opened socket without verified IPv4 DNS")
+		}
+		require.Error(t, s.Reconcile(context.Background(), dhcpSettings(), 1))
+		assert.Equal(t, "error", s.Status().State)
+		assert.False(t, opened.Load())
 	}
-	require.Error(t, s.Reconcile(context.Background(), dhcpSettings(), 1))
-	assert.Equal(t, "error", s.Status().State)
 }
 
 func TestDHCPStalledPreparationIsOwnedAndShutdownBounded(t *testing.T) {

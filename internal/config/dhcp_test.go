@@ -42,11 +42,11 @@ func TestDHCPCandidateMustReconcileHeldOwnership(t *testing.T) {
 func TestDHCPRequiresDNSOnServerPort53(t *testing.T) {
 	c := Default()
 	c.DHCP = dhcp.Settings{Enabled: true, Interface: "eth0", ServerIP: "192.0.2.2", Subnet: "192.0.2.0/24", Gateway: "192.0.2.1", RangeStart: "192.0.2.100", RangeEnd: "192.0.2.199", LeaseSeconds: 86400, LocalDomain: "home.arpa"}
-	for _, listen := range []string{"127.0.0.1:53", "192.0.2.2:5353", "[::]:53"} {
+	for _, listen := range []string{"127.0.0.1:53", "192.0.2.2:5353", "[::1]:53", "[2001:db8::1]:53", "[::]:5353"} {
 		c.DNS.Listen = []string{listen}
 		assert.Error(t, Validate(c), listen)
 	}
-	for _, listen := range []string{"192.0.2.2:53", "0.0.0.0:53"} {
+	for _, listen := range []string{"192.0.2.2:53", "0.0.0.0:53", "[::]:53"} {
 		c.DNS.Listen = []string{listen}
 		assert.NoError(t, Validate(c), listen)
 	}
