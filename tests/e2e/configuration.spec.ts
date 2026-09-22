@@ -216,7 +216,26 @@ test("collection editor waits for its revision and catalog presets fill the list
   await expect(page.getByLabel("List URL")).toHaveValue("https://example.test/list");
   await expect(page.getByLabel("Format", { exact: true })).toHaveValue("domains");
   await expect(page.getByLabel("Domain scope")).toHaveValue("exact");
-  await expect(page.getByRole("option", { name: /Unavailable fixture/ })).toHaveJSProperty("disabled", true);
+  await expect(page.getByRole("option", { name: /Unavailable fixture/ })).toHaveCount(0);
+  const dialog = page.getByRole("dialog");
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const bounds = await dialog.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds!.width).toBeLessThanOrEqual(width - 32);
+    if (width === 1440) expect(bounds!.width).toBe(720);
+    expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const url = await page.getByLabel("List URL").boundingBox();
+    expect(url!.width).toBeGreaterThan(bounds!.width * 0.8);
+    await expect(dialog.getByRole("button", { name: "Add list" })).toBeInViewport();
+    await page.screenshot({ path: `test-results/list-dialog-${width}.png` });
+  }
+  await page.getByLabel("Format", { exact: true }).selectOption("dns-adblock");
+  await expect(dialog.getByText(/Browser filter rules are not supported/)).toBeVisible();
+  await page.getByLabel("Format", { exact: true }).selectOption("hosts");
+  await expect(dialog.getByText(/Browser filter rules are not supported/)).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).not.toBeVisible();
 });
 
 test("password confirmation prevents submission and a successful change signs out", async ({ page }) => {

@@ -46,7 +46,6 @@ const fields: Record<string, Field[]> = {
       key: "dialect",
       label: "Format",
       options: ["domains", "hosts", "dns-adblock"],
-      help: "Domains: one domain per line. Hosts: IP and domain pairs. DNS adblock: domain-only blocking syntax such as ||example.com^. Browser filter rules are not supported.",
     },
     { key: "domain_kind", label: "Domain scope", options: ["exact", "suffix"] },
     { key: "enabled", label: "Enabled", type: "boolean" },
@@ -121,6 +120,12 @@ const optionLabels: Record<string, string> = {
   hosts: "Hosts file",
   "dns-adblock": "DNS adblock",
 };
+const listFormatHelp: Record<string, string> = {
+  domains: "One domain name per line.",
+  hosts: "IP address and domain name pairs, one per line.",
+  "dns-adblock":
+    "Domain blocking rules such as ||example.com^. Browser filter rules are not supported.",
+};
 export function editorDefaults(kind: string): Row {
   const defaults = Object.fromEntries(
     fields[kind].map((f) => [
@@ -139,7 +144,7 @@ function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
   const [selected, setSelected] = useState<Row>();
   return (
     <Resource state={catalog}>
-      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
+      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal sm:col-span-2">
         Start with a list
         <select
           className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -153,23 +158,18 @@ function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
           }}
         >
           <option value="">Custom URL</option>
-          {rows(catalog.data).map((item) => (
-            <option
-              key={text(item.id)}
-              value={text(item.id)}
-              disabled={item.available !== true}
-            >
-              {text(item.label)}
-              {item.available !== true
-                ? ` — ${text(item.unavailable_reason)}`
-                : ""}
-            </option>
-          ))}
+          {rows(catalog.data)
+            .filter((item) => item.available === true)
+            .map((item) => (
+              <option key={text(item.id)} value={text(item.id)}>
+                {text(item.label)}
+              </option>
+            ))}
         </select>
         <small className="text-xs font-normal text-muted-foreground">
           {selected?.description
             ? text(selected.description)
-            : "Choose a preset to fill in its URL and format, or enter your own below."}
+            : "Choose a preset or enter a custom URL below."}
         </small>
       </label>
     </Resource>
@@ -657,7 +657,9 @@ export default function Configuration({
           if (!open && !busy) setEditing(undefined);
         }}
       >
-        <DialogContent className="max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] min-w-0 overflow-y-auto [&>*]:min-w-0">
+        <DialogContent
+          className={`max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] min-w-0 overflow-y-auto [&>*]:min-w-0 ${kind === "lists" ? "sm:max-w-[720px] sm:p-8" : ""}`}
+        >
           <DialogTitle>
             {original ? "Edit" : "Add"}{" "}
             {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
@@ -671,7 +673,9 @@ export default function Configuration({
                 void mutate(original ? "PATCH" : "POST", editing);
               }}
             >
-              <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
+              <div
+                className={`mt-3.5 mb-6 grid min-w-0 grid-cols-1 gap-x-6 gap-y-5 [&>*]:min-w-0 ${kind === "lists" ? "sm:grid-cols-2" : "min-[701px]:grid-cols-2"}`}
+              >
                 {kind === "lists" && !original && (
                   <CatalogPicker
                     choose={(item) =>
@@ -687,7 +691,7 @@ export default function Configuration({
                 )}
                 {fields[kind].map((f) => (
                   <label
-                    className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
+                    className={`flex min-w-0 flex-col gap-1.5 text-xs font-normal ${kind === "lists" && f.key === "url" ? "sm:col-span-2" : ""}`}
                     key={f.key}
                   >
                     {f.label}
@@ -739,9 +743,11 @@ export default function Configuration({
                         }
                       />
                     )}
-                    {f.help && (
-                      <small className="text-xs font-normal text-muted-foreground">
-                        {f.help}
+                    {(f.help || (kind === "lists" && f.key === "dialect")) && (
+                      <small className="text-xs font-normal leading-relaxed text-muted-foreground">
+                        {kind === "lists" && f.key === "dialect"
+                          ? listFormatHelp[text(editing.dialect)]
+                          : f.help}
                       </small>
                     )}
                   </label>
@@ -766,9 +772,25 @@ export default function Configuration({
                   }}
                 />
               )}
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`flex flex-wrap items-center gap-2 ${kind === "lists" ? "justify-end border-t border-border pt-5" : ""}`}
+              >
+                {kind === "lists" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => setEditing(undefined)}
+                  >
+                    Cancel
+                  </Button>
+                )}
                 <Button disabled={busy || !editRevision}>
-                  {busy ? "Saving…" : "Save changes"}
+                  {busy
+                    ? "Saving…"
+                    : kind === "lists" && !original
+                      ? "Add list"
+                      : "Save changes"}
                 </Button>
                 {original && (
                   <Button

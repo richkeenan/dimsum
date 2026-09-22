@@ -87,7 +87,7 @@ it("uses catalog values and generates an ID without requiring a manual one", asy
   expect(within(dialog).getByRole("combobox", { name: "Format" })).toHaveValue(
     "dns-adblock",
   );
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add list" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("lists", "POST", {
       revision: "original-revision",
