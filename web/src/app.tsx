@@ -425,7 +425,14 @@ export default function App() {
             ) : page === "jobs" ? (
               <Jobs />
             ) : (
-              <Configuration key={page} kind={page} range={rangeParams} />
+              <Configuration
+                key={page}
+                kind={page}
+                range={rangeParams}
+                onClientQueries={(address) =>
+                  go("queries", { ...rangeSearch, client: address })
+                }
+              />
             )}
           </Suspense>
         </main>

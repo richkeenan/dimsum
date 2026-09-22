@@ -1,6 +1,8 @@
 import { useState } from "react";
 import {
   Camera,
+  Gamepad2,
+  Info,
   Laptop,
   Lightbulb,
   Monitor,
@@ -14,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Device } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +38,7 @@ const categories: Record<string, [string, LucideIcon]> = {
   lighting: ["Lighting", Lightbulb],
   appliance: ["Appliance", Plug],
   server: ["Server", Server],
+  console: ["Game console", Gamepad2],
 };
 type Props = {
   address: string;
@@ -132,13 +136,15 @@ export function ClientDeviceButton(props: Props & { source?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button
-        className="max-w-full text-left hover:underline"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen(true)}
         aria-label={`Device details for ${props.name || props.address}`}
       >
-        <ClientIdentity {...props} />
-      </button>
+        <Info aria-hidden="true" />
+        Details
+      </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>

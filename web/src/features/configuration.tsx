@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { ClientDeviceButton } from "@/components/client-identity";
+import {
+  ClientDeviceButton,
+  ClientIdentity,
+} from "@/components/client-identity";
 import type { Device } from "@/lib/api";
 import {
   api,
@@ -187,9 +190,11 @@ function ListName({ row }: { row: Row }) {
 export default function Configuration({
   kind,
   range,
+  onClientQueries,
 }: {
   kind: string;
   range: string;
+  onClientQueries?: (address: string) => void;
 }) {
   const [tick, setTick] = useState(0);
   const state = useResource<Row>(
@@ -374,14 +379,18 @@ export default function Configuration({
                       key: "name",
                       label: "Client",
                       render: (r) => (
-                        <ClientDeviceButton
-                          address={text(r.address)}
-                          name={r.name ? String(r.name) : undefined}
-                          device={r.device as Device | undefined}
-                          source={
-                            r.name_source ? String(r.name_source) : undefined
-                          }
-                        />
+                        <button
+                          className="max-w-full text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                          aria-label={`View queries for ${r.name || r.address}`}
+                          onClick={() => onClientQueries?.(text(r.address))}
+                        >
+                          <ClientIdentity
+                            address={text(r.address)}
+                            name={r.name ? String(r.name) : undefined}
+                            device={r.device as Device | undefined}
+                            stale={r.name_fresh === false}
+                          />
+                        </button>
                       ),
                     },
                     {
@@ -398,20 +407,30 @@ export default function Configuration({
                       key: "actions",
                       label: "Actions",
                       render: (r) => (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!ready}
-                          onClick={() =>
-                            open(
-                              collectionRows(state.data).find(
-                                (c) => c.address === r.address,
-                              ) ?? r,
-                            )
-                          }
-                        >
-                          Set name
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <ClientDeviceButton
+                            address={text(r.address)}
+                            name={r.name ? String(r.name) : undefined}
+                            device={r.device as Device | undefined}
+                            source={
+                              r.name_source ? String(r.name_source) : undefined
+                            }
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!ready}
+                            onClick={() =>
+                              open(
+                                collectionRows(state.data).find(
+                                  (c) => c.address === r.address,
+                                ) ?? r,
+                              )
+                            }
+                          >
+                            Set name
+                          </Button>
+                        </div>
                       ),
                     },
                   ]}

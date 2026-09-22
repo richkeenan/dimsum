@@ -305,6 +305,34 @@ it("keeps one row per device and uses its configured friendly name", () => {
   expect(screen.getAllByRole("table")).toHaveLength(1);
 });
 
+it("opens client queries from the name and discovery details from a separate action", () => {
+  resources.values["clients?&limit=200"] = {
+    loading: false,
+    data: {
+      revision: "ready",
+      observed_available: true,
+      items: [],
+      observed: {
+        items: [{ address: "192.0.2.20", name: "Example television" }],
+      },
+    },
+  };
+  const queries = vi.fn();
+  render(<Configuration kind="clients" range="" onClientQueries={queries} />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "View queries for Example television" }),
+  );
+  expect(queries).toHaveBeenCalledWith("192.0.2.20");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Device details for Example television",
+    }),
+  );
+  expect(screen.getByRole("dialog")).toHaveTextContent("192.0.2.20");
+  expect(queries).toHaveBeenCalledTimes(1);
+});
+
 it("keeps device details open and current across client refreshes and reordering", () => {
   const client = {
     address: "192.0.2.20",
