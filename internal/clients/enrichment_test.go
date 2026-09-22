@@ -201,3 +201,30 @@ func TestPrinterFriendlyNameOutranksHardwareHostname(t *testing.T) {
 		assert.Equal(t, "brn020000000001.local", enrichDiscovered(got, now.Add(11*time.Second)).Name)
 	}
 }
+
+func TestSpotifyDefaultConsoleNameUsesVerifiedProduct(t *testing.T) {
+	now := time.Now()
+	for _, tt := range []struct{ label, brand, model, want string }{
+		{"PS5-123", "Sony", "PlayStation 5", "Sony PlayStation 5"},
+		{"ps5-001", "Sony", "PlayStation 5", "Sony PlayStation 5"},
+		{"Living Room PS5", "Sony", "PlayStation 5", "Living Room PS5"},
+		{"PS5-123 upstairs", "Sony", "PlayStation 5", "PS5-123 upstairs"},
+		{"PS5-", "Sony", "PlayStation 5", "PS5-"},
+		{"PS5-123", "Example", "Other console", "PS5-123"},
+		{"PS5-123", "Sony", "", "PS5-123"},
+	} {
+		t.Run(tt.label+tt.brand+tt.model, func(t *testing.T) {
+			n := Name{Name: "ps5-abcdef.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "ps5-abcdef.local", Evidence: []Evidence{
+				{Source: "mdns", Hostname: "ps5-abcdef.local", Expires: now.Add(time.Minute)},
+				{Source: "spotify-connect", Hostname: "ps5-abcdef.local", ServiceType: "_spotify-connect._tcp", Label: tt.label, Manufacturer: tt.brand, Model: tt.model, Expires: now.Add(10 * time.Second)},
+			}}}
+			got := enrichDiscovered(n, now)
+			assert.Equal(t, tt.want, got.Name)
+			assert.Equal(t, "spotify-connect", got.Source)
+			assert.Equal(t, tt.label, n.Device.Evidence[1].Label)
+			assert.Contains(t, got.Device.Evidence, n.Device.Evidence[1])
+			assert.Equal(t, "Owner name", mergeDiscovered(Name{Name: "Owner name", Source: "override", Fresh: true}, got, now).Name)
+			assert.Equal(t, "ps5-abcdef.local", enrichDiscovered(got, now.Add(11*time.Second)).Name)
+		})
+	}
+}

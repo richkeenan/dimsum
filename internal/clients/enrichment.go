@@ -104,6 +104,13 @@ func discoveredLabel(e Evidence) (string, int) {
 	priority := 1
 	if e.Source == "spotify-connect" {
 		priority = 4
+		// Prefer the verified product over the console's default-looking
+		// numbered name. Keep personalised labels and raw evidence intact.
+		if e.Manufacturer == "Sony" && e.Model == "PlayStation 5" {
+			if suffix, ok := strings.CutPrefix(strings.ToLower(label), "ps5-"); ok && suffix != "" && strings.Trim(suffix, "0123456789") == "" {
+				label = "Sony PlayStation 5"
+			}
+		}
 	}
 	switch strings.TrimSuffix(e.ServiceType, ".") {
 	case "_airplay._tcp", "_companion-link._tcp", "_googlecast._tcp", "_ipp._tcp", "_ipps._tcp", "_ipp-tls._tcp", "_printer._tcp", "_pdl-datastream._tcp":
