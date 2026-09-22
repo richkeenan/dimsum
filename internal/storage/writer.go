@@ -110,6 +110,13 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			return err
 		}
 	}
+	// At most MaxBatch*3 sparse entries; aggregate off the DNS request path.
+	type latencyKey struct {
+		resolution, bucket int64
+		outcome            stats.Outcome
+		bin                int
+	}
+	latencies := make(map[latencyKey]uint64)
 	for _, e := range events {
 		if e.Sequence <= watermark {
 			continue
@@ -149,6 +156,9 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			if _, err = roll.ExecContext(ctx, int64(width/time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, 1, e.Duration, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7]); err != nil {
 				return err
 			}
+			if e.Outcome != stats.AdmissionRejected {
+				latencies[latencyKey{int64(width / time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, stats.LatencyIndex(e.Duration)}]++
+			}
 		}
 		if e.Outcome != stats.AdmissionRejected && stats.UTCBucket(e.Timestamp, time.Hour)+time.Hour.Microseconds() > cutoffs[2] {
 			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 0, e.Client[:]); err != nil {
@@ -159,6 +169,16 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 1, e.QName[:e.QNameLength]); err != nil {
 				return err
 			}
+		}
+	}
+	latency, err := tx.PrepareContext(ctx, `INSERT INTO latency_bins VALUES(?,?,?,?,?) ON CONFLICT(resolution,bucket,outcome,bin) DO UPDATE SET count=count+excluded.count`)
+	if err != nil {
+		return err
+	}
+	defer latency.Close()
+	for key, count := range latencies {
+		if _, err = latency.ExecContext(ctx, key.resolution, key.bucket, key.outcome, key.bin, count); err != nil {
+			return err
 		}
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE writer_state SET event_watermark=? WHERE boot_id=?", watermark, boot); err != nil {

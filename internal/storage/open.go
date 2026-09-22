@@ -26,6 +26,9 @@ var bootCoverageSchema string
 //go:embed migrations/003_rule_source.sql
 var ruleSourceSchema string
 
+//go:embed migrations/004_latency.sql
+var latencySchema string
+
 type DB struct {
 	write     *sql.DB
 	read      *sql.DB
@@ -97,7 +100,7 @@ func Open(path string) (*DB, error) {
 	if err = w.QueryRowContext(ctx, "PRAGMA user_version").Scan(&schema); err != nil {
 		return fail(err)
 	}
-	if schema > 3 {
+	if schema > 4 {
 		return fail(fmt.Errorf("unsupported storage schema %d", schema))
 	}
 	if schema == 0 {
@@ -148,10 +151,23 @@ func Open(path string) (*DB, error) {
 			return fail(e)
 		}
 	}
+	if schema < 4 {
+		tx, e := w.BeginTx(ctx, nil)
+		if e != nil {
+			return fail(e)
+		}
+		if _, e = tx.ExecContext(ctx, latencySchema); e != nil {
+			tx.Rollback()
+			return fail(fmt.Errorf("invalid storage schema migration: %w", e))
+		}
+		if e = tx.Commit(); e != nil {
+			return fail(e)
+		}
+	}
 	// Validate the versioned schema without scanning retained history. A claimed
 	// version with missing/incompatible tables must fail startup, not the first DNS
 	// consumer flush.
-	check, err := w.PrepareContext(ctx, `SELECT e.sequence,e.alias,d.name,c.address,r.boot_id,r.description,r.source_id,u.h7,k.count,s.snapshot_watermark,s.snapshot_sequence,s.coverage_start,s.coverage_end,s.lost_details,m.value FROM query_events e,domains d,clients c,rule_versions r,rollups u,rankings_hour k,writer_state s,storage_meta m WHERE 0`)
+	check, err := w.PrepareContext(ctx, `SELECT e.sequence,e.alias,d.name,c.address,r.boot_id,r.description,r.source_id,u.h7,k.count,s.snapshot_watermark,s.snapshot_sequence,s.coverage_start,s.coverage_end,s.lost_details,m.value,l.bin,l.count FROM query_events e,domains d,clients c,rule_versions r,rollups u,rankings_hour k,writer_state s,storage_meta m,latency_bins l WHERE 0`)
 	if err != nil {
 		return fail(fmt.Errorf("invalid storage schema: %w", err))
 	}
