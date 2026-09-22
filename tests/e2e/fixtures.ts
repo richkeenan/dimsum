@@ -6,6 +6,7 @@ import type {
   Series,
   Rankings,
   ClientsResponse,
+  Performance,
 } from "../../web/src/lib/api";
 export const activation: Activation = {
   saved_revision: "fixture-revision-1",
@@ -31,6 +32,112 @@ export const settings = {
   status: activation,
   config: { cache: { bytes: 8388608 }, dns: { listen: ["127.0.0.1:5353"] } },
 };
+export const performance = {
+  range: summary.range,
+  updated_at: summary.updated_at,
+  complete: false,
+  resolution_seconds: 3600,
+  summary: {
+    count: "23000",
+    average_us: "8700",
+    p50_us: "80",
+    p95_us: "36000",
+    p99_us: "125000",
+    percentiles_available: true,
+  },
+  outcomes: [
+    {
+      outcome: "local",
+      count: "500",
+      average_us: "22",
+      p50_us: "20",
+      p95_us: "30",
+      p99_us: "45",
+      percentiles_available: true,
+    },
+    {
+      outcome: "blocked",
+      count: "3500",
+      average_us: "34",
+      p50_us: "28",
+      p95_us: "60",
+      p99_us: "100",
+      percentiles_available: true,
+    },
+    {
+      outcome: "cache",
+      count: "13500",
+      average_us: "75",
+      p50_us: "60",
+      p95_us: "180",
+      p99_us: "400",
+      percentiles_available: true,
+    },
+    {
+      outcome: "stale",
+      count: "50",
+      average_us: "150",
+      p50_us: "130",
+      p95_us: "300",
+      p99_us: "500",
+      percentiles_available: true,
+    },
+    {
+      outcome: "forwarded",
+      count: "5400",
+      average_us: "36000",
+      p50_us: "24000",
+      p95_us: "110000",
+      p99_us: "240000",
+      percentiles_available: true,
+    },
+    {
+      outcome: "error",
+      count: "50",
+      average_us: "1100000",
+      p50_us: "1000000",
+      p95_us: "2000000",
+      p99_us: "2000000",
+      percentiles_available: true,
+    },
+  ],
+  distribution: [
+    "12000",
+    "3000",
+    "1000",
+    "2000",
+    "1000",
+    "3500",
+    "450",
+    "50",
+  ].map((count, i) => ({
+    count,
+    lower_us: ["0", "100", "500", "1000", "5000", "10000", "100000", "1000000"][
+      i
+    ],
+    upper_us: [
+      "100",
+      "500",
+      "1000",
+      "5000",
+      "10000",
+      "100000",
+      "1000000",
+      null,
+    ][i],
+  })),
+  points: Array.from({ length: 24 }, (_, i) => ({
+    time: new Date(Date.UTC(2026, 8, 20, 12 + i)).toISOString(),
+    count: i === 17 ? "0" : "1000",
+    average_us: i === 17 ? null : String(4000 + ((i * 719) % 6000)),
+    p50_us: i === 17 ? null : String(50 + ((i * 17) % 150)),
+    p95_us: i === 17 ? null : String(20000 + ((i * 17919) % 45000)),
+    p99_us: i === 17 ? null : String(75000 + ((i * 35179) % 150000)),
+    percentiles_available: i !== 17,
+    complete: i !== 17 && i !== 23,
+    gap: i === 17,
+  })),
+} satisfies Performance;
 export const query = {
   id: "9007199254740993",
   boot_id: "fixture-boot",
@@ -73,6 +180,7 @@ export async function fixtureAPI(page: Page) {
     const values: Record<string, unknown> = {
       tokens: { items: [] },
       summary,
+      performance,
       settings,
       timeseries: {
         complete: false,

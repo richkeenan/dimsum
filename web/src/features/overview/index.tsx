@@ -13,17 +13,20 @@ import {
   type ClientsResponse,
 } from "@/lib/api";
 import { DataTable, Resource } from "@/components/data";
+import { OverviewPerformance } from "@/features/performance";
 const TrafficChart = lazy(() => import("./chart"));
 export default function Overview({
   range,
   resolution,
   refresh,
   drill,
+  onPerformance,
 }: {
   range: string;
   resolution: number;
   refresh: number;
   drill: (key: string, value: string) => void;
+  onPerformance: () => void;
 }) {
   const summary = useResource<Summary>("summary?" + range, refresh);
   const series = useResource<Series>(
@@ -77,6 +80,12 @@ export default function Overview({
           </p>
         )}
       </Resource>
+      <OverviewPerformance
+        range={range}
+        resolution={resolution}
+        refresh={refresh}
+        onOpen={onPerformance}
+      />
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
           <h2 className="text-sm font-medium">Query activity</h2>

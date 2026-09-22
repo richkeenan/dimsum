@@ -19,6 +19,7 @@ import {
   Database,
   FileText,
   Globe2,
+  Gauge,
   LayoutDashboard,
   ListFilter,
   LogOut,
@@ -45,6 +46,7 @@ import {
 import { ErrorNotice } from "./components/data";
 import { DNSAddresses, ServiceNotices } from "./components/network-status";
 import Overview from "./features/overview";
+import Performance from "./features/performance";
 import logo from "./assets/dimsum.svg";
 import Queries from "./features/queries";
 import Configuration from "./features/configuration";
@@ -53,6 +55,7 @@ const Diagnostics = lazy(() => import("./features/diagnostics"));
 const Jobs = lazy(() => import("./features/settings/jobs"));
 const navigation = [
   ["overview", "Overview", LayoutDashboard],
+  ["performance", "Performance", Gauge],
   ["queries", "Query log", ListFilter],
   ["clients", "Devices", Users],
   ["lists", "Filter lists", ShieldCheck],
@@ -117,11 +120,15 @@ export default function App() {
   }, [range, search.from, search.to]);
   const liveTick = useCallback(() => setAnchor(Date.now()), []);
   useLive(
-    !auth && ["overview", "clients"].includes(page) && range !== "custom",
+    !auth &&
+      ["overview", "performance", "clients"].includes(page) &&
+      range !== "custom",
     liveTick,
     5000,
   );
-  const historical = ["overview", "queries", "clients"].includes(page);
+  const historical = ["overview", "performance", "queries", "clients"].includes(
+    page,
+  );
   const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
   const { params: rangeParams, resolution } = historyWindow(
     range,
@@ -226,13 +233,13 @@ export default function App() {
           <X size={20} />
         </button>
         <nav aria-label="Main navigation" className="flex flex-col gap-1">
-          {navigation.map(([id, label, Icon], i) => (
+          {navigation.map(([id, label, Icon]) => (
             <Link
               key={id}
               to="/$page"
               params={{ page: id }}
               search={rangeSearch}
-              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-normal text-white" : "font-light text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${i === 3 || i === 7 ? "mt-5" : ""}`}
+              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-normal text-white" : "font-light text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${id === "lists" || id === "settings" ? "mt-5" : ""}`}
               aria-current={page === id ? "page" : undefined}
             >
               <Icon size={18} strokeWidth={1.5} />
@@ -281,6 +288,9 @@ export default function App() {
             <div className="[&>h1]:text-[26px] [&>h1]:font-semibold [&>h1]:tracking-tight [&>p]:mt-1 [&>p]:text-xs [&>p]:text-muted-foreground">
               <h1>{title}</h1>
               {page === "overview" && <p>DNS activity across your network.</p>}
+              {page === "performance" && (
+                <p>How quickly DNS queries resolve, and where the time goes.</p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {page === "lists" && (
@@ -402,9 +412,16 @@ export default function App() {
                 resolution={resolution}
                 range={rangeParams}
                 refresh={refresh}
+                onPerformance={() => go("performance")}
                 drill={(key, value) =>
                   go("queries", { ...rangeSearch, [key]: value })
                 }
+              />
+            ) : page === "performance" ? (
+              <Performance
+                range={rangeParams}
+                resolution={resolution}
+                refresh={refresh}
               />
             ) : page === "queries" ? (
               <Queries

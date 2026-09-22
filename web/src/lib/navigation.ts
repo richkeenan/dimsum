@@ -1,5 +1,6 @@
 export const pages = [
   "overview",
+  "performance",
   "queries",
   "clients",
   "lists",
