@@ -20,6 +20,7 @@ archives:
     files:
       - README.md
       - deploy/dimsum.service
+      - deploy/dhcp-capabilities.conf
       - deploy/dimsum.sysusers
       - deploy/dimsum.example.yaml
       - deploy/setup-service.sh
@@ -42,6 +43,8 @@ nfpms:
     contents:
       - src: deploy/dimsum.service
         dst: /usr/lib/systemd/system/dimsum.service
+      - src: deploy/dhcp-capabilities.conf
+        dst: /usr/share/doc/dimsum/dhcp-capabilities.conf
       - src: deploy/dimsum.sysusers
         dst: /usr/lib/sysusers.d/dimsum.conf
       - src: deploy/dimsum.example.yaml
