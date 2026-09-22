@@ -8,6 +8,7 @@ import (
 
 // Evidence describes an address-verified local advertisement, not an authenticated identity.
 type Evidence struct {
+	spotify      spotifyEndpoint
 	Source       string    `json:"source"`
 	Hostname     string    `json:"hostname,omitempty"`
 	ServiceType  string    `json:"service_type,omitempty"`
@@ -96,13 +97,16 @@ func genericName(name string) bool {
 // replace generic hostnames. Evidence has already been address-verified by the
 // discovery graph. Preserve its raw label for inspection, including RAOP IDs.
 func discoveredLabel(e Evidence) (string, int) {
-	if e.Source != "dns-sd" {
+	if e.Source != "dns-sd" && e.Source != "spotify-connect" {
 		return "", 0
 	}
 	label := safeLabel(e.Label)
 	priority := 1
+	if e.Source == "spotify-connect" {
+		priority = 4
+	}
 	switch strings.TrimSuffix(e.ServiceType, ".") {
-	case "_airplay._tcp", "_companion-link._tcp", "_googlecast._tcp":
+	case "_airplay._tcp", "_companion-link._tcp", "_googlecast._tcp", "_ipp._tcp", "_ipps._tcp", "_ipp-tls._tcp", "_printer._tcp", "_pdl-datastream._tcp":
 		priority = 4
 	case "_raop._tcp":
 		id, friendly, ok := strings.Cut(label, "@")
@@ -112,9 +116,30 @@ func discoveredLabel(e Evidence) (string, int) {
 		label, priority = safeLabel(friendly), 3
 	}
 	if label == "" || genericName(label) {
+		if e.Manufacturer != "" && e.Model != "" {
+			return e.Manufacturer + " " + e.Model, 1
+		}
 		return "", 0
 	}
 	return label, priority
+}
+
+// Normalize known product spelling, never infer a generation or room name.
+func deviceProduct(brand, model string) (string, string) {
+	brand, model = safeLabel(brand), safeLabel(model)
+	if (strings.EqualFold(brand, "sony_tv") || strings.EqualFold(brand, "sony")) && strings.EqualFold(model, "ps5") {
+		return "Sony", "PlayStation 5"
+	}
+	if strings.EqualFold(brand, "amazon") {
+		brand = "Amazon"
+		switch strings.ToLower(model) {
+		case "echo":
+			model = "Echo"
+		case "echo_dot":
+			model = "Echo Dot"
+		}
+	}
+	return brand, model
 }
 
 func enrichDiscovered(n Name, now time.Time) Name {
@@ -160,7 +185,7 @@ func enrichDiscovered(n Name, now time.Time) Name {
 		label, rank := discoveredLabel(e)
 		if rank > 0 && (rank > priority || (rank == priority && label < n.Name)) {
 			n.Name, priority = label, rank
-			n.Source = "dns-sd"
+			n.Source = e.Source
 		}
 		if d.Model == "" {
 			d.Model = e.Model

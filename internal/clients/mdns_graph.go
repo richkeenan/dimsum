@@ -73,7 +73,21 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 						}
 					}
 					e.Manufacturer = txt.txt["manufacturer"]
+					if e.ServiceType == "_meshcop._udp" {
+						e.Manufacturer, e.Model = deviceProduct(txt.txt["vn"], txt.txt["mn"])
+					}
 					e.DeviceType = txt.txt["device_type"]
+					if e.ServiceType == "_spotify-connect._tcp" && srv.port != 0 && validSpotifyPath(txt.txt["cpath"]) {
+						live := 0
+						for _, candidate := range c.owners[recordGroup{iface, srv.key.owner, 33}] {
+							if now.Before(candidate.expires) {
+								live++
+							}
+						}
+						if live == 1 {
+							e.spotify = spotifyEndpoint{Address: address, Interface: iface, Host: host, Instance: srv.key.owner, Port: srv.port, Path: txt.txt["cpath"]}
+						}
+					}
 					if friendly := txt.txt["fn"]; genericName(e.Label) && friendly != "" && !genericName(friendly) {
 						e.Label = friendly
 					}

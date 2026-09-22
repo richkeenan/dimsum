@@ -14,10 +14,13 @@ func classifyDevice(name string, evidence []Evidence) (string, string, bool) {
 	}
 	for _, e := range evidence {
 		switch strings.ToLower(e.DeviceType) {
-		case "phone", "tablet", "laptop", "desktop", "tv", "speaker", "printer", "camera", "lighting", "appliance", "server":
+		case "phone", "tablet", "laptop", "desktop", "tv", "speaker", "printer", "camera", "lighting", "appliance", "server", "console":
 			add(strings.ToLower(e.DeviceType), "Advertised device type: "+e.DeviceType, 3)
 		}
 		model := strings.ToLower(e.Model)
+		if strings.EqualFold(e.Manufacturer, "Amazon") && (model == "echo" || model == "echo dot") {
+			add("speaker", "Advertised Amazon model: "+e.Model, 3)
+		}
 		if strings.EqualFold(e.Manufacturer, "Sony") && (strings.HasPrefix(model, "kd-") || strings.HasPrefix(model, "xr-") || strings.HasPrefix(model, "kdl-")) {
 			add("tv", "Advertised Sony television model: "+e.Model, 3)
 		}
@@ -27,7 +30,7 @@ func classifyDevice(name string, evidence []Evidence) (string, string, bool) {
 			}
 		}
 		switch strings.TrimSuffix(e.ServiceType, ".") {
-		case "_ipp._tcp", "_ipps._tcp", "_printer._tcp", "_pdl-datastream._tcp":
+		case "_ipp._tcp", "_ipps._tcp", "_ipp-tls._tcp", "_printer._tcp", "_pdl-datastream._tcp":
 			add("printer", "Advertises printing service "+e.ServiceType, 2)
 		case "_wled._tcp":
 			add("lighting", "Advertises WLED lighting service", 2)

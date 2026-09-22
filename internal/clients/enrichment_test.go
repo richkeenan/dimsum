@@ -187,3 +187,17 @@ func TestDeviceFriendlySelectionIsIndependentOfAdvertisementOrder(t *testing.T) 
 		assert.Equal(t, "Zed’s Laptop", enrichDiscovered(n, now).Name)
 	}
 }
+
+func TestPrinterFriendlyNameOutranksHardwareHostname(t *testing.T) {
+	now := time.Now()
+	for _, service := range []string{"_ipp._tcp", "_ipps._tcp", "_ipp-tls._tcp", "_printer._tcp", "_pdl-datastream._tcp"} {
+		n := Name{Name: "brn020000000001.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "brn020000000001.local", Evidence: []Evidence{
+			{Source: "mdns", Hostname: "brn020000000001.local", Expires: now.Add(time.Minute)},
+			{Source: "dns-sd", Hostname: "brn020000000001.local", ServiceType: service, Label: "Example Laser Printer", Expires: now.Add(10 * time.Second)},
+		}}}
+		got := enrichDiscovered(n, now)
+		assert.Equal(t, "Example Laser Printer", got.Name, service)
+		assert.Equal(t, "printer", got.Device.Category, service)
+		assert.Equal(t, "brn020000000001.local", enrichDiscovered(got, now.Add(11*time.Second)).Name)
+	}
+}

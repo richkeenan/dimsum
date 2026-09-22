@@ -82,19 +82,25 @@ type job struct {
 // Manager has one bounded worker and at most 4096 cached identities. Observe and
 // Get never perform file/network IO. Run is called once by the service lifecycle.
 type Manager struct {
-	mdnsObserve chan netip.Addr
-	mdnsNames   map[netip.Addr]entry
-	diagnostics DiscoveryDiagnostics
-	openMDNS    func(context.Context, MDNSSettings) (mdnsTransport, []string)
-	current     func() *View
-	mu          sync.Mutex
-	cache       map[netip.Addr]entry
-	pending     map[job]bool
-	queue       chan job
+	mdnsObserve   chan netip.Addr
+	mdnsNames     map[netip.Addr]entry
+	diagnostics   DiscoveryDiagnostics
+	openMDNS      func(context.Context, MDNSSettings) (mdnsTransport, []string)
+	lookupSpotify func(context.Context, spotifyEndpoint) (Evidence, error)
+	current       func() *View
+	mu            sync.Mutex
+	cache         map[netip.Addr]entry
+	pending       map[job]bool
+	queue         chan job
 }
 
 func New(current func() *View) *Manager {
-	return &Manager{current: current, cache: map[netip.Addr]entry{}, pending: map[job]bool{}, queue: make(chan job, 128), mdnsObserve: make(chan netip.Addr, 128), mdnsNames: make(map[netip.Addr]entry), openMDNS: openMDNSTransport}
+	client := newSpotifyClient()
+	return &Manager{current: current, cache: map[netip.Addr]entry{}, pending: map[job]bool{}, queue: make(chan job, 128), mdnsObserve: make(chan netip.Addr, 128), mdnsNames: make(map[netip.Addr]entry), openMDNS: openMDNSTransport,
+		lookupSpotify: func(ctx context.Context, key spotifyEndpoint) (Evidence, error) {
+			return fetchSpotify(ctx, client, key)
+		},
+	}
 }
 func (m *Manager) Get(address netip.Addr) Name {
 	a, v := address.Unmap(), m.current()

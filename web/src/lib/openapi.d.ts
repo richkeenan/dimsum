@@ -1819,7 +1819,8 @@ export interface components {
         | "camera"
         | "lighting"
         | "appliance"
-        | "server";
+        | "server"
+        | "console";
       reason: string;
       inferred: boolean;
       fresh: boolean;

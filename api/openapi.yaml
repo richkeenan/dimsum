@@ -819,7 +819,7 @@ components:
       description: Current derived device presentation; explicit client names always take priority over discovered names. Not an authenticated physical identity.
       required: [category, reason, inferred, fresh, evidence]
       properties:
-        category: {type: string, enum: [unknown, phone, tablet, laptop, desktop, tv, speaker, printer, camera, lighting, appliance, server]}
+        category: {type: string, enum: [unknown, phone, tablet, laptop, desktop, tv, speaker, printer, camera, lighting, appliance, server, console]}
         reason: {type: string}
         inferred: {type: boolean}
         fresh: {type: boolean}

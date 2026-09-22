@@ -83,7 +83,11 @@ func (m *Manager) runMDNS(ctx context.Context) {
 	var view *View
 	var transport mdnsTransport
 	var packets <-chan mdnsDatagram
+	var spotify *spotifyDiscovery
 	defer func() {
+		if spotify != nil {
+			spotify.close()
+		}
 		if transport != nil {
 			transport.Close()
 		}
@@ -118,6 +122,10 @@ func (m *Manager) runMDNS(ctx context.Context) {
 		now := time.Now()
 		current := m.current()
 		if current != view {
+			if spotify != nil {
+				spotify.close()
+				spotify = nil
+			}
 			if transport != nil {
 				transport.Close()
 				transport = nil
@@ -132,6 +140,9 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			retryOpen = time.Time{}
 			nextEnumeration = time.Time{}
 			diag = DiscoveryDiagnostics{Enabled: view != nil && view.settings.MDNS.Enabled, Interfaces: []string{}, Errors: []string{}}
+			if diag.Enabled {
+				spotify = newSpotifyDiscovery(ctx, m.lookupSpotify)
+			}
 			m.mu.Lock()
 			m.mdnsNames = make(map[netip.Addr]entry)
 			m.mu.Unlock()
@@ -332,7 +343,11 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			if now.Sub(lastPublish) >= time.Second {
 				names := make(map[netip.Addr]entry, len(observed))
 				for a := range observed {
-					n := enrichDiscovered(cache.lookup(a, now), now)
+					n := cache.lookup(a, now)
+					if spotify != nil {
+						n = spotify.apply(n, now)
+					}
+					n = enrichDiscovered(n, now)
 					if n.Name != "" {
 						names[a] = entry{view: view, name: n}
 					}

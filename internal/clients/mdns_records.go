@@ -28,6 +28,7 @@ type mdnsRecord struct {
 	address          netip.Addr
 	txt              map[string]string
 	label            string
+	port             uint16
 	learned, expires time.Time
 	flush            bool
 }
@@ -143,6 +144,7 @@ func (c *mdnsCache) ingest(ifindex int, p []byte, now time.Time) error {
 			r.target = dnsName(target)
 			r.key.data = r.target
 			if rr.Type == 33 {
+				r.port = binary.BigEndian.Uint16(rr.RData[4:6])
 				r.key.data = string(rr.RData[:6]) + r.target
 			}
 			if rr.Type == 12 && target.Length > 1 {
@@ -164,7 +166,7 @@ func (c *mdnsCache) ingest(ifindex int, p []byte, now time.Time) error {
 				k = strings.ToLower(k)
 				if ok {
 					switch k {
-					case "model", "md", "manufacturer", "ty", "product", "fn", "am", "device_type", "type":
+					case "model", "md", "manufacturer", "ty", "product", "fn", "am", "device_type", "type", "vn", "mn", "cpath":
 						if _, exists := r.txt[k]; !exists {
 							r.txt[k] = safeLabel(v)
 						}
