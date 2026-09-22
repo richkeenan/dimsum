@@ -11,9 +11,10 @@ import (
 // rules intentionally: this is the correctness oracle for later compact indexes.
 // In particular no approximate prefilter can drop an allow exception.
 type Matcher struct {
-	generation uint64
-	rules      []compiledRule
-	regexBytes int64 // validated aggregate charge, reusable by snapshot compiler
+	generation                                             uint64
+	rules                                                  []compiledRule
+	regexBytes                                             int64 // validated aggregate charge, reusable by snapshot compiler
+	regexCount, maxExpressionBytes, maxProgramInstructions int
 }
 
 // Rule returns a value copy of the original diagnostic input, not compiled
@@ -80,7 +81,10 @@ func Compile(generation uint64, rules []Rule, limits Limits) (*Matcher, error) {
 				break
 			}
 			var charge int64
-			c.re, charge, err = compileRegex(r.Pattern, r.Dialect, limits, limits.MaxTotalRegexBytes-total)
+			var instructions int
+			c.re, charge, instructions, err = compileRegex(r.Pattern, r.Dialect, limits, limits.MaxTotalRegexBytes-total)
+			m.maxExpressionBytes = max(m.maxExpressionBytes, len(r.Pattern))
+			m.maxProgramInstructions = max(m.maxProgramInstructions, instructions)
 			total += charge
 		default:
 			err = fmt.Errorf("unsupported rule form %q", r.Kind)
@@ -91,6 +95,7 @@ func Compile(generation uint64, rules []Rule, limits Limits) (*Matcher, error) {
 		m.rules = append(m.rules, c)
 	}
 	m.regexBytes = total
+	m.regexCount = count
 	return m, nil
 }
 
@@ -146,45 +151,47 @@ func normalizeGlob(s string) ([]string, bool, error) {
 	return labels, descendants, nil
 }
 
-func compileRegex(expr, dialect string, limits Limits, remaining int64) (*regexp.Regexp, int64, error) {
+func compileRegex(expr, dialect string, limits Limits, remaining int64) (*regexp.Regexp, int64, int, error) {
 	if dialect != "" && dialect != "go" {
-		return nil, 0, fmt.Errorf("unsupported regex dialect %q", dialect)
+		return nil, 0, 0, fmt.Errorf("unsupported regex dialect %q", dialect)
 	}
 	if len(expr) > limits.MaxExpressionBytes {
-		return nil, 0, fmt.Errorf("regex expression byte budget exceeded")
+		return nil, 0, 0, fmt.Errorf("regex expression byte budget exceeded")
 	}
 	tree, err := syntax.Parse(expr, syntax.Perl)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	// Bound repetition expansion before Simplify allocates the expanded tree.
 	// Capped arithmetic also bounds hostile nested counted repetitions.
 	cap := int64(limits.MaxProgramInstructions)
 	cost := expandedCost(tree, cap, false)
 	if cost > cap-2 {
-		return nil, 0, fmt.Errorf("regex program instruction budget exceeded")
+		return nil, 0, 0, fmt.Errorf("regex program instruction budget exceeded")
 	}
 	// Conservative accounting units for AST/program/runes and regexp overhead,
 	// not a claim about exact Go heap/RSS. Benchmark task must calibrate defaults.
 	base := int64(4096) + int64(len(expr))*8
 	if remaining < base+512 {
-		return nil, 0, fmt.Errorf("total regex memory budget exceeded")
+		return nil, 0, 0, fmt.Errorf("total regex memory budget exceeded")
 	}
 	memoryCap := (remaining - base) / 256
 	memoryCost := expandedCost(tree, memoryCap, true)
 	if memoryCost > memoryCap-2 {
-		return nil, 0, fmt.Errorf("total regex memory budget exceeded")
+		return nil, 0, 0, fmt.Errorf("total regex memory budget exceeded")
 	}
 	charge := base + (memoryCost+2)*256
 	prog, err := syntax.Compile(tree.Simplify())
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	if len(prog.Inst) > limits.MaxProgramInstructions {
-		return nil, 0, fmt.Errorf("regex program instruction budget exceeded")
+		return nil, 0, 0, fmt.Errorf("regex program instruction budget exceeded")
 	}
 	re, err := regexp.Compile(expr)
-	return re, charge, err
+	// Retain the admission threshold, including the pre-expansion bound, so a
+	// shared snapshot can be checked against tighter limits without reparsing.
+	return re, charge, max(int(cost+2), len(prog.Inst)), err
 }
 
 // expandedCost is a conservative expanded instruction bound, optionally adding

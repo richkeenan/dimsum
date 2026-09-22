@@ -98,6 +98,49 @@ func TestAliasDepth(t *testing.T) {
 	assert.Equal(t, 16, result.Links)
 }
 
+func TestOverlayResponseAliasScope(t *testing.T) {
+	subs := []policy.Rule{{ID: "feed:block", Class: policy.SubscriptionDeny, Kind: policy.Exact, Pattern: "ads.example"}}
+	base, err := policy.CompileSnapshot(1, subs, policy.DefaultLimits())
+	require.NoError(t, err)
+	for _, allow := range []string{"start.example", "exempt.example", "unrelated.example"} {
+		t.Run(allow, func(t *testing.T) {
+			owners := []policy.Rule{{ID: "custom:allow", Class: policy.CustomAllow, Kind: policy.Exact, Pattern: allow}}
+			layered, err := policy.CompileOverlay(2, owners, base, policy.DefaultLimits())
+			require.NoError(t, err)
+			flat, err := policy.CompileSnapshot(2, append(owners, subs...), policy.DefaultLimits())
+			require.NoError(t, err)
+			q := new(dns.Msg)
+			q.SetQuestion("start.example.", dns.TypeA)
+			m := new(dns.Msg)
+			m.SetReply(q)
+			for _, text := range []string{"start.example. 30 IN CNAME exempt.example.", "exempt.example. 30 IN CNAME ads.example."} {
+				rr, err := dns.NewRR(text)
+				require.NoError(t, err)
+				m.Answer = append(m.Answer, rr)
+			}
+			wire, err := m.Pack()
+			require.NoError(t, err)
+			original, err := policy.NormalizeName("start.example")
+			require.NoError(t, err)
+			for _, paused := range []bool{false, true} {
+				want, err := flat.InspectResponse(wire, original, paused)
+				require.NoError(t, err)
+				got, err := layered.InspectResponse(wire, original, paused)
+				require.NoError(t, err)
+				assert.Equal(t, want, got)
+				if !paused && allow != "start.example" {
+					assert.Equal(t, policy.Block, got.Decision.Result)
+					r, ok := layered.RuleAt(got.RuleNumber)
+					require.True(t, ok)
+					assert.Equal(t, "feed:block", r.ID)
+				} else {
+					assert.Equal(t, policy.Forward, got.Decision.Result)
+				}
+			}
+		})
+	}
+}
+
 func TestExplicitBlockModes(t *testing.T) {
 	for _, tc := range []struct {
 		mode          string

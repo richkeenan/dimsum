@@ -39,6 +39,9 @@ type PolicySnapshot struct {
 	fallback    []compiledRule
 	fallbackIDs []uint32
 	memory      SnapshotMemory
+	// A non-nil base marks a two-layer root; all indexes above belong to owners.
+	base      *PolicySnapshot
+	resources snapshotResources
 }
 
 func CompileSnapshot(g uint64, r []Rule, l Limits) (*PolicySnapshot, error) {
@@ -91,6 +94,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		return nil, fmt.Errorf("policy: snapshot input budget exceeded")
 	}
 	s := &PolicySnapshot{generation: g, rules: make([]ruleMeta, 0, count)}
+	s.resources.inputBytes = textBytes
 	s.sharedText = make([]textRef, 1, len(shared))
 	s.exact.seed = maphash.MakeSeed()
 	if exactCount > 0 {
@@ -136,6 +140,8 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			return nil, fmt.Errorf("policy: unsupported rule form %q", r.Kind)
 		}
 		m := ruleMeta{class: uint8(rank(r.Class)), kind: uint8(kind)}
+		s.resources.classes |= 1 << m.class
+		s.resources.namespaces |= ruleNamespace(r.ID)
 		m.off = uint32(text.Len())
 		m.idSize = uint32(len(r.ID))
 		m.patternSize = uint32(len(r.Pattern))
@@ -197,6 +203,10 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		return nil, err
 	}
 	s.fallback = m.rules
+	s.resources.regexCount = m.regexCount
+	s.resources.regexBytes = m.regexBytes
+	s.resources.maxExpressionBytes = m.maxExpressionBytes
+	s.resources.maxProgramInstructions = m.maxProgramInstructions
 	fallbackCharge := uint64(m.regexBytes)
 	for i := range s.fallback {
 		r := &s.fallback[i]
@@ -233,6 +243,13 @@ func (s *PolicySnapshot) match(n Name, explain bool) Decision {
 }
 
 func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
+	if s.base != nil {
+		return s.matchOverlay(n, explain)
+	}
+	return s.matchOwnNumber(n, explain)
+}
+
+func (s *PolicySnapshot) matchOwnNumber(n Name, explain bool) (Decision, uint32) {
 	d := Decision{Result: Forward, Generation: s.generation}
 	var winner uint32
 	visit := func(head uint32) {

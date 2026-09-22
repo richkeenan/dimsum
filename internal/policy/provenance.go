@@ -49,12 +49,18 @@ func (s *PolicySnapshot) Rule(id string) (Rule, bool) {
 			return s.rule(r), true
 		}
 	}
+	if s.base != nil {
+		return s.base.Rule(id)
+	}
 	return Rule{}, false
 }
 
 // RuleAt is a constant-time generation-scoped history lookup. Returned strings
 // belong to the immutable snapshot; consumers retaining a subset should copy.
 func (s *PolicySnapshot) RuleAt(number uint32) (Rule, bool) {
+	if s.base != nil && uint64(number) > uint64(len(s.rules)) {
+		return s.base.RuleAt(number - uint32(len(s.rules)))
+	}
 	if number == 0 || uint64(number) > uint64(len(s.rules)) {
 		return Rule{}, false
 	}
