@@ -28,9 +28,6 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "bootstrap" {
 		return bootstrap(args[1:], out, stderr)
 	}
-	if len(args) > 0 && args[0] == "migrate-pihole" {
-		return migratePiHole(args[1:], out, stderr)
-	}
 	if len(args) == 1 && args[0] == "version" {
 		if err := json.NewEncoder(out).Encode(map[string]string{"version": version, "commit": commit, "build_time": date, "go_version": runtime.Version()}); err != nil {
 			fmt.Fprintln(stderr, err)

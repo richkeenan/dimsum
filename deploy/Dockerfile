@@ -11,7 +11,6 @@ FROM --platform=$BUILDPLATFORM ghcr.io/goreleaser/goreleaser:v2.18.2 AS release-
 FROM --platform=$BUILDPLATFORM golang:1.26.8-bookworm AS build
 WORKDIR /src
 COPY --from=release-tool /usr/bin/goreleaser /usr/bin/goreleaser
-RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=web /usr/local/ /opt/node/
 ENV PATH="/opt/node/bin:${PATH}"
 COPY go.mod go.sum ./
@@ -27,7 +26,7 @@ RUN test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" && \
     test "$(git show -s --format=%ct HEAD)" = "$SOURCE_DATE_EPOCH" && \
     mkdir -p /out && \
     GOOS=$TARGETOS GOARCH=$TARGETARCH goreleaser build --snapshot --clean --single-target --skip=before --output /out/dimsum
-RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH python3 scripts/artifact-metadata.py /out/metadata
+RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH node scripts/artifact-metadata.mjs /out/metadata
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*

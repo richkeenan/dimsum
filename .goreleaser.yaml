@@ -3,7 +3,7 @@ project_name: dimsum
 before:
   hooks:
     - sh scripts/build-web.sh
-    - python3 scripts/artifact-metadata.py artifacts/packaging-metadata
+    - node scripts/artifact-metadata.mjs artifacts/packaging-metadata
 builds:
   - id: dimsum
     main: ./cmd/dimsum

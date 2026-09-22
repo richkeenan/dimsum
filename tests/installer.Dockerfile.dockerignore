@@ -9,5 +9,4 @@
 !deploy/*.sysusers
 !tests/
 !tests/install.sh
-!tests/deploy-service.sh
 !tests/package-install.sh

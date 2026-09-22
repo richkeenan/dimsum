@@ -10,7 +10,7 @@ through a web dashboard, CLI, or your AI agent.
 
 - Block ads and trackers with filter lists, custom rules, and allow rules.
 - Configure local DNS records and view query history, clients, and upstream health.
-- Back up your configuration or import a Pi-hole setup.
+- Back up and restore your configuration.
 - Manage the same server through the browser, CLI, JSON API, or HTTP MCP.
 
 A single executable includes the dashboard. Configuration lives in a
@@ -60,7 +60,7 @@ specification at `/api/v1/openapi.json` to authenticated clients.
 
 ## Development
 
-Install Go **1.26.8**, Node **24.21.0** with npm, GoReleaser **2.18.2**, Python 3.9+,
+Install Go **1.26.8**, Node **24.21.0** with npm, GoReleaser **2.18.2**,
 and Git. Build from the repository root:
 
 ```sh
@@ -79,7 +79,8 @@ npm --prefix web test
 ```
 
 See [web/README.md](web/README.md) for frontend development and browser tests.
-Use `sh scripts/build-local.sh` to build local packages. The packaging hooks write
+Use `goreleaser release --snapshot --clean --skip=publish,docker` to build local
+packages. The packaging hooks write
 dependency notices and build metadata under `artifacts/packaging-metadata/`.
 
 The project license has not yet been selected.

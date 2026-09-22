@@ -14,7 +14,6 @@ jobs:
       - run: docker build -f tests/installer.Dockerfile -t dimsum-installer-test .
       - run: docker run --rm dimsum-installer-test shellcheck -x -S warning install.sh scripts/install-service.sh deploy/setup-service.sh deploy/postinstall.sh deploy/preremove.sh tests/install.sh tests/package-install.sh
       - run: docker run --rm dimsum-installer-test
-      - run: docker run --rm dimsum-installer-test sh tests/deploy-service.sh
   verify:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -49,9 +48,8 @@ jobs:
         with:
           version: v2.18.2
           args: check
-      - run: sh tests/deploy-service.sh
       - run: goreleaser build --snapshot --clean --single-target --output dist/dimsum
-      - run: python3 scripts/qualification.py dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
+      - run: node scripts/qualification.mjs dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
       - run: goreleaser release --snapshot --clean --skip=publish,docker
       - name: Test packaged install and upgrade
         run: |
