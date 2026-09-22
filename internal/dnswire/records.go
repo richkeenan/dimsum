@@ -82,6 +82,7 @@ type Scanner struct {
 	counts    [3]uint16
 	section   Section
 	err       error
+	multicast bool
 }
 
 func (s *Scanner) Init(msg []byte) error {
@@ -99,9 +100,11 @@ func (s *Scanner) Init(msg []byte) error {
 func (s *Scanner) Err() error { return s.err }
 
 // InitMulticast accepts the zero or multiple questions used by mDNS without
-// weakening Init's unicast single-question contract. Record validation is shared.
+// weakening Init's unicast contract. RFC 6762 section 18.14 allows compressed
+// SRV/DNAME RDATA. NSEC RDATA is opaque here: section 6.1 forbids discarding a
+// whole message for unsupported NSEC data. Its record envelope is still checked.
 func (s *Scanner) InitMulticast(msg []byte) error {
-	*s = Scanner{msg: msg}
+	*s = Scanner{msg: msg, multicast: true}
 	h, err := ParseHeader(msg)
 	if err != nil {
 		s.err = err
@@ -169,8 +172,8 @@ func (s *Scanner) next(out *Record, names *nameBoundaries) bool {
 	if r.Type == 41 {
 		r.TTLOffset = -1
 		s.err = s.readOPT(&r)
-	} else {
-		s.err = validateRData(s.msg, s.reference, &r, names)
+	} else if !s.multicast || r.Type != 47 {
+		s.err = validateRData(s.msg, s.reference, &r, names, s.multicast)
 	}
 	if s.err != nil {
 		return false
@@ -276,7 +279,7 @@ func rdataName(msg, reference []byte, off, end int, compression bool, names *nam
 	return n.End, nil
 }
 
-func validateRData(msg, reference []byte, r *Record, names *nameBoundaries) error {
+func validateRData(msg, reference []byte, r *Record, names *nameBoundaries, multicast bool) error {
 	off, end := r.DataOffset, r.End
 	nameCount, prefix, tail, compression := 0, 0, 0, true
 	switch r.Type {
@@ -294,14 +297,14 @@ func validateRData(msg, reference []byte, r *Record, names *nameBoundaries) erro
 		nameCount = 1
 	case 39:
 		nameCount = 1
-		compression = false
+		compression = multicast
 	case 15:
 		nameCount = 1
 		prefix = 2
 	case 33:
 		nameCount = 1
 		prefix = 6
-		compression = false
+		compression = multicast
 	case 6:
 		nameCount = 2
 		tail = 20
