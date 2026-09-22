@@ -16,10 +16,22 @@ test("dashboard links to same-range performance with charts, keyboard data and r
       requests.push(new URL(request.url()));
   });
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/?range=1h");
+  await expect(page.getByText("≈ 36 ms", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Response time", exact: true }),
+    page.getByRole("group", { name: "Interactive response-time chart" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Response time", exact: true }),
   ).toBeVisible();
+  await expect(page.getByRole("img", { name: /DNS outcomes/ })).toBeInViewport({
+    ratio: 1,
+  });
+  await page.screenshot({
+    path: testInfo.outputPath("overview-compact.png"),
+    fullPage: true,
+  });
   await expect(page.getByText("≈ 36 ms", { exact: true })).toBeVisible();
   expect(requests.at(-1)?.searchParams.get("from")).toBe(
     "2026-09-21T11:00:00.000Z",
@@ -28,7 +40,9 @@ test("dashboard links to same-range performance with charts, keyboard data and r
     "2026-09-21T12:00:00.000Z",
   );
   expect(requests.at(-1)?.searchParams.get("resolution_seconds")).toBe("60");
-  await page.getByRole("button", { name: "View performance" }).click();
+  await page
+    .getByRole("button", { name: /^View performance: Average response/ })
+    .click();
   await expect(page).toHaveURL(/\/performance\?range=1h/);
   await expect(
     page.getByRole("heading", { name: "Performance", exact: true }),

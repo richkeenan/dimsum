@@ -143,32 +143,33 @@ export function OverviewPerformance(
   props: PerformanceProps & { onOpen: () => void },
 ) {
   const state = usePerformance(props);
+  const metrics = state.data?.summary;
+  const cards = [
+    ["Average response", formatLatency(metrics?.average_us)],
+    ["p95 response", estimate(metrics?.p95_us)],
+    ["p99 response", estimate(metrics?.p99_us)],
+  ];
   return (
-    <section className={panel}>
-      <div className={heading}>
-        <h2 className="text-sm font-medium">Response time</h2>
-        <button
-          onClick={props.onOpen}
-          className="min-h-8 text-xs text-primary hover:underline"
-        >
-          View performance
-        </button>
-      </div>
+    <section className="mb-5" aria-label="Response time">
       <Resource state={state}>
-        {state.data && (
-          <>
-            <LatencySummary metrics={state.data.summary} compact />
-            <PrecisionNotice metrics={state.data.summary} />
-            <div className="px-5">
-              <CoverageNotice complete={state.data.complete} />
-            </div>
-            <LatencyChart points={state.data.points} compact />
-            <p className="border-t border-border px-5 py-3 text-xs text-muted-foreground">
-              Server-side resolution, including upstream waits. Percentiles are
-              approximate.
-            </p>
-          </>
-        )}
+        <div className="grid grid-cols-3 gap-3">
+          {cards.map(([label, value]) => (
+            <button
+              key={label}
+              onClick={props.onOpen}
+              aria-label={`View performance: ${label}, ${value}`}
+              title={`View response-time details${state.data?.complete === false ? " (partial history coverage)" : ""}`}
+              className="min-w-0 rounded-lg border border-border bg-background px-3 py-3 text-left hover:border-primary/50 hover:bg-accent/30 sm:px-5"
+            >
+              <span className="block text-xs text-muted-foreground">
+                {label}
+              </span>
+              <strong className="mt-1 block whitespace-nowrap text-lg font-[550] tracking-tight tabular-nums sm:text-[25px]">
+                {value}
+              </strong>
+            </button>
+          ))}
+        </div>
       </Resource>
     </section>
   );
