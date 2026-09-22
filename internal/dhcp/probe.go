@@ -15,7 +15,9 @@ type ProbeFunc func(context.Context, netip.Addr) (conflict bool, err error)
 // ProbeScheduler has two fixed workers, one reserved handoff slot per worker,
 // no additional waiting backlog, and two result slots. Submit never blocks or
 // depends on a worker already being scheduled. Construction is inert; Run is
-// single-use. A blocked result delivery holds its worker slot.
+// single-use. A finished probe releases its handoff slot before publishing its
+// result, so a completion consumer can immediately submit a replacement. Blocked
+// result delivery permits one queued handoff per worker, but no further probing.
 type ProbeScheduler struct {
 	probe   ProbeFunc
 	workers [2]chan Probe
@@ -68,12 +70,15 @@ func (s *ProbeScheduler) Run(ctx context.Context) {
 						err = work.Err()
 					}
 					cancel()
+					// Admission must precede publication: CompleteProbe can immediately
+					// request a replacement when this result reports a conflict. The
+					// worker cannot execute that handoff until result delivery finishes.
+					s.idle <- worker
 					select {
 					case s.results <- ProbeResult{Token: p.Token, Conflict: conflict, Err: err}:
 					case <-ctx.Done():
 						return
 					}
-					s.idle <- worker
 				}
 			}
 		})
