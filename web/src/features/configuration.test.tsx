@@ -305,6 +305,61 @@ it("keeps one row per device and uses its configured friendly name", () => {
   expect(screen.getAllByRole("table")).toHaveLength(1);
 });
 
+it("keeps device details open and current across client refreshes and reordering", () => {
+  const client = {
+    address: "192.0.2.20",
+    name: "Example television",
+    count: "12",
+    name_source: "dns-sd",
+    device: {
+      category: "tv",
+      reason: "Advertised model",
+      model: "Example Model",
+      fresh: true,
+      inferred: false,
+      evidence: [],
+    },
+  };
+  const data = {
+    revision: "ready",
+    observed_available: true,
+    items: [],
+    observed: { items: [client, { address: "192.0.2.21", count: "2" }] },
+  };
+  resources.values["clients?&limit=200"] = { loading: false, data };
+  const view = render(<Configuration kind="clients" range="" />);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Device details for Example television",
+    }),
+  );
+  expect(screen.getByRole("dialog")).toHaveTextContent("Example Model");
+
+  resources.values["clients?&limit=200"] = {
+    loading: false,
+    data: {
+      ...data,
+      observed: {
+        items: [
+          { address: "192.0.2.21", count: "24" },
+          {
+            ...client,
+            name: "Living room television",
+            count: "13",
+            device: { ...client.device, model: "Updated Model" },
+          },
+        ],
+      },
+    },
+  };
+  view.rerender(<Configuration kind="clients" range="" />);
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveTextContent("Living room television");
+  expect(dialog).toHaveTextContent("Updated Model");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
 it("explains a blocked rule test without displaying raw JSON by default", async () => {
   resources.values.rules = {
     loading: false,

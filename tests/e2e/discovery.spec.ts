@@ -5,6 +5,7 @@ test("owner name and discovered device details coexist on mobile", async ({
   page,
 }, testInfo) => {
   await fixtureAPI(page);
+  let model = "Example model";
   await page.route("**/api/v1/clients?**", (route) =>
     route.fulfill({
       json: {
@@ -28,7 +29,7 @@ test("owner name and discovered device details coexist on mobile", async ({
                 fresh: true,
                 hostname: "example-tv.local",
                 manufacturer: "Example",
-                model: "Example model",
+                model,
                 evidence: [],
               },
             },
@@ -53,6 +54,16 @@ test("owner name and discovered device details coexist on mobile", async ({
   await expect(page.getByRole("dialog")).toContainText(
     "Advertised television model",
   );
+  model = "Updated television model";
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("configuration-changed")),
+  );
+  await expect(page.getByRole("dialog")).toContainText(model);
+  // The five-second settings poll also re-renders the containing client page.
+  await page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/settings"),
+  );
+  await expect(page.getByRole("dialog")).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

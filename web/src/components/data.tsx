@@ -119,8 +119,6 @@ export function DataTable({
           helper.accessor((r) => r[c.key], {
             id: c.key,
             header: c.label,
-            cell: ({ row }) =>
-              c.render ? c.render(row.original) : text(row.original[c.key]),
           }),
         ),
     [columns],
@@ -166,7 +164,12 @@ export function DataTable({
                       : undefined
                   }
                 >
-                  <table.FlexRender cell={cell} />
+                  {/* render is a callback, not a component type. Wrapping it
+                      in a new FlexRender component on each poll unmounts
+                      stateful children such as the device details dialog. */}
+                  {visible[i].render
+                    ? visible[i].render!(row.original)
+                    : text(row.original[visible[i].key])}
                 </TableCell>
               ))}
             </TableRow>
