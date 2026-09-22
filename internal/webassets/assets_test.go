@@ -13,7 +13,7 @@ import (
 
 func TestEmbeddedSPA(t *testing.T) {
 	h := Handler()
-	for _, route := range []string{"/", "/queries", "/settings", "/diagnostics", "/performance", "/performance?range=1h"} {
+	for _, route := range []string{"/", "/queries", "/settings", "/diagnostics", "/performance", "/performance?range=1h", "/dhcp", "/dhcp?tab=leases"} {
 		t.Run(route, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
@@ -30,7 +30,7 @@ func TestEmbeddedSPA(t *testing.T) {
 }
 
 func TestReservedNamespacesAndMissingAssets(t *testing.T) {
-	for _, route := range []string{"/api/v1/absent", "/api", "/session", "/health/live", "/debug/pprof", "/metrics", "/assets", "/assets/missing.js", "/unknown", "/../index.html"} {
+	for _, route := range []string{"/api/v1/absent", "/api/v1/dhcp/absent", "/api", "/session", "/health/live", "/debug/pprof", "/metrics", "/assets", "/assets/missing.js", "/unknown", "/dhcp/absent", "/dhcp-other", "/../index.html"} {
 		w := httptest.NewRecorder()
 		Handler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
 		assert.Equal(t, http.StatusNotFound, w.Code, route)
