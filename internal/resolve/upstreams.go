@@ -63,7 +63,7 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 	entry := m.current
 	if entry == nil || entry.snapshot != snapshot {
 		options := snapshot.UpstreamOptions()
-		if entry == nil || !reflect.DeepEqual(entry.options, options) {
+		if entry == nil || entry.snapshot.UpstreamContext() != snapshot.UpstreamContext() || !reflect.DeepEqual(entry.options, options) {
 			client, err := upstream.New(options)
 			if err != nil {
 				m.mu.Unlock()

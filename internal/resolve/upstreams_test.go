@@ -85,3 +85,47 @@ func TestUpstreamLeasesPinGenerationAndRetire(t *testing.T) {
 	_, err = current.client.Exchange(ctx, wire, make([]byte, 65535))
 	assert.ErrorIs(t, err, net.ErrClosed)
 }
+
+func TestUpstreamRollbackCreatesFreshLifetime(t *testing.T) {
+	server, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
+		wire := append([]byte(nil), r.Wire...)
+		wire[2] |= 0x80
+		return testutil.Response{Wire: wire}
+	})
+	require.NoError(t, err)
+	defer server.Close()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	text := []byte(fmt.Sprintf("version: 1\ndns:\n  listen: ['127.0.0.1:0']\n  upstreams: ['%s']\nadmin: {listen: '127.0.0.1:0'}\npaths: {data_dir: data, secrets_dir: secrets}\n", server.Address()))
+	require.NoError(t, os.WriteFile(path, text, 0600))
+	ctx := context.Background()
+	store, err := config.OpenStore(ctx, path, filepath.Join(dir, "state"), config.StoreOptions{Offline: true})
+	require.NoError(t, err)
+	pipeline := NewWithStore(nil, store)
+	defer pipeline.Close()
+	wire := []byte{0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'a', 0, 0, 1, 0, 1}
+	_, err = pipeline.exchange(ctx, store.Snapshot(), upstream.DefaultRoute, wire, make([]byte, 65535))
+	require.NoError(t, err)
+	original := pipeline.upstreams.current
+	a, err := config.Parse(text)
+	require.NoError(t, err)
+	b, err := a.Edit([]config.Edit{{Path: []string{"dns", "upstreams", "0"}, Value: "192.0.2.53:53"}})
+	require.NoError(t, err)
+	_, err = store.Save(ctx, store.Snapshot().Revision(), b)
+	require.NoError(t, err)
+	// Observe completion of the asynchronous retirement without warming B.
+	require.Eventually(t, func() bool { _, err := original.client.Exchange(ctx, nil, nil); return err == net.ErrClosed }, time.Second, time.Millisecond)
+	_, err = store.Save(ctx, store.Snapshot().Revision(), a)
+	require.NoError(t, err)
+	for range 3 {
+		_, err = pipeline.exchange(ctx, store.Snapshot(), upstream.DefaultRoute, wire, make([]byte, 65535))
+		require.NoError(t, err)
+	}
+	assert.NotSame(t, original.client, pipeline.upstreams.current.client)
+	restored := pipeline.upstreams.current
+	_, err = store.Reload(ctx)
+	require.NoError(t, err)
+	_, err = pipeline.exchange(ctx, store.Snapshot(), upstream.DefaultRoute, wire, make([]byte, 65535))
+	require.NoError(t, err)
+	assert.Same(t, restored, pipeline.upstreams.current)
+}
