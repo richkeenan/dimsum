@@ -30,6 +30,12 @@ type Provider interface {
 	Rankings(context.Context, url.Values) (any, error)
 	Timeseries(context.Context, url.Values) (any, error)
 }
+
+// PerformanceProvider extends retained history without requiring third-party
+// providers to synthesize timing distributions they do not collect.
+type PerformanceProvider interface {
+	Performance(context.Context, url.Values) (any, error)
+}
 type Options struct {
 	Store      *config.Store
 	ConfigPath string
@@ -355,6 +361,10 @@ func (s *Service) Data(ctx context.Context, resource string, q url.Values) (any,
 		return p.Rankings(ctx, q)
 	case "timeseries":
 		return p.Timeseries(ctx, q)
+	case "performance":
+		if performance, ok := p.(PerformanceProvider); ok {
+			return performance.Performance(ctx, q)
+		}
 	}
 	return nil, ErrUnavailable
 }

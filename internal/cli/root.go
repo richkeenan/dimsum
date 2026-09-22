@@ -16,7 +16,7 @@ import (
 const Help = `dimsum control [--socket PATH] COMMAND
 
 Read operations (JSON):
-  summary | timeseries | queries | rankings [--query 'from=...&to=...&limit=...']
+  summary | timeseries | performance | queries | rankings [--query 'from=...&to=...']
   settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
   query ID
 Mutation operations:
@@ -36,6 +36,10 @@ Mutation operations:
 
 Use --query with GET commands for server-side filtering. JSON may be literal,
 @FILE, or @- to read standard input (4 MiB maximum).
+Performance accepts resolution_seconds=60|3600|86400 (at most 1500 buckets).
+It reports server-side average/p50/p95/p99, outcome timings and distribution.
+Percentiles are histogram estimates (up to 3.125% error), null for legacy data
+without fine timing coverage. Admission rejections are excluded.
 Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
 Upstream presets (cloudflare, google, quad9):
   add upstreams '{"revision":"...","item":{"preset":"cloudflare"}}'
@@ -116,7 +120,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if len(args) == 4 {
 			body = args[3]
 		}
-	case "summary", "timeseries", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
+	case "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
 		if len(args) != 1 {
 			return bad()
 		}

@@ -233,6 +233,31 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/HistorySeries'}
         default: {$ref: '#/components/responses/Error'}
+  /api/v1/performance:
+    x-mcp-tools:
+      get: {name: get_performance, description: Get DNS response-time percentiles, trends, distribution and outcome timings}
+    get:
+      description: |
+        Server-side resolution duration, including upstream waits, not client network
+        round-trip time. Includes failed resolutions; excludes admission rejections.
+        Whole-range percentiles merge observations, never average bucket percentiles.
+        Fine histograms use 16 subdivisions per power of two (midpoint error at most
+        3.125%, exact below 32 microseconds). Legacy rollups retain counts, averages and
+        coarse distribution, but percentile values are null unless every included
+        query has fine timing data. Incomplete coverage is distinct from precision.
+        At most 1500 buckets; automatic resolution uses 60, then 3600, then 86400
+        seconds. Partial edges use retained details in the same database snapshot.
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {name: resolution_seconds, in: query, schema: {type: integer, enum: [60, 3600, 86400]}}
+      responses:
+        '200':
+          description: Retained response-time metrics with explicit timing precision and observation coverage
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HistoryPerformance'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/rankings:
     x-mcp-tools:
       get: {name: get_rankings, description: Get top clients and blocked domains for a history window}
@@ -660,6 +685,61 @@ components:
         rejected: {$ref: '#/components/schemas/Decimal'}
         duration_us: {$ref: '#/components/schemas/Decimal', description: Sum of admitted query durations in microseconds}
         complete: {type: boolean}
+        updated_at: {type: string, format: date-time}
+    NullableMicroseconds:
+      description: Integer microseconds as a decimal string, or null when no measurement is available.
+      oneOf:
+        - {$ref: '#/components/schemas/Decimal'}
+        - {type: 'null'}
+    HistoryLatency:
+      type: object
+      required: [count, average_us, p50_us, p95_us, p99_us, percentiles_available]
+      properties:
+        count: {$ref: '#/components/schemas/Decimal', description: Observed admitted terminal queries}
+        average_us: {$ref: '#/components/schemas/NullableMicroseconds', description: Arithmetic mean truncated to integer microseconds; null for no observations}
+        p50_us: {$ref: '#/components/schemas/NullableMicroseconds', description: Approximate nearest-rank median}
+        p95_us: {$ref: '#/components/schemas/NullableMicroseconds', description: Approximate nearest-rank 95th percentile}
+        p99_us: {$ref: '#/components/schemas/NullableMicroseconds', description: Approximate nearest-rank 99th percentile}
+        percentiles_available: {type: boolean, description: Nonempty and all included queries have fine timing data; independent of observation completeness}
+    HistoryLatencyPoint:
+      allOf:
+        - {$ref: '#/components/schemas/HistoryLatency'}
+        - type: object
+          required: [time, complete, gap]
+          properties:
+            time: {type: string, format: date-time, description: Bucket start clipped to range.from; ends at next point or range.to}
+            complete: {type: boolean, description: Observation coverage for this individual interval}
+            gap: {type: boolean, description: No observations in an incomplete interval; must not be plotted as zero}
+    HistoryLatencyOutcome:
+      allOf:
+        - {$ref: '#/components/schemas/HistoryLatency'}
+        - type: object
+          required: [outcome]
+          properties:
+            outcome: {type: string, enum: [local, blocked, cache, stale, forwarded, error]}
+    HistoryLatencyBand:
+      type: object
+      required: [lower_us, upper_us, count]
+      properties:
+        lower_us: {$ref: '#/components/schemas/Decimal', description: Inclusive lower bound}
+        upper_us: {$ref: '#/components/schemas/NullableMicroseconds', description: Exclusive upper bound; null means infinity}
+        count: {$ref: '#/components/schemas/Decimal'}
+    HistoryPerformance:
+      type: object
+      required: [summary, outcomes, distribution, points, resolution_seconds, range, complete, updated_at]
+      properties:
+        summary: {$ref: '#/components/schemas/HistoryLatency'}
+        outcomes: {type: array, minItems: 6, maxItems: 6, items: {$ref: '#/components/schemas/HistoryLatencyOutcome'}}
+        distribution:
+          type: array
+          minItems: 8
+          maxItems: 8
+          items: {$ref: '#/components/schemas/HistoryLatencyBand'}
+          description: 'Duration bands, upper bounds in microseconds: 100, 500, 1000, 5000, 10000, 100000, 1000000, infinity. Preserves legacy precision.'
+        points: {type: array, maxItems: 1500, items: {$ref: '#/components/schemas/HistoryLatencyPoint'}}
+        resolution_seconds: {type: integer, enum: [60, 3600, 86400]}
+        range: {$ref: '#/components/schemas/HistoryRange'}
+        complete: {type: boolean, description: All chart intervals have complete retained observation coverage}
         updated_at: {type: string, format: date-time}
     HistoryQuery:
       type: object

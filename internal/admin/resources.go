@@ -32,7 +32,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			v, e = s.service.Clients(r.Context(), r.URL.Query())
 		case "settings", "lists", "rules", "records", "upstreams", "blocking":
 			v, e = s.service.Inspect(resource)
-		case "summary", "queries", "rankings", "timeseries":
+		case "summary", "queries", "rankings", "timeseries", "performance":
 			v, e = s.service.Data(r.Context(), resource, r.URL.Query())
 		case "diagnostics":
 			v, e = s.service.Diagnostics(r.Context())

@@ -551,6 +551,59 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/performance": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * @description Server-side resolution duration, including upstream waits, not client network
+     *     round-trip time. Includes failed resolutions; excludes admission rejections.
+     *     Whole-range percentiles merge observations, never average bucket percentiles.
+     *     Fine histograms use 16 subdivisions per power of two (midpoint error at most
+     *     3.125%, exact below 32 microseconds). Legacy rollups retain counts, averages and
+     *     coarse distribution, but percentile values are null unless every included
+     *     query has fine timing data. Incomplete coverage is distinct from precision.
+     *     At most 1500 buckets; automatic resolution uses 60, then 3600, then 86400
+     *     seconds. Partial edges use retained details in the same database snapshot.
+     */
+    get: {
+      parameters: {
+        query?: {
+          /** @description Inclusive UTC RFC3339 timestamp; default is to minus one hour. */
+          from?: components["parameters"]["From"];
+          /** @description Exclusive UTC RFC3339 timestamp; default is current UTC minute. */
+          to?: components["parameters"]["To"];
+          resolution_seconds?: 60 | 3600 | 86400;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Retained response-time metrics with explicit timing precision and observation coverage */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["HistoryPerformance"];
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/rankings": {
     parameters: {
       query?: never;
@@ -1661,6 +1714,58 @@ export interface components {
       rejected: components["schemas"]["Decimal"];
       /** @description Sum of admitted query durations in microseconds */
       duration_us: components["schemas"]["Decimal"];
+      complete: boolean;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    /** @description Integer microseconds as a decimal string, or null when no measurement is available. */
+    NullableMicroseconds: components["schemas"]["Decimal"] | null;
+    HistoryLatency: {
+      /** @description Observed admitted terminal queries */
+      count: components["schemas"]["Decimal"];
+      /** @description Arithmetic mean truncated to integer microseconds; null for no observations */
+      average_us: components["schemas"]["NullableMicroseconds"];
+      /** @description Approximate nearest-rank median */
+      p50_us: components["schemas"]["NullableMicroseconds"];
+      /** @description Approximate nearest-rank 95th percentile */
+      p95_us: components["schemas"]["NullableMicroseconds"];
+      /** @description Approximate nearest-rank 99th percentile */
+      p99_us: components["schemas"]["NullableMicroseconds"];
+      /** @description Nonempty and all included queries have fine timing data; independent of observation completeness */
+      percentiles_available: boolean;
+    };
+    HistoryLatencyPoint: components["schemas"]["HistoryLatency"] & {
+      /**
+       * Format: date-time
+       * @description Bucket start clipped to range.from; ends at next point or range.to
+       */
+      time: string;
+      /** @description Observation coverage for this individual interval */
+      complete: boolean;
+      /** @description No observations in an incomplete interval; must not be plotted as zero */
+      gap: boolean;
+    };
+    HistoryLatencyOutcome: components["schemas"]["HistoryLatency"] & {
+      /** @enum {string} */
+      outcome: "local" | "blocked" | "cache" | "stale" | "forwarded" | "error";
+    };
+    HistoryLatencyBand: {
+      /** @description Inclusive lower bound */
+      lower_us: components["schemas"]["Decimal"];
+      /** @description Exclusive upper bound; null means infinity */
+      upper_us: components["schemas"]["NullableMicroseconds"];
+      count: components["schemas"]["Decimal"];
+    };
+    HistoryPerformance: {
+      summary: components["schemas"]["HistoryLatency"];
+      outcomes: components["schemas"]["HistoryLatencyOutcome"][];
+      /** @description Duration bands, upper bounds in microseconds: 100, 500, 1000, 5000, 10000, 100000, 1000000, infinity. Preserves legacy precision. */
+      distribution: components["schemas"]["HistoryLatencyBand"][];
+      points: components["schemas"]["HistoryLatencyPoint"][];
+      /** @enum {integer} */
+      resolution_seconds: 60 | 3600 | 86400;
+      range: components["schemas"]["HistoryRange"];
+      /** @description All chart intervals have complete retained observation coverage */
       complete: boolean;
       /** Format: date-time */
       updated_at: string;
