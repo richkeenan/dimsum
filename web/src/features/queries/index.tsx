@@ -253,12 +253,13 @@ export default function Queries({
       <Resource state={state} retry={invalidate}>
         <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <DataTable
+            compact={!technical}
             items={rows(state.data)}
             columns={[
               {
                 key: "time",
                 label: "Time",
-                width: 100,
+                width: 84,
                 render: (r) => (
                   <button
                     className="border-0 bg-transparent p-0 text-left whitespace-nowrap text-foreground tabular-nums hover:underline"
@@ -272,9 +273,10 @@ export default function Queries({
               {
                 key: "client",
                 label: "Client",
-                width: 190,
+                width: technical ? 190 : "20%",
                 render: (r) => (
                   <ClientIdentity
+                    compact
                     source={
                       r.client_name_source
                         ? String(r.client_name_source)
@@ -290,42 +292,47 @@ export default function Queries({
               {
                 key: "name",
                 label: "Domain",
-                width: 300,
+                width: technical ? 260 : undefined,
                 render: (r) => (
-                  <button
-                    className="border-0 bg-transparent p-0 text-left text-base whitespace-nowrap text-foreground hover:underline"
-                    onClick={() => inspect(r)}
-                  >
-                    {text(r.name)}
-                  </button>
+                  <div className="min-w-0 space-y-0.5">
+                    <button
+                      className="block w-full truncate border-0 bg-transparent p-0 text-left text-[14px] text-foreground hover:underline"
+                      onClick={() => inspect(r)}
+                      title={text(r.name)}
+                    >
+                      {text(r.name)}
+                    </button>
+                    <span className="block text-[12px] text-muted-foreground">
+                      {text(r.qtype)}
+                    </span>
+                  </div>
                 ),
               },
-              { key: "qtype", label: "Type", width: 80 },
               {
                 key: "outcome",
                 label: "Result",
-                width: 140,
-                render: (r) => <ResultBadge outcome={r.outcome} />,
+                width: 132,
+                render: (r) => (
+                  <div className="space-y-0.5">
+                    <ResultBadge outcome={r.outcome} compact />
+                    <div className="text-xs text-muted-foreground">
+                      <ResponseTime value={r.duration_us} />
+                    </div>
+                  </div>
+                ),
               },
               {
                 key: "response",
                 label: "Answer",
-                width: 200,
+                width: technical ? 200 : "20%",
                 render: (r) => (
                   <AnswerPreview row={r} inspect={() => inspect(r)} />
                 ),
               },
               {
-                key: "duration_us",
-                label: "Response time",
-                width: 120,
-                align: "right",
-                render: (r) => <ResponseTime value={r.duration_us} />,
-              },
-              {
                 key: "actions",
                 label: "Action",
-                width: 100,
+                width: 96,
                 render: (r) => (
                   <InlineRuleAction
                     name={typeof r.name === "string" ? r.name : ""}

@@ -18,10 +18,16 @@ export function resultLabel(value: unknown) {
   );
 }
 
-export function ResultBadge({ outcome }: { outcome: unknown }) {
+export function ResultBadge({
+  outcome,
+  compact = false,
+}: {
+  outcome: unknown;
+  compact?: boolean;
+}) {
   return (
     <span
-      className={`inline-block w-fit rounded px-[7px] py-[3px] text-xs ${outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : outcome === "error" || outcome === "rejected" ? "bg-destructive/10 text-destructive" : outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
+      className={`inline-block w-fit rounded px-[7px] py-[3px] ${compact ? "text-[12px]" : "text-xs"} ${outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : outcome === "error" || outcome === "rejected" ? "bg-destructive/10 text-destructive" : outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
     >
       {resultLabel(outcome)}
     </span>
@@ -44,11 +50,11 @@ export function ResponseTime({ value }: { value: unknown }) {
         });
   return (
     <span
-      className="inline-flex items-baseline justify-end gap-1 whitespace-nowrap text-sm tabular-nums"
+      className="inline-flex items-baseline gap-1 whitespace-nowrap text-[12px] tabular-nums"
       title={`${microsecondsToMS(value)} ms`}
     >
       <span>{number}</span>{" "}
-      <span className="text-xs text-muted-foreground">{unit}</span>
+      <span className="text-muted-foreground">{unit}</span>
     </span>
   );
 }
@@ -78,7 +84,9 @@ export function AnswerPreview({
 }) {
   const response = row.response as ResponseSummary | undefined;
   if (!response)
-    return <span className="text-xs text-muted-foreground">Not recorded</span>;
+    return (
+      <span className="text-[12px] text-muted-foreground">Not recorded</span>
+    );
   const answers = response.records.filter(
     (record) => record.section === "answer",
   );
@@ -88,7 +96,7 @@ export function AnswerPreview({
   const shown = addresses.length ? addresses : answers;
   if (!shown.length)
     return (
-      <span className="text-xs text-muted-foreground">
+      <span className="text-[12px] text-muted-foreground">
         {response.truncated
           ? "Partial response"
           : row.rcode === 3
@@ -99,12 +107,12 @@ export function AnswerPreview({
   return (
     <button
       onClick={inspect}
-      className="block max-w-56 text-left text-xs hover:underline focus-visible:outline-ring"
+      className="block w-full min-w-0 max-w-full text-left text-[13px] hover:underline focus-visible:outline-ring"
       title={shown.map((record) => record.value).join("\n")}
     >
       <span className="block truncate font-mono">{shown[0].value}</span>
       {(shown.length > 1 || response.truncated) && (
-        <span className="text-muted-foreground">
+        <span className="text-[12px] text-muted-foreground">
           {shown.length > 1
             ? `+${(shown.length - 1).toLocaleString()} more`
             : ""}

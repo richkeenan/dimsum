@@ -46,6 +46,7 @@ type Props = {
   device?: Device;
   stale?: boolean;
   source?: string;
+  compact?: boolean;
 };
 export function ClientIdentity({
   address,
@@ -53,19 +54,29 @@ export function ClientIdentity({
   device,
   stale,
   source,
+  compact = false,
 }: Props) {
   const [label, Icon] =
     categories[device?.category ?? "unknown"] ?? categories.unknown;
   return (
-    <span className="inline-flex max-w-full items-start gap-2.5 text-left">
+    <span
+      className={`inline-flex max-w-full items-start text-left ${compact ? "gap-2" : "gap-2.5"}`}
+    >
       <Icon
         role="img"
         aria-label={label}
-        className="mt-1 size-4.5 shrink-0 text-muted-foreground"
+        className={`mt-1 shrink-0 text-muted-foreground ${compact ? "size-4" : "size-4.5"}`}
         strokeWidth={1.5}
       />
-      <span className="min-w-0 text-base leading-normal">
-        <span className="block wrap-anywhere">{name || address}</span>
+      <span
+        className={`min-w-0 leading-normal ${compact ? "text-[14px]" : "text-base"}`}
+      >
+        <span
+          className={compact ? "block truncate" : "block wrap-anywhere"}
+          title={compact ? name || address : undefined}
+        >
+          {name || address}
+        </span>
         {device?.dns_guess && (!source || source === "dns-guess") && (
           <span
             className="mt-1 inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground"
@@ -75,7 +86,10 @@ export function ClientIdentity({
           </span>
         )}
         {name && name !== address && (
-          <span className="mt-0.5 block text-xs text-muted-foreground">
+          <span
+            className={`mt-0.5 block text-muted-foreground ${compact ? "truncate text-[12px]" : "text-xs"}`}
+            title={compact ? address : undefined}
+          >
             {address}
             {stale ? " · stale name" : ""}
           </span>

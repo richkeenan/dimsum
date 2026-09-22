@@ -125,7 +125,9 @@ test("answers, historical TTLs and contextual blocking are useful without techni
   });
   await page.goto("/queries");
   await expect(page.getByRole("cell", { name: /192\.0\.2\.8/ })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "11.2 ms" })).toBeVisible();
+  await expect(
+    page.getByRole("cell", { name: "Forwarded 11.2 ms" }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("query-table.png"),
     fullPage: true,

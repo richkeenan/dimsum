@@ -96,10 +96,12 @@ export function DataTable({
   items,
   columns,
   empty = "No results for this selection.",
+  compact = false,
 }: {
   items: Row[];
   columns: Column[];
   empty?: string;
+  compact?: boolean;
 }) {
   const visible = columns.filter((c) => !c.hidden);
   const definitions = useMemo(
@@ -121,14 +123,26 @@ export function DataTable({
     getRowId: (r, i) => text(r.id ?? r.address ?? r.name ?? i),
   });
   return (
-    <Table className={visible.length > 5 ? "min-w-190" : undefined}>
+    <Table
+      className={
+        compact
+          ? "min-w-190 table-fixed"
+          : visible.length > 5
+            ? "min-w-190"
+            : undefined
+      }
+    >
       <TableHeader>
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>
             {group.headers.map((header, i) => (
               <TableHead
                 key={header.id}
-                className="bg-muted px-4 text-xs"
+                className={
+                  compact
+                    ? "bg-muted px-3 text-[12px]"
+                    : "bg-muted px-4 text-xs"
+                }
                 style={{
                   width: visible[i]?.width,
                   textAlign: visible[i]?.align,
@@ -147,7 +161,11 @@ export function DataTable({
               {row.getAllCells().map((cell, i) => (
                 <TableCell
                   key={cell.id}
-                  className="max-w-105 px-4 py-3 text-base leading-normal whitespace-nowrap tabular-nums"
+                  className={
+                    compact
+                      ? "px-3 py-2.5 text-[14px] leading-normal whitespace-normal tabular-nums"
+                      : "max-w-105 px-4 py-3 text-base leading-normal whitespace-nowrap tabular-nums"
+                  }
                   style={{ textAlign: visible[i]?.align }}
                   title={
                     typeof row.original[visible[i]?.key] === "string"

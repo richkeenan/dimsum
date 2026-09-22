@@ -133,7 +133,7 @@ export function InlineRuleAction({
       <Button
         variant="ghost"
         size="sm"
-        className="text-xs"
+        className="text-[12px]"
         aria-label={`${label} ${name}`}
         title={`${label} this exact domain for all clients`}
         disabled={state.busy || !!state.result}
