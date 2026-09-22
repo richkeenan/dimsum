@@ -48,7 +48,7 @@ func Handler() http.Handler {
 		}
 		spa := name == "" || name == "index.html"
 		if !spa {
-			for _, route := range []string{"overview", "queries", "clients", "lists", "rules", "records", "upstreams", "settings", "jobs", "diagnostics"} {
+			for _, route := range []string{"overview", "performance", "queries", "clients", "lists", "rules", "records", "upstreams", "settings", "jobs", "diagnostics"} {
 				if name == route {
 					spa = true
 					break
