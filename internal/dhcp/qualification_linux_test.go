@@ -275,7 +275,9 @@ func TestLinuxIndependentClientRenewRestart(t *testing.T) {
 	events := func() string { b, _ := os.ReadFile(result); return string(b) }
 	require.Eventually(t, func() bool { return strings.Contains(events(), "bound 192.0.2.100 192.0.2.2") }, 3*time.Second, time.Millisecond)
 	acquired := time.Since(started)
-	assert.Less(t, acquired, time.Second)
+	// The Eventually bound above includes the repeated conflict check and
+	// client handshake; a fresh lease must not bypass the observation window.
+	assert.GreaterOrEqual(t, acquired, 1500*time.Millisecond)
 	old := rt.Leases()[0].Expiry
 	time.Sleep(1100 * time.Millisecond)
 	require.NoError(t, cmd.Process.Signal(syscall.SIGUSR1))
