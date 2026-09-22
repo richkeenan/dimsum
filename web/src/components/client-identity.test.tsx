@@ -62,6 +62,12 @@ it("marks DNS guesses and explains their observed domains", () => {
     </>,
   );
   expect(screen.getByText("DNS guess")).toBeVisible();
+  expect(screen.getByText("Ring device").parentElement).toHaveClass(
+    "inline-flex",
+  );
+  expect(screen.getByText("DNS guess").parentElement).toBe(
+    screen.getByText("Ring device").parentElement,
+  );
   expect(screen.getByText("DNS query clues")).toBeVisible();
   expect(screen.getByText("fw-eventstream.ring.com")).toBeVisible();
   expect(screen.getByText(/3 queries/)).toBeVisible();

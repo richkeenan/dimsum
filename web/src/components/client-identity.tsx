@@ -71,20 +71,22 @@ export function ClientIdentity({
       <span
         className={`min-w-0 leading-normal ${compact ? "text-[14px]" : "text-base"}`}
       >
-        <span
-          className={compact ? "block truncate" : "block wrap-anywhere"}
-          title={compact ? name || address : undefined}
-        >
-          {name || address}
-        </span>
-        {device?.dns_guess && (!source || source === "dns-guess") && (
+        <span className="inline-flex max-w-full items-center gap-1.5">
           <span
-            className="mt-1 inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground"
-            title="Guessed from recent DNS queries, not a verified device name"
+            className={`min-w-0 ${compact ? "truncate" : "wrap-anywhere"}`}
+            title={compact ? name || address : undefined}
           >
-            DNS guess
+            {name || address}
           </span>
-        )}
+          {device?.dns_guess && (!source || source === "dns-guess") && (
+            <span
+              className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground"
+              title="Guessed from recent DNS queries, not a verified device name"
+            >
+              DNS guess
+            </span>
+          )}
+        </span>
         {name && name !== address && (
           <span
             className={`mt-0.5 block text-muted-foreground ${compact ? "truncate text-[12px]" : "text-xs"}`}
