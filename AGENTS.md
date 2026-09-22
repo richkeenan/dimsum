@@ -1,5 +1,7 @@
 # dimsum development
 
+- Read `AGENTS.local.md` when present for private, checkout-specific deployment instructions. It is Git-ignored; never commit its contents or copy private deployment details into tracked files.
+
 - Work directly on `main` in this checkout. Do not create worktrees or feature branches unless the owner asks.
 - Make small, focused commits with meaningful verification. Never force-add ignored agent reports or scratch files.
 - Use `github.com/stretchr/testify/require` for test prerequisites and `assert` for independent checks. Call `require` only from the test goroutine; send worker errors back to the test. Keep assertions outside benchmark/allocation measurement closures.
