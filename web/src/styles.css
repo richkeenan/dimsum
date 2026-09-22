@@ -75,16 +75,16 @@
   }
 }
 
-.sidebar-logo-arm {
+.dimsum-logo-arm {
   transform-box: fill-box;
   transform-origin: 0% 100%;
 }
 
-.sidebar-brand:is(:hover, :focus-visible) .sidebar-logo-arm {
-  animation: sidebar-logo-wave 800ms ease-in-out;
+.dimsum-brand:is(:hover, :focus-visible) .dimsum-logo-arm {
+  animation: dimsum-logo-wave 800ms ease-in-out;
 }
 
-@keyframes sidebar-logo-wave {
+@keyframes dimsum-logo-wave {
   0%,
   100% {
     transform: rotate(0deg);

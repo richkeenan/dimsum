@@ -1,10 +1,16 @@
-export function SidebarLogo() {
+export function DimsumLogo({
+  width = 54,
+  height = 44,
+}: {
+  width?: number;
+  height?: number;
+}) {
   return (
     <svg
       viewBox="45 50 235 190"
       fill="none"
-      width={54}
-      height={44}
+      width={width}
+      height={height}
       className="shrink-0 overflow-visible"
       aria-hidden="true"
       focusable="false"
@@ -16,7 +22,7 @@ export function SidebarLogo() {
           strokeWidth="8"
         />
         <path
-          className="sidebar-logo-arm"
+          className="dimsum-logo-arm"
           d="m243 156 23-21"
           stroke="#68A77F"
           strokeWidth="8"

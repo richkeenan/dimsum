@@ -46,10 +46,9 @@ import {
 } from "./components/ui/dialog";
 import { ErrorNotice } from "./components/data";
 import { DNSAddresses, ServiceNotices } from "./components/network-status";
-import { SidebarLogo } from "./components/sidebar-logo";
+import { DimsumLogo } from "./components/dimsum-logo";
 import Overview from "./features/overview";
 import Performance from "./features/performance";
-import logo from "./assets/dimsum.svg";
 import Queries from "./features/queries";
 import Configuration from "./features/configuration";
 import SettingsView from "./features/settings";
@@ -182,8 +181,8 @@ export default function App() {
   if (auth)
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center bg-[#172e50] p-6">
-        <div className="mb-7 flex items-center gap-3 text-[28px] font-semibold text-white">
-          <img src={logo} alt="" width={74} height={60} />
+        <div className="dimsum-brand mb-7 flex items-center gap-3 text-[28px] font-semibold text-white">
+          <DimsumLogo width={74} height={60} />
           <span>dimsum</span>
         </div>
         <section className="w-full max-w-100 rounded-[14px] bg-background p-6 sm:p-8 [&>h1]:text-2xl [&>h1]:font-semibold [&>p]:mt-2 [&>p]:text-muted-foreground [&>form]:my-6 [&>form>button]:w-full">
@@ -222,9 +221,9 @@ export default function App() {
         <Link
           to="/"
           search={rangeSearch}
-          className="sidebar-brand flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-medium tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
+          className="dimsum-brand flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-medium tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
         >
-          <SidebarLogo />
+          <DimsumLogo />
           <span>
             dimsum<small>DNS administration</small>
           </span>
