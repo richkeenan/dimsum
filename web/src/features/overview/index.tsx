@@ -89,9 +89,6 @@ export default function Overview({
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
         <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
           <h2 className="text-sm font-medium">Query activity</h2>
-          <span className="text-xs text-muted-foreground">
-            Outcomes over the selected range
-          </span>
         </div>
         <Resource state={series}>
           <Suspense

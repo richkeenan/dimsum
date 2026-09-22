@@ -136,7 +136,7 @@ test("answers, historical TTLs and contextual blocking are useful without techni
   const panel = page.getByRole("dialog", { name: "Query detail" });
   await expect(panel.getByText("192.0.2.9", { exact: true })).toBeVisible();
   await expect(
-    panel.getByText("TTL when answered", { exact: false }),
+    panel.getByTitle("TTL when answered").first(),
   ).toBeVisible();
   await expect(panel.getByText("42 s", { exact: true })).toBeVisible();
   await expect(panel.getByText("0 s", { exact: true })).toBeVisible();

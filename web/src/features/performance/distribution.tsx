@@ -29,7 +29,7 @@ export default function Distribution({
                 ? `≥ ${formatLatency(band.lower_us)}`
                 : band.lower_us === "0"
                   ? `< ${formatLatency(band.upper_us)}`
-                  : `${formatLatency(band.lower_us)} – ${formatLatency(band.upper_us)}`;
+                  : `${formatLatency(band.lower_us)} – < ${formatLatency(band.upper_us)}`;
             return (
               <tr key={band.lower_us}>
                 <th
@@ -57,9 +57,6 @@ export default function Distribution({
           })}
         </tbody>
       </table>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Upper limits are exclusive.
-      </p>
     </div>
   );
 }

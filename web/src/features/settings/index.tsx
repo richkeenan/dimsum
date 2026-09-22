@@ -41,11 +41,9 @@ type Setting = {
   min?: number;
   type?: "text";
 };
-const groups: { title: string; description: string; fields: Setting[] }[] = [
+const groups: { title: string; fields: Setting[] }[] = [
   {
     title: "DNS",
-    description:
-      "Listening address and how long to wait for an upstream answer.",
     fields: [
       {
         path: "dns.listen.0",
@@ -62,8 +60,6 @@ const groups: { title: string; description: string; fields: Setting[] }[] = [
   },
   {
     title: "Cache",
-    description:
-      "Reuse recent answers and choose how to handle an unreachable upstream.",
     fields: [
       { path: "cache.bytes", label: "Memory budget (bytes)", min: 1 },
       {
@@ -89,8 +85,6 @@ const groups: { title: string; description: string; fields: Setting[] }[] = [
   },
   {
     title: "History",
-    description:
-      "Choose how long to retain query details and activity summaries.",
     fields: [
       { path: "statistics.detail_days", label: "Query details (days)", min: 1 },
       {
@@ -177,9 +171,6 @@ function SettingsForm({
           key={group.title}
         >
           <h2 className="mb-3 text-sm font-medium">{group.title}</h2>
-          <p className="mb-[18px] text-xs text-muted-foreground">
-            {group.description}
-          </p>
           <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
             {group.fields.map((field) => (
               <label

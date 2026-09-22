@@ -128,9 +128,6 @@ export function ResponseRecords({ response }: { response?: ResponseSummary }) {
     <section className="space-y-3" aria-label="DNS response">
       <div>
         <h3 className="text-sm font-medium">DNS response</h3>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          TTL when answered: how long each record could be cached, in seconds.
-        </p>
       </div>
       {!response ? (
         <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">

@@ -51,9 +51,6 @@ export function LatencySummary({
           >
             {value}
           </dd>
-          {!compact && (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-          )}
         </div>
       ))}
     </dl>
@@ -65,9 +62,7 @@ export function PrecisionNotice({ metrics }: { metrics?: Latency }) {
     return null;
   return (
     <p className="px-5 pb-4 text-xs leading-relaxed text-muted-foreground">
-      Percentiles are unavailable for some older history. Average and
-      distribution still reflect the recorded queries. Choose a more recent
-      range for detailed timings.
+      Percentiles unavailable for older history. Choose a more recent range.
     </p>
   );
 }

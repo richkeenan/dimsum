@@ -17,10 +17,6 @@ export default function Diagnostics() {
           Refresh measurements
         </Button>
       </div>
-      <p className="mb-[18px] text-xs text-muted-foreground">
-        Check DNS availability and query-history storage. For a connection test,
-        use Probe on the upstream servers page.
-      </p>
       <Resource state={state} retry={() => setTick((t) => t + 1)}>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
           <section className="mb-5 min-w-0 rounded-lg border border-border bg-background p-5">

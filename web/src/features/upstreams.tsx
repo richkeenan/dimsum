@@ -271,10 +271,6 @@ export function UpstreamEditor({
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-muted-foreground">
-                  Standard DNS · Port 53. Both server addresses are included;
-                  existing entries are skipped.
-                </p>
               </section>
             )}
             {provider === "custom" && (

@@ -155,8 +155,8 @@ test("legacy precision, idle data and unavailable history are explicit", async (
     }),
   );
   await page.goto("/performance");
-  await expect(page.getByText(/some older history/)).toBeVisible();
-  await expect(page.getByText(/No response-time observations/)).toBeVisible();
+  await expect(page.getByText(/Percentiles unavailable for older history/)).toBeVisible();
+  await expect(page.getByText("No timings in this range.")).toBeVisible();
   await page.route("**/api/v1/performance?**", (route) =>
     route.fulfill({
       status: 503,

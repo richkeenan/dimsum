@@ -71,14 +71,10 @@ export function Reservations({
           Add reservation
         </Button>
       </div>
-      <p className="mb-4 text-xs text-muted-foreground">
-        Keep a device on the same IP address.
-      </p>
       <Resource state={state} retry={refresh}>
         {items.length === 0 ? (
           <p className="rounded-md bg-muted/50 px-4 py-5 text-xs text-muted-foreground">
-            No reservations yet. Add one for a device that needs a fixed
-            address.
+            No reservations.
           </p>
         ) : (
           <DataTable
@@ -588,9 +584,6 @@ export function DHCPCheck() {
       <summary className="min-h-11 cursor-pointer content-center text-sm font-medium">
         Troubleshooting
       </summary>
-      <p className="my-3 max-w-prose text-xs text-muted-foreground">
-        Check network settings, the server address and DNS.
-      </p>
       <label className="mb-3 flex min-h-11 items-center gap-3 text-xs">
         <input
           type="checkbox"

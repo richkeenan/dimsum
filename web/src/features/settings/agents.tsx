@@ -60,9 +60,7 @@ export function AgentAccess() {
         Agent access
       </h2>
       <p className="mb-4 text-xs text-muted-foreground">
-        Tokens grant full administrator access and remain valid until revoked.
-        Each token is shown only once, when created. Your existing password
-        stays unchanged.
+        Tokens grant administrator access until revoked.
       </p>
       <label className="mb-4 flex min-w-0 flex-col gap-1.5 text-xs font-normal">
         MCP URL
@@ -119,7 +117,7 @@ export function AgentAccess() {
             Save your token for {created.name}
           </h3>
           <p className="mt-2 text-xs text-muted-foreground">
-            Copy it now. Done or leaving this page hides the secret permanently.
+            Copy this token before closing. You cannot view it again.
           </p>
           <label className="mt-3 flex min-w-0 flex-col gap-1.5 text-xs font-normal">
             New token

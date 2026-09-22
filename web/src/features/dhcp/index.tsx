@@ -28,25 +28,25 @@ const networkFields = [
     "interface",
     "Network interface",
     "eth0",
-    "The wired or wireless interface connected to your network.",
+    "",
   ],
   [
     "server_ip",
     "Server IP address",
     "192.0.2.2",
-    "The fixed IPv4 address of the device running dimsum.",
+    "Use a fixed IPv4 address.",
   ],
   [
     "gateway",
     "Router IP address",
     "192.0.2.1",
-    "The router your devices use to reach the internet.",
+    "",
   ],
   [
     "subnet",
     "Subnet",
     "192.0.2.0/24",
-    "Your network address and prefix, for example /24.",
+    "",
   ],
 ] as const;
 const topology = new Set(["interface", "server_ip", "subnet", "local_domain"]);
@@ -131,7 +131,7 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
           ? "Applying your saved settings."
           : d.applied_enabled
             ? `Assigning addresses on ${d.interface} (${d.server_ip}).`
-            : "Set up your network below to start assigning IP addresses.";
+            : "";
   return (
     <section
       className="flex items-start gap-3 px-1 py-1"
@@ -144,9 +144,11 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
       </div>
       <div className="min-w-0" aria-live="polite">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        <p className="mt-1 text-xs text-muted-foreground wrap-anywhere">
-          {description}
-        </p>
+        {description && (
+          <p className="mt-1 text-xs text-muted-foreground wrap-anywhere">
+            {description}
+          </p>
+        )}
         {error && (
           <p
             role="alert"
@@ -329,9 +331,6 @@ export function DHCPForm({
               <h2 className="text-lg font-semibold tracking-tight">
                 Network settings
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Let dimsum give your devices an IP address automatically.
-              </p>
             </div>
             <label className="relative inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-3 self-start text-xs font-medium">
               <input
@@ -402,7 +401,6 @@ export function DHCPForm({
                     }
                     disabled={blocked}
                     required={config.enabled}
-                    aria-describedby="dhcp-duration-help"
                     onChange={(e) => {
                       setCustomLease(e.target.value === "custom");
                       if (e.target.value !== "custom")
@@ -417,12 +415,6 @@ export function DHCPForm({
                     ))}
                     <option value="custom">Custom duration</option>
                   </select>
-                  <p
-                    id="dhcp-duration-help"
-                    className="mt-1.5 text-[13px] text-muted-foreground"
-                  >
-                    How long a device keeps its address before renewing.
-                  </p>
                   {customDuration && (
                     <div className="mt-3">
                       {field(

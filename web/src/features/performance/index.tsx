@@ -40,12 +40,12 @@ export default function Performance(props: PerformanceProps) {
               <h2 className="text-sm font-medium">Server-side response time</h2>
               <span className="text-xs text-muted-foreground">
                 {count(data.summary.count)} queries observed
+                {data.complete === false && " · Partial history"}
               </span>
             </div>
             <LatencySummary metrics={data.summary} />
             <PrecisionNotice metrics={data.summary} />
           </section>
-          <CoverageNotice complete={data.complete} />
           <section className={panel}>
             <div className={heading}>
               <h2 className="text-sm font-medium">Response time over time</h2>
@@ -111,32 +111,19 @@ export default function Performance(props: PerformanceProps) {
                   },
                 ]}
               />
-              <p className="px-5 py-4 text-xs leading-relaxed text-muted-foreground">
-                Cached and local answers show the fast path. Forwarded queries
-                include the wait for upstream DNS. Failed resolutions are
-                included in the totals.
-              </p>
             </section>
           </div>
-          <p className="max-w-4xl text-xs leading-relaxed text-muted-foreground">
-            Timings measure resolution inside dimsum, including upstream waits,
-            rather than the network round trip from your device. Percentiles
-            marked ≈ are histogram estimates with up to 3.125% rounding error.
-            Admission rejections are excluded.
-          </p>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Measurement details</summary>
+            <p className="mt-2 max-w-4xl leading-relaxed">
+              Server-side timings include upstream waits and exclude admission
+              rejections. ≈ marks histogram estimates (up to 3.125% rounding error).
+            </p>
+          </details>
         </>
       )}
     </Resource>
   );
-}
-
-export function CoverageNotice({ complete }: { complete?: boolean }) {
-  return complete === false ? (
-    <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
-      Partial coverage: figures reflect recorded queries. Some intervals are
-      still being collected, missing, or outside history retention.
-    </p>
-  ) : null;
 }
 
 export function OverviewPerformance(

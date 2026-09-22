@@ -187,7 +187,6 @@ export default function App() {
         </div>
         <section className="w-full max-w-100 rounded-[14px] bg-background p-6 sm:p-8 [&>h1]:text-2xl [&>h1]:font-semibold [&>p]:mt-2 [&>p]:text-muted-foreground [&>form]:my-6 [&>form>button]:w-full">
           <h1>Welcome to dimsum</h1>
-          <p>Sign in to manage your network.</p>
           <Login
             onSuccess={() => {
               queryClient.clear();
@@ -289,10 +288,6 @@ export default function App() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
             <div className="[&>h1]:text-[26px] [&>h1]:font-semibold [&>h1]:tracking-tight [&>p]:mt-1 [&>p]:text-xs [&>p]:text-muted-foreground">
               <h1>{title}</h1>
-              {page === "overview" && <p>DNS activity across your network.</p>}
-              {page === "performance" && (
-                <p>How quickly DNS queries resolve, and where the time goes.</p>
-              )}
             </div>
             <div className="flex items-center gap-2">
               {page === "lists" && (

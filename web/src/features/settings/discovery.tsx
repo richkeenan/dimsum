@@ -59,10 +59,6 @@ export function DiscoverySettings({
   return (
     <section className="mb-5 rounded-lg border border-border bg-background p-5">
       <h2 className="mb-3 text-sm font-medium">Device discovery</h2>
-      <p className="mb-4 text-xs text-muted-foreground">
-        Find device names and types using local mDNS and Bonjour advertisements.
-        User-defined names always take priority.
-      </p>
       <form
         className="space-y-4"
         onSubmit={async (e) => {

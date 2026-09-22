@@ -93,9 +93,11 @@ export function ListSubscriptions({
             render: (row) => (
               <div className="min-w-48 max-w-96 whitespace-normal">
                 <div className="font-medium">{listLabel(row)}</div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {text(row.description || "Custom subscription")}
-                </p>
+                {!!row.description && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {text(row.description)}
+                  </p>
+                )}
                 {row.available === false && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     {text(row.unavailable_reason)}

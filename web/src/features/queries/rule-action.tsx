@@ -222,12 +222,6 @@ export function QueryRuleForm({
           : `Matches ${name} and every descendant, including child.${name}.`}{" "}
         Applies to all clients.
       </p>
-      {action === "allow" && (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          An allow exception overrides domain blocking rules. It is not needed
-          for a domain that already resolves normally.
-        </p>
-      )}
       {state.error && <ErrorNotice error={state.error} />}
       <Button
         disabled={state.busy || !name || !!state.result}

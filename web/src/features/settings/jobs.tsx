@@ -84,11 +84,8 @@ export default function Jobs() {
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
         <h2 className="mb-3 text-sm font-medium">Back up your configuration</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
-          Archives contain authoritative configuration and required secrets.
-          Query history, downloaded lists and DHCP lease ownership are excluded.
-          Preserve the DHCP state directory separately while the service is
-          stopped. Downloads remain available until the next backup or service
-          restart.
+          Includes configuration and secrets. Excludes query history, downloaded
+          lists and DHCP leases.
         </p>
         <Button disabled={busy} onClick={() => start("backup")}>
           {busy ? "Working…" : "Create backup"}
@@ -108,8 +105,7 @@ export default function Jobs() {
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
         <h2 className="mb-3 text-sm font-medium">Restore a backup</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
-          Replace the saved configuration with a dimsum archive. The archive is
-          checked before it is applied.
+          Replaces your saved configuration.
         </p>
         <form
           className="flex min-w-0 flex-wrap items-end gap-3 [&>*]:min-w-0"
@@ -135,11 +131,6 @@ export default function Jobs() {
             {busy ? "Working…" : "Validate and restore"}
           </Button>
         </form>
-        {archive && (
-          <p className="mt-3 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {archive.name} is ready to restore.
-          </p>
-        )}
       </section>
       <details className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 text-xs">
         <summary className="cursor-pointer text-muted-foreground">

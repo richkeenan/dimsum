@@ -107,18 +107,6 @@ const columns: Record<string, string[]> = {
   upstreams: ["address"],
   clients: ["name", "address"],
 };
-const descriptions: Record<string, string> = {
-  lists:
-    "Check a list to download and activate it immediately. Uncheck to disable it, or add your own URL.",
-  rules:
-    "Always block or allow a domain. Choose whether the rule also covers subdomains.",
-  records:
-    "Give devices and services on your network an easy-to-remember name.",
-  upstreams:
-    "DNS servers used when dimsum cannot answer a lookup locally. Choose a provider or add your own server, then test its connection.",
-  clients:
-    "Name devices to make their activity easier to recognise. Some routers share one address across several devices.",
-};
 const optionLabels: Record<string, string> = {
   deny: "Block",
   allow: "Allow",
@@ -345,7 +333,6 @@ export default function Configuration({
   }
   return (
     <div className="min-w-0 [&_p]:leading-relaxed">
-      <p className="mb-5 text-xs text-muted-foreground">{descriptions[kind]}</p>
       <Resource state={settings}>
         <Revision value={settings.data} />
       </Resource>
@@ -635,13 +622,13 @@ export default function Configuration({
         }}
       >
         <DialogContent
+          aria-describedby={undefined}
           className={`max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] min-w-0 overflow-y-auto [&>*]:min-w-0 ${kind === "lists" ? "sm:max-w-[720px] sm:p-8" : ""}`}
         >
           <DialogTitle>
             {original ? "Edit" : "Add"}{" "}
             {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
           </DialogTitle>
-          <DialogDescription>{descriptions[kind]}</DialogDescription>
           {editing && (
             <form
               className="min-w-0"
@@ -785,9 +772,6 @@ function RuleTester() {
   return (
     <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
       <h2 className="mb-3 text-sm font-medium">Rule tester</h2>
-      <p className="mb-[18px] text-xs text-muted-foreground">
-        Evaluate the current active policy using the same matcher as live DNS.
-      </p>
       <form
         className="flex min-w-0 flex-wrap items-end gap-3 [&>*]:min-w-0"
         onSubmit={async (e) => {

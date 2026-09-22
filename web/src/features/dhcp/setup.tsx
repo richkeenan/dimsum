@@ -35,11 +35,6 @@ export function SetupSummary({
         : `${seconds} seconds`;
   return (
     <div className="py-5">
-      <p className="mb-4 text-xs text-muted-foreground">
-        {suggested
-          ? "We’ve filled in the settings below. You can adjust anything before saving."
-          : "Your devices will use these network settings."}
-      </p>
       <dl className="grid gap-x-6 gap-y-5 text-xs sm:grid-cols-2 [&_dt]:text-muted-foreground [&_dd]:mt-1 [&_dd]:font-medium [&_dd]:wrap-anywhere">
         <div>
           <dt>Router</dt>

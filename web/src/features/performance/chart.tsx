@@ -52,7 +52,6 @@ export default function LatencyChart({
             {s.label}
           </span>
         ))}
-        <span className="ml-auto">Lower is faster</span>
       </div>
       {hasValues ? (
         <div className="px-4 sm:px-5">
@@ -235,7 +234,7 @@ export default function LatencyChart({
                 )}
               </span>
             ) : (
-              <span>
+              <span className="sr-only">
                 Hover or use arrow keys for timings. Open circles show partial
                 coverage.
               </span>
@@ -245,8 +244,8 @@ export default function LatencyChart({
       ) : (
         <p className="px-5 py-9 text-center text-xs leading-relaxed text-muted-foreground">
           {points.some((p) => p.count !== "0")
-            ? "Detailed timing trends are not available for this range. Choose a more recent range."
-            : "No response-time observations in this range. Timings will appear as DNS queries are recorded."}
+            ? "Timing trends unavailable. Choose a more recent range."
+            : "No timings in this range."}
         </p>
       )}
       <details
