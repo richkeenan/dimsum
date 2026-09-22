@@ -13,7 +13,7 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath, -buildvcs=false]
     ldflags:
-      - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ if .Env.SOURCE_COMMIT }}{{ .Env.SOURCE_COMMIT }}{{ else }}{{ .FullCommit }}{{ end }} -X main.date={{ if .Env.SOURCE_DATE }}{{ .Env.SOURCE_DATE }}{{ else }}{{ .CommitDate }}{{ end }}
+      - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ with index .Env "SOURCE_COMMIT" }}{{ . }}{{ else }}{{ $.FullCommit }}{{ end }} -X main.date={{ with index .Env "SOURCE_DATE" }}{{ . }}{{ else }}{{ $.CommitDate }}{{ end }}
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
