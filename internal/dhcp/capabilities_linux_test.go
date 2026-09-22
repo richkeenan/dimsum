@@ -54,6 +54,9 @@ func TestLinuxMinimalServiceCapabilities(t *testing.T) {
 		require.NoError(t, link.Send(ctx, wire))
 		return
 	}
+	if os.Getenv("DIMSUM_DHCP_CAPABILITY_TEST") != "1" {
+		t.Skip("requires explicit capability-drop fixture with SETPCAP")
+	}
 	isolatedLink(t)
 	ports, err := os.ReadFile("/proc/sys/net/ipv4/ip_unprivileged_port_start")
 	require.NoError(t, err)
