@@ -249,6 +249,8 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, v any, e error) 
 	}
 	code, status := "invalid_configuration", 422
 	switch {
+	case errors.Is(e, control.ErrLeaseCursor):
+		code, status = "lease_cursor_expired", 409
 	case errors.Is(e, control.BadRequest):
 		code, status = "bad_request", 400
 	case errors.Is(e, control.NotFound):

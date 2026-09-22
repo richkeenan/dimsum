@@ -19,7 +19,13 @@ Read operations (JSON):
   summary | timeseries | performance | queries | rankings [--query 'from=...&to=...']
   settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
   query ID
+  dhcp | dhcp-status | dhcp-leases | dhcp-reservations
+  get dhcp|dhcp-status|dhcp-leases|dhcp-reservations
 Mutation operations:
+  patch dhcp JSON            revision and relative scalar edits
+  add dhcp/reservations JSON revision and reservation item
+  patch dhcp/reservations/ID JSON  revision and relative scalar edits
+  delete dhcp/reservations/ID JSON revision only
   password JSON             {"password":"..."} (use @- for standard input)
   token-create JSON         {"name":"automation"} (secret returned only once)
   token-revoke ID            revoke an API token immediately
@@ -30,7 +36,7 @@ Mutation operations:
   rules-test JSON            {"name":"example.org","generation":"1"}
   stage JSON                 revision and grouped scalar edits
   commit ID
-  job JSON                   {"kind":"refresh|backup|restore|upstream-probe|support-bundle","input":{...}}
+  job JSON                   {"kind":"refresh|backup|restore|upstream-probe|support-bundle|dhcp-check","input":{...}}
   events                     SSE stream; reconnect requires a fresh summary fetch
   request METHOD PATH [JSON] complete HTTP parity, including future operations
 
@@ -74,6 +80,20 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	}
 	bad := func() int { fmt.Fprintln(stderr, "invalid arguments; run dimsum control help"); return 2 }
 	switch args[0] {
+	case "get":
+		if len(args) != 2 {
+			return bad()
+		}
+		p, ok := dhcpPaths[args[1]]
+		if !ok {
+			return bad()
+		}
+		path = p
+	case "dhcp", "dhcp-status", "dhcp-leases", "dhcp-reservations":
+		if len(args) != 1 {
+			return bad()
+		}
+		path = dhcpPaths[args[0]]
 	case "patch", "add", "delete":
 		if len(args) != 3 {
 			return bad()
@@ -193,3 +213,5 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	}
 	return 0
 }
+
+var dhcpPaths = map[string]string{"dhcp": "/api/v1/dhcp", "dhcp-status": "/api/v1/dhcp/status", "dhcp-leases": "/api/v1/dhcp/leases", "dhcp-reservations": "/api/v1/dhcp/reservations"}

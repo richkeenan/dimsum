@@ -27,6 +27,142 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/v1/dhcp:
+    x-mcp-tools:
+      get: {name: get_dhcp, description: Inspect saved DHCP settings and configuration revision before editing}
+      patch: {name: update_dhcp, description: Apply revision-checked DHCP scalar edits then inspect get_dhcp_status for applied generation; after a timeout inspect before retrying}
+    get:
+      responses:
+        '200':
+          description: Saved settings; disabled incomplete configuration is editable without opening sockets or lease storage
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, config]
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  config: {$ref: '#/components/schemas/DHCPSettings'}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      description: Relative scalar paths only. Disable before changing interface, server_ip, subnet or local_domain while serving. Reservations use their own collection. A saved/active configuration generation does not mean DHCP has applied it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DHCPSettingsMutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/dhcp/status:
+    x-mcp-tools:
+      get: {name: get_dhcp_status, description: Inspect DHCP desired versus applied generation and storage health without sending probes or opening storage}
+    get:
+      responses:
+        '200':
+          description: DHCP health is independent of DNS readiness. Runtime unavailable or disabled inspection says nothing about preserved offline ownership.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, dhcp, runtime_available]
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  runtime_available: {type: boolean, description: A runtime status provider is installed; this is not DHCP readiness}
+                  dhcp:
+                    anyOf:
+                      - {$ref: '#/components/schemas/DHCPStatus'}
+                      - {type: 'null'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/dhcp/leases:
+    x-mcp-tools:
+      get: {name: list_dhcp_leases, description: Inspect bounded lease pages; restart from the first page on lease_cursor_expired. No force-release or offline database access}
+    get:
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 256, default: 100}}
+        - {name: cursor, in: query, schema: {type: string, maxLength: 2048}, description: Opaque cursor tied to process boot, active config generation, lease generation/revision and all filters including limit. Obsolete cursors return 409 lease_cursor_expired; malformed cursors return 400.}
+        - {name: state, in: query, schema: {$ref: '#/components/schemas/DHCPLeaseState'}}
+        - {name: address, in: query, schema: {type: string, format: ipv4}, description: Exact IPv4 match}
+        - {name: mac, in: query, schema: {type: string, maxLength: 17}, description: Exact Ethernet MAC match}
+        - {name: client_id, in: query, schema: {type: string, maxLength: 510, pattern: '^([0-9a-fA-F]{2})+$'}, description: Exact opaque client ID bytes encoded as hex}
+        - {name: hostname, in: query, schema: {type: string, maxLength: 63}, description: Exact client-supplied hostname match}
+      responses:
+        '200':
+          description: Ascending numeric IPv4 order from a detached bounded snapshot; no open database transaction. Expiry governs advertised lifetime; hold_until governs conservative ownership. Empty unavailable snapshot does not imply empty durable state.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [boot_id, generation, revision, runtime_available, items]
+                properties:
+                  boot_id: {type: string}
+                  generation: {$ref: '#/components/schemas/UInt64'}
+                  revision: {$ref: '#/components/schemas/UInt64'}
+                  runtime_available: {type: boolean}
+                  next_cursor: {type: string, maxLength: 2048}
+                  items: {type: array, maxItems: 256, items: {$ref: '#/components/schemas/DHCPLease'}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/dhcp/reservations:
+    x-mcp-tools:
+      get: {name: list_dhcp_reservations, description: Inspect configured reservations and the saved revision; no live lease reassignment}
+      post: {name: add_dhcp_reservation, description: Add a revision-checked reservation then inspect DHCP applied status for ownership conflicts}
+    get:
+      responses:
+        '200':
+          description: Configured reservations bounded by max_leases (default 1024, absolute 4096)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, items]
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  items: {type: array, maxItems: 4096, items: {$ref: '#/components/schemas/DHCPReservation'}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision, item]
+              properties:
+                revision: {type: string, minLength: 1}
+                item: {$ref: '#/components/schemas/DHCPReservation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/dhcp/reservations/{id}:
+    x-mcp-tools:
+      patch: {name: update_dhcp_reservation, description: Edit a reservation by stable ID with revision-checked scalar edits; existing leases remain owned}
+      delete: {name: remove_dhcp_reservation, description: Remove reservation configuration by stable ID without revoking or force-releasing any live lease}
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 63}}
+    patch:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DHCPReservationMutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision]
+              properties:
+                revision: {type: string, minLength: 1}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/openapi.json:
     get:
       summary: Read the authenticated OpenAPI document as JSON
@@ -502,10 +638,16 @@ paths:
               type: object
               required: [kind]
               properties:
-                kind: {type: string, enum: [refresh, backup, restore, upstream-probe, support-bundle]}
+                kind: {type: string, enum: [refresh, backup, restore, upstream-probe, support-bundle, dhcp-check]}
                 input:
                   description: 'For upstream-probe use UpstreamProbeInput; for support-bundle use SupportBundleInput. Diagnostic input is capped at 4 KiB. Validation failures are reported in the asynchronous job status.'
               allOf:
+                - if:
+                    properties:
+                      kind: {const: dhcp-check}
+                  then:
+                    properties:
+                      input: {$ref: '#/components/schemas/DHCPCheckInput'}
                 - if:
                     properties:
                       kind: {const: upstream-probe}
@@ -986,6 +1128,138 @@ components:
               name: {type: string}
               host: {type: string}
               url: {type: string, format: uri}
+    UInt64:
+      $ref: '#/components/schemas/Decimal'
+    DHCPSettings:
+      type: object
+      required: [enabled, interface, server_ip, subnet, gateway, range_start, range_end, lease_seconds, local_domain, max_leases, reservations]
+      properties:
+        enabled: {type: boolean, default: false}
+        interface: {type: string, maxLength: 15}
+        server_ip: {type: string, description: Static IPv4 server and advertised DNS address; empty allowed while disabled}
+        subnet: {type: string, description: Canonical IPv4 subnet /0 through /30; empty allowed while disabled}
+        gateway: {type: string, description: IPv4 router outside dynamic pool and different from server IP}
+        range_start: {type: string, description: Inclusive IPv4 pool start; maximum span 65536 addresses}
+        range_end: {type: string, description: Inclusive IPv4 pool end}
+        lease_seconds: {type: integer, minimum: 0, maximum: 604800, description: Advertised lease duration in seconds; 60..604800 when supplied, 0 allowed only while disabled}
+        local_domain: {type: string, maxLength: 189, description: DNS domain outside .local; empty allowed while disabled}
+        max_leases: {type: integer, minimum: 0, maximum: 4096, description: Lease-state capacity; 0 selects default 1024}
+        reservations: {type: array, maxItems: 4096, items: {$ref: '#/components/schemas/DHCPReservation'}}
+    DHCPReservation:
+      type: object
+      additionalProperties: false
+      required: [id, address]
+      description: Exactly one nonempty mac or client_id. Address must be usable in the configured subnet; IDs, identities, addresses and supplied hostnames must be unique.
+      properties:
+        id: {type: string, minLength: 1, maxLength: 63, pattern: '^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$'}
+        mac: {type: string, maxLength: 17, description: Unicast Ethernet MAC; empty means absent}
+        client_id: {type: string, maxLength: 510, pattern: '^([0-9a-fA-F]{2})*$', description: Opaque client ID bytes encoded as hex; empty means absent}
+        address: {type: string, format: ipv4}
+        hostname: {type: string, maxLength: 63}
+    DHCPSettingsMutation:
+      type: object
+      additionalProperties: false
+      required: [revision, edits]
+      properties:
+        revision: {type: string, minLength: 1}
+        edits:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, value]
+            properties:
+              path: {type: array, minItems: 1, maxItems: 1, items: {type: string, enum: [enabled, interface, server_ip, subnet, gateway, range_start, range_end, lease_seconds, local_domain, max_leases]}}
+              value: {type: [string, integer, boolean], description: Field-appropriate scalar; lease_seconds and max_leases are integers, enabled is boolean}
+    DHCPReservationMutation:
+      type: object
+      additionalProperties: false
+      required: [revision, edits]
+      properties:
+        revision: {type: string, minLength: 1}
+        edits:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, value]
+            properties:
+              path: {type: array, minItems: 1, maxItems: 1, items: {type: string, enum: [mac, client_id, address, hostname]}}
+              value: {type: string, description: Set the old identity field to empty when changing identity kind in the same grouped edit}
+    DHCPLeaseState:
+      type: string
+      enum: [probing, offered, commit-pending, bound, quarantined]
+    DHCPLease:
+      type: object
+      required: [address, mac, hostname, state, expiry, hold_until]
+      properties:
+        address: {type: string, format: ipv4}
+        mac: {type: string}
+        client_id: {type: string, maxLength: 510, description: Hex opaque bytes; omitted for MAC identity}
+        hostname: {type: string, maxLength: 63}
+        state: {$ref: '#/components/schemas/DHCPLeaseState'}
+        expiry: {type: string, format: date-time, description: UTC advertised grant or quarantine expiry; not the ownership reclamation deadline}
+        hold_until: {type: string, format: date-time, description: UTC conservative ownership horizon; not DNS name lifetime}
+    DHCPStatus:
+      type: object
+      required: [state, desired_generation, applied_generation, desired_enabled, desired_interface, desired_server_ip, applied_enabled, interface, server_ip, runtime]
+      properties:
+        state: {type: string, enum: [disabled, starting, running, degraded, error]}
+        desired_generation: {$ref: '#/components/schemas/UInt64'}
+        applied_generation: {$ref: '#/components/schemas/UInt64'}
+        pending_generation: {$ref: '#/components/schemas/UInt64'}
+        desired_enabled: {type: boolean}
+        applied_enabled: {type: boolean}
+        desired_interface: {type: string}
+        desired_server_ip: {type: string}
+        interface: {type: string}
+        server_ip: {type: string}
+        last_error: {type: string}
+        runtime:
+          type: object
+          required: [generation, storage, capacity, held, pending, clock_suspended, transport]
+          properties:
+            generation: {$ref: '#/components/schemas/UInt64'}
+            storage: {type: string, description: 'healthy, failed, uncertain, unopened or closed; empty before initialization'}
+            capacity: {$ref: '#/components/schemas/UInt64'}
+            held: {$ref: '#/components/schemas/UInt64'}
+            pending: {$ref: '#/components/schemas/UInt64'}
+            clock_suspended: {type: boolean}
+            error: {type: string}
+            transport:
+              type: object
+              properties:
+                Received: {$ref: '#/components/schemas/UInt64'}
+                Admitted: {$ref: '#/components/schemas/UInt64'}
+                Oversized: {$ref: '#/components/schemas/UInt64'}
+                RateLimited: {$ref: '#/components/schemas/UInt64'}
+                QueueFull: {$ref: '#/components/schemas/UInt64'}
+                Malformed: {$ref: '#/components/schemas/UInt64'}
+    DHCPCheckInput:
+      type: object
+      additionalProperties: false
+      description: Explicit job checks configured interface/static address and socket permissions plus bound DNS listener and configuration conflicts; it does not scan every pool address or prove LAN/firewall reachability. At most one job runs. Input at most 4 KiB. Inspect results via list_jobs.
+      properties:
+        probe_other_servers: {type: boolean, default: false, description: Explicitly send one DISCOVER on the configured interface; never REQUEST a lease. Observe at most 64 packets and 16 other server IDs. No offer is not proof of absence. Requires Linux and exclusive UDP 68.}
+        timeout_ms: {type: integer, minimum: 100, maximum: 3000, default: 1000, description: Other-server observation deadline in milliseconds}
+    DHCPCheckResult:
+      type: object
+      required: [generation, checked_at, timeout_ms, dhcp, probe_requested, other_servers, probe_truncated, observation, warning, checks]
+      properties:
+        generation: {$ref: '#/components/schemas/UInt64'}
+        checked_at: {type: string, format: date-time}
+        timeout_ms: {type: integer}
+        dhcp: {$ref: '#/components/schemas/DHCPStatus'}
+        probe_requested: {type: boolean}
+        other_servers: {type: array, maxItems: 16, items: {type: string, format: ipv4}}
+        probe_truncated: {type: boolean}
+        observation: {type: string, enum: [not_probed, failed, no_offer_observed, offers_observed]}
+        warning: {type: string}
+        checks: {type: object, additionalProperties: {type: string}}
     Mutation:
       type: object
       required: [revision]
@@ -1018,7 +1292,7 @@ components:
         state: {type: string, enum: [running, succeeded, failed]}
         created: {type: string, format: date-time}
         result:
-          description: 'Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult. Other job kinds retain their documented result shapes.'
+          description: 'Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult; dhcp-check returns DHCPCheckResult. Other job kinds retain their documented result shapes.'
         error: {type: string}
     Error:
       type: object

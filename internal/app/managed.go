@@ -23,6 +23,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/control"
+	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/richkeenan/dimsum/internal/mcpserver"
 	"github.com/richkeenan/dimsum/internal/webassets"
 )
@@ -62,6 +63,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 		return nil, fmt.Errorf("agent tokens: %w", err)
 	}
 	jobs := map[string]func(context.Context, json.RawMessage) (any, error){
+		"dhcp-check":     dhcpDiagnostic(service, func() (dhcp.Settings, uint64) { snap := store.Snapshot(); return snap.Config().DHCP, snap.Generation() }),
 		"upstream-probe": m.upstreamProbe,
 		"support-bundle": m.supportBundle,
 		"backup": func(ctx context.Context, _ json.RawMessage) (any, error) {
@@ -103,7 +105,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 			return safeJSON(result), err
 		},
 	}
-	m.control = control.New(control.Options{Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
+	m.control = control.New(control.Options{BootID: o.boot, DHCPStatus: func() any { return safeJSON(service.DHCPStatus()) }, DHCPInspect: service.DHCPInspect, Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
 		transport, cache := service.DNSStats()
 		interfaces := dnsInterfaces()
 		return map[string]any{"dhcp": safeJSON(service.DHCPStatus()), "naming": safeJSON(service.NamingDiagnostics()), "dns_ready": service.Ready(), "dns_addresses": clientDNSAddresses(service.Addresses().DNS, interfaces), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil

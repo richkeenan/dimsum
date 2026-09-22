@@ -3,6 +3,7 @@ package control
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"go.yaml.in/yaml/v3"
 )
@@ -43,13 +45,21 @@ type Options struct {
 	// Hooks must honor cancellation; the service runs at most one job at a time.
 	Jobs        map[string]func(context.Context, json.RawMessage) (any, error)
 	Diagnostics func(context.Context) (any, error)
+	BootID      string
+	DHCPStatus  func() any
+	DHCPInspect func() dhcp.LeaseSnapshot
 }
 type Service struct {
 	options Options
 	jobs    jobState
 }
 
-func New(o Options) *Service { return &Service{options: o} }
+func New(o Options) *Service {
+	if o.BootID == "" {
+		o.BootID = rand.Text()
+	}
+	return &Service{options: o}
+}
 
 type Activation struct {
 	SavedRevision    string                `json:"saved_revision"`

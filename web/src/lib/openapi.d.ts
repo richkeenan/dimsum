@@ -4,6 +4,273 @@
  */
 
 export interface paths {
+  "/api/v1/dhcp": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Saved settings; disabled incomplete configuration is editable without opening sockets or lease storage */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              status: components["schemas"]["Activation"];
+              config: components["schemas"]["DHCPSettings"];
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** @description Relative scalar paths only. Disable before changing interface, server_ip, subnet or local_domain while serving. Reservations use their own collection. A saved/active configuration generation does not mean DHCP has applied it. */
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DHCPSettingsMutation"];
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    trace?: never;
+  };
+  "/api/v1/dhcp/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description DHCP health is independent of DNS readiness. Runtime unavailable or disabled inspection says nothing about preserved offline ownership. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              status: components["schemas"]["Activation"];
+              /** @description A runtime status provider is installed; this is not DHCP readiness */
+              runtime_available: boolean;
+              dhcp: components["schemas"]["DHCPStatus"] | null;
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/dhcp/leases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          /** @description Opaque cursor tied to process boot */
+          cursor?: string;
+          state?: components["schemas"]["DHCPLeaseState"];
+          /** @description Exact IPv4 match */
+          address?: string;
+          /** @description Exact Ethernet MAC match */
+          mac?: string;
+          /** @description Exact opaque client ID bytes encoded as hex */
+          client_id?: string;
+          /** @description Exact client-supplied hostname match */
+          hostname?: string;
+        };
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Ascending numeric IPv4 order from a detached bounded snapshot; no open database transaction. Expiry governs advertised lifetime; hold_until governs conservative ownership. Empty unavailable snapshot does not imply empty durable state. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              boot_id: string;
+              generation: components["schemas"]["UInt64"];
+              revision: components["schemas"]["UInt64"];
+              runtime_available: boolean;
+              next_cursor?: string;
+              items: components["schemas"]["DHCPLease"][];
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/dhcp/reservations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Configured reservations bounded by max_leases (default 1024, absolute 4096) */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": {
+              status: components["schemas"]["Activation"];
+              items: components["schemas"]["DHCPReservation"][];
+            };
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            revision: string;
+            item: components["schemas"]["DHCPReservation"];
+          };
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/dhcp/reservations/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": {
+            revision: string;
+          };
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DHCPReservationMutation"];
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    trace?: never;
+  };
   "/api/v1/openapi.json": {
     parameters: {
       query?: never;
@@ -1519,10 +1786,11 @@ export interface paths {
               | "backup"
               | "restore"
               | "upstream-probe"
-              | "support-bundle";
+              | "support-bundle"
+              | "dhcp-check";
             /** @description For upstream-probe use UpstreamProbeInput; for support-bundle use SupportBundleInput. Diagnostic input is capped at 4 KiB. Validation failures are reported in the asynchronous job status. */
             input?: unknown;
-          } & (unknown & unknown);
+          } & (unknown & unknown & unknown);
         };
       };
       responses: {
@@ -2005,6 +2273,151 @@ export interface components {
         url: string;
       }[];
     };
+    UInt64: components["schemas"]["Decimal"];
+    DHCPSettings: {
+      /** @default false */
+      enabled: boolean;
+      interface: string;
+      /** @description Static IPv4 server and advertised DNS address; empty allowed while disabled */
+      server_ip: string;
+      /** @description Canonical IPv4 subnet /0 through /30; empty allowed while disabled */
+      subnet: string;
+      /** @description IPv4 router outside dynamic pool and different from server IP */
+      gateway: string;
+      /** @description Inclusive IPv4 pool start; maximum span 65536 addresses */
+      range_start: string;
+      /** @description Inclusive IPv4 pool end */
+      range_end: string;
+      /** @description Advertised lease duration in seconds; 60..604800 when supplied */
+      lease_seconds: number;
+      /** @description DNS domain outside .local; empty allowed while disabled */
+      local_domain: string;
+      /** @description Lease-state capacity; 0 selects default 1024 */
+      max_leases: number;
+      reservations: components["schemas"]["DHCPReservation"][];
+    };
+    /** @description Exactly one nonempty mac or client_id. Address must be usable in the configured subnet; IDs, identities, addresses and supplied hostnames must be unique. */
+    DHCPReservation: {
+      id: string;
+      /** @description Unicast Ethernet MAC; empty means absent */
+      mac?: string;
+      /** @description Opaque client ID bytes encoded as hex; empty means absent */
+      client_id?: string;
+      /** Format: ipv4 */
+      address: string;
+      hostname?: string;
+    };
+    DHCPSettingsMutation: {
+      revision: string;
+      edits: {
+        path: (
+          | "enabled"
+          | "interface"
+          | "server_ip"
+          | "subnet"
+          | "gateway"
+          | "range_start"
+          | "range_end"
+          | "lease_seconds"
+          | "local_domain"
+          | "max_leases"
+        )[];
+        /** @description Field-appropriate scalar; lease_seconds and max_leases are integers */
+        value: string | number | boolean;
+      }[];
+    };
+    DHCPReservationMutation: {
+      revision: string;
+      edits: {
+        path: ("mac" | "client_id" | "address" | "hostname")[];
+        /** @description Set the old identity field to empty when changing identity kind in the same grouped edit */
+        value: string;
+      }[];
+    };
+    /** @enum {string} */
+    DHCPLeaseState:
+      "probing" | "offered" | "commit-pending" | "bound" | "quarantined";
+    DHCPLease: {
+      /** Format: ipv4 */
+      address: string;
+      mac: string;
+      /** @description Hex opaque bytes; omitted for MAC identity */
+      client_id?: string;
+      hostname: string;
+      state: components["schemas"]["DHCPLeaseState"];
+      /**
+       * Format: date-time
+       * @description UTC advertised grant or quarantine expiry; not the ownership reclamation deadline
+       */
+      expiry: string;
+      /**
+       * Format: date-time
+       * @description UTC conservative ownership horizon; not DNS name lifetime
+       */
+      hold_until: string;
+    };
+    DHCPStatus: {
+      /** @enum {string} */
+      state: "disabled" | "starting" | "running" | "degraded" | "error";
+      desired_generation: components["schemas"]["UInt64"];
+      applied_generation: components["schemas"]["UInt64"];
+      pending_generation?: components["schemas"]["UInt64"];
+      desired_enabled: boolean;
+      applied_enabled: boolean;
+      desired_interface: string;
+      desired_server_ip: string;
+      interface: string;
+      server_ip: string;
+      last_error?: string;
+      runtime: {
+        generation: components["schemas"]["UInt64"];
+        /** @description healthy, failed, uncertain, unopened or closed; empty before initialization */
+        storage: string;
+        capacity: components["schemas"]["UInt64"];
+        held: components["schemas"]["UInt64"];
+        pending: components["schemas"]["UInt64"];
+        clock_suspended: boolean;
+        error?: string;
+        transport: {
+          Received?: components["schemas"]["UInt64"];
+          Admitted?: components["schemas"]["UInt64"];
+          Oversized?: components["schemas"]["UInt64"];
+          RateLimited?: components["schemas"]["UInt64"];
+          QueueFull?: components["schemas"]["UInt64"];
+          Malformed?: components["schemas"]["UInt64"];
+        };
+      };
+    };
+    /** @description Explicit job checks configured interface/static address and socket permissions plus bound DNS listener and configuration conflicts; it does not scan every pool address or prove LAN/firewall reachability. At most one job runs. Input at most 4 KiB. Inspect results via list_jobs. */
+    DHCPCheckInput: {
+      /**
+       * @description Explicitly send one DISCOVER on the configured interface; never REQUEST a lease. Observe at most 64 packets and 16 other server IDs. No offer is not proof of absence. Requires Linux and exclusive UDP 68.
+       * @default false
+       */
+      probe_other_servers: boolean;
+      /**
+       * @description Other-server observation deadline in milliseconds
+       * @default 1000
+       */
+      timeout_ms: number;
+    };
+    DHCPCheckResult: {
+      generation: components["schemas"]["UInt64"];
+      /** Format: date-time */
+      checked_at: string;
+      timeout_ms: number;
+      dhcp: components["schemas"]["DHCPStatus"];
+      probe_requested: boolean;
+      other_servers: string[];
+      probe_truncated: boolean;
+      /** @enum {string} */
+      observation:
+        "not_probed" | "failed" | "no_offer_observed" | "offers_observed";
+      warning: string;
+      checks: {
+        [key: string]: string;
+      };
+    };
     Mutation: {
       revision: string;
       /** @description For PATCH /records only, without edits/item/index: accept this saved local A/AAAA name for dashboard access. Rechecks local interface and admin listener, persists admin.allowed_hosts, and activates without restart. */
@@ -2025,7 +2438,7 @@ export interface components {
       state: "running" | "succeeded" | "failed";
       /** Format: date-time */
       created: string;
-      /** @description Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult. Other job kinds retain their documented result shapes. */
+      /** @description Kind-specific result. upstream-probe returns UpstreamProbeResult; support-bundle returns SupportBundleResult; dhcp-check returns DHCPCheckResult. Other job kinds retain their documented result shapes. */
       result?: unknown;
       error?: string;
     };

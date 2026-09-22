@@ -15,6 +15,10 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resource := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if resource == "dhcp" || strings.HasPrefix(resource, "dhcp/") {
+		s.dhcpRoute(w, r, resource)
+		return
+	}
 	if r.Method == "GET" {
 		if n := r.URL.Query().Get("limit"); n != "" {
 			v, e := strconv.Atoi(n)

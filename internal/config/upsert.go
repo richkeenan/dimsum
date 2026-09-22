@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -60,6 +61,14 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 func (d *Document) insertScalar(edit Edit) ([]byte, error) {
 	n := d.root.Content[0]
 	for depth, key := range edit.Path {
+		if n.Kind == yaml.SequenceNode && n.Style&yaml.FlowStyle == 0 {
+			index, err := strconv.Atoi(key)
+			if err != nil || index < 0 || index >= len(n.Content) {
+				return nil, fmt.Errorf("edit %v: invalid sequence index", edit.Path)
+			}
+			n = n.Content[index]
+			continue
+		}
 		if n.Kind != yaml.MappingNode || n.Style&yaml.FlowStyle != 0 {
 			return nil, fmt.Errorf("edit %v: requires block mapping", edit.Path)
 		}
