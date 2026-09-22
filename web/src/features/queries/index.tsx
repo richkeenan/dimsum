@@ -1,21 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ClientFilter } from "./client-filter";
+import { QueryDetail } from "./query-detail";
+import { InlineRuleAction } from "./rule-action";
+import {
+  AnswerPreview,
+  ResponseTime,
+  ResultBadge,
+  resultLabel,
+} from "./response";
 import { ClientIdentity } from "@/components/client-identity";
 import type { Device } from "@/lib/api";
 import {
-  api,
   rows,
   count,
   text,
   queryParameters,
-  microsecondsToMS,
   outcomes,
   type Page,
   type Row,
-  type Settings,
 } from "@/lib/api";
 import { useLive, useResource } from "@/lib/hooks";
-import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
+import { DataTable, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -300,20 +305,33 @@ export default function Queries({
                 key: "outcome",
                 label: "Result",
                 width: 140,
+                render: (r) => <ResultBadge outcome={r.outcome} />,
+              },
+              {
+                key: "response",
+                label: "Answer",
+                width: 200,
                 render: (r) => (
-                  <span
-                    className={`inline-block rounded px-[7px] py-[3px] text-xs ${r.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : r.outcome === "error" || r.outcome === "rejected" ? "bg-destructive/10 text-destructive" : r.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
-                  >
-                    {resultLabel(r.outcome)}
-                  </span>
+                  <AnswerPreview row={r} inspect={() => inspect(r)} />
                 ),
               },
               {
                 key: "duration_us",
-                label: "ms",
-                width: 90,
+                label: "Response time",
+                width: 120,
                 align: "right",
-                render: (r) => microsecondsToMS(r.duration_us),
+                render: (r) => <ResponseTime value={r.duration_us} />,
+              },
+              {
+                key: "actions",
+                label: "Action",
+                width: 100,
+                render: (r) => (
+                  <InlineRuleAction
+                    name={typeof r.name === "string" ? r.name : ""}
+                    outcome={text(r.outcome)}
+                  />
+                ),
               },
               {
                 key: "rule_id",
@@ -404,7 +422,7 @@ export default function Queries({
         >
           <DialogTitle>Query detail</DialogTitle>
           <DialogDescription>
-            Historical explanation from the query’s policy generation.
+            The DNS response and how this query was handled.
           </DialogDescription>
           {selected && (
             <QueryDetail
@@ -428,166 +446,4 @@ export function shortTime(value: unknown) {
         second: "2-digit",
         hour12: false,
       });
-}
-export function resultLabel(value: unknown) {
-  return (
-    (
-      {
-        local: "Local answer",
-        blocked: "Blocked",
-        cache: "Cached",
-        stale: "Cached (stale)",
-        forwarded: "Forwarded",
-        error: "Failed",
-        rejected: "Rejected",
-      } as Record<string, string>
-    )[text(value)] ?? text(value)
-  );
-}
-function QueryDetail({
-  id,
-  filterIdentity,
-}: {
-  id: string;
-  filterIdentity: (
-    row: Row,
-    key: "rule_id" | "source_id" | "upstream_id",
-  ) => void;
-}) {
-  const state = useResource<Row>("queries/" + encodeURIComponent(id));
-  const [scope, setScope] = useState("exact");
-  const [action, setAction] = useState("allow");
-  const [error, setError] = useState<Error>();
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<Row>();
-  const name = text(state.data?.name);
-  async function save() {
-    setBusy(true);
-    setError(undefined);
-    try {
-      const settings = await api.get<Settings>("settings");
-      setResult(
-        await api.send<Row>("rules", "POST", {
-          revision: settings.revision,
-          item: {
-            id: "query-" + crypto.randomUUID(),
-            kind: scope,
-            action,
-            pattern: name,
-            enabled: true,
-          },
-        }),
-      );
-    } catch (e) {
-      setError(e as Error);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Resource state={state}>
-      <h3 className="text-sm font-medium wrap-anywhere">
-        {name || "Root domain"}
-      </h3>
-      <span
-        className={`inline-block w-fit rounded px-[7px] py-[3px] text-xs ${state.data?.outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : state.data?.outcome === "error" || state.data?.outcome === "rejected" ? "bg-destructive/10 text-destructive" : state.data?.outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
-      >
-        {resultLabel(state.data?.outcome)}
-      </span>
-      <Details
-        value={{
-          Client: state.data?.client_name || state.data?.client,
-          ...(state.data?.client_name ? { Address: state.data.client } : {}),
-          Time: state.data?.time,
-          Type: state.data?.qtype,
-          "Duration (ms)": microsecondsToMS(state.data?.duration_us),
-        }}
-      />
-      {!!state.data?.rule_description_available && (
-        <p className="text-sm leading-relaxed wrap-anywhere">
-          {text(state.data.rule_description)}
-        </p>
-      )}
-      {!!state.data?.alias_available && (
-        <p className="text-sm leading-relaxed wrap-anywhere">
-          Matched alias:{" "}
-          <span className="text-xs wrap-anywhere">
-            {text(state.data.alias)}
-          </span>
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        {(["rule_id", "source_id", "upstream_id"] as const).map((key) =>
-          state.data?.[key] && text(state.data[key]) !== "0" ? (
-            <Button
-              key={key}
-              variant="outline"
-              onClick={() => filterIdentity(state.data!, key)}
-            >
-              Queries for this{" "}
-              {key === "rule_id"
-                ? "rule"
-                : key === "source_id"
-                  ? "source"
-                  : "upstream"}
-            </Button>
-          ) : null,
-        )}
-      </div>
-      {!!state.data?.source_id && (
-        <p className="text-sm leading-relaxed wrap-anywhere">
-          Source: {text(state.data.source_id)}
-        </p>
-      )}
-      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h3 className="mb-3 text-sm font-medium">Create a rule</h3>
-        <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
-            Action
-            <select
-              className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              value={action}
-              onChange={(e) => setAction(e.target.value)}
-            >
-              <option value="allow">Allow</option>
-              <option value="deny">Block</option>
-            </select>
-          </label>
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal">
-            Match scope
-            <select
-              className="min-h-9 min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              value={scope}
-              onChange={(e) => setScope(e.target.value)}
-            >
-              <option value="exact">Exact name only</option>
-              <option value="suffix">Name and descendants</option>
-            </select>
-          </label>
-        </div>
-        <div className="my-3 rounded-[5px] border border-l-[3px] border-border border-l-primary bg-muted px-3.5 py-3 text-xs wrap-anywhere">
-          {scope === "exact"
-            ? `Matches only ${name}. Subdomains are not included.`
-            : `Matches ${name} and every descendant, including child.${name}.`}
-        </div>
-        {error && <ErrorNotice error={error} />}
-        <Button disabled={busy || !state.data?.name} onClick={save}>
-          {busy
-            ? "Saving…"
-            : `Create ${action === "deny" ? "block" : "allow"} rule`}
-        </Button>
-        {result && (
-          <>
-            <p
-              className="mt-3 text-xs leading-relaxed text-muted-foreground"
-              role="status"
-            >
-              Rule saved. Check activation below.
-            </p>
-            <Details value={result} />
-          </>
-        )}
-      </section>
-    </Resource>
-  );
 }
