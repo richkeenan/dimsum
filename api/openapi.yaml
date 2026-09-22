@@ -44,6 +44,7 @@ paths:
                   status: {$ref: '#/components/schemas/Activation'}
                   config: {$ref: '#/components/schemas/DHCPSettings'}
                   setup: {$ref: '#/components/schemas/DHCPSetup'}
+                  availability: {$ref: '#/components/schemas/DHCPAvailability'}
         default: {$ref: '#/components/responses/Error'}
     patch:
       description: Relative scalar paths only. Disable before changing interface, server_ip, subnet or local_domain while serving. Reservations use their own collection. A saved/active configuration generation does not mean DHCP has applied it.
@@ -70,6 +71,7 @@ paths:
                 properties:
                   status: {$ref: '#/components/schemas/Activation'}
                   runtime_available: {type: boolean, description: A runtime status provider is installed; this is not DHCP readiness}
+                  availability: {$ref: '#/components/schemas/DHCPAvailability'}
                   dhcp:
                     anyOf:
                       - {$ref: '#/components/schemas/DHCPStatus'}
@@ -1141,6 +1143,15 @@ components:
               url: {type: string, format: uri}
     UInt64:
       $ref: '#/components/schemas/Decimal'
+    DHCPAvailability:
+      type: object
+      additionalProperties: false
+      required: [supported, code, reason]
+      description: Platform and deployment capability, independent of configured/enabled state and runtime readiness. Unsupported deployments reject DHCP enablement and diagnostic jobs through all control transports.
+      properties:
+        supported: {type: boolean}
+        code: {type: string, enum: [supported, unsupported_platform, docker_desktop, unknown_deployment]}
+        reason: {type: string, description: Human-readable explanation when unsupported; empty when supported}
     DHCPSetup:
       type: object
       additionalProperties: false

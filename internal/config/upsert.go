@@ -87,7 +87,7 @@ func (d *Document) insertScalar(edit Edit) ([]byte, error) {
 		case string, int, int64, bool:
 		case []string:
 			if !editableStringListPath(edit.Path) {
-				return nil, fmt.Errorf("edit: only discovery interfaces and bootstrap DNS accept sequences")
+				return nil, fmt.Errorf("edit: only discovery interfaces, bootstrap DNS and allowed admin hosts accept sequences")
 			}
 		default:
 			return nil, fmt.Errorf("edit: unsupported scalar %T", edit.Value)

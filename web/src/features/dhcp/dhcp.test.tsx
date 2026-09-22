@@ -43,6 +43,53 @@ const unavailable: DHCPStatusResponse = {
   runtime_available: false,
 };
 afterEach(() => vi.restoreAllMocks());
+
+it("shows the backend capability reason and disables DHCP actions without hiding saved settings", async () => {
+  const availability = {
+    supported: false,
+    code: "docker_desktop",
+    reason: "DHCP cannot reach LAN broadcasts in this Docker Desktop setup.",
+  };
+  vi.spyOn(api, "get").mockImplementation(async (path) => {
+    if (path === "dhcp")
+      return {
+        ...initial,
+        availability,
+        config: { ...initial.config, interface: "saved-interface" },
+      };
+    if (path === "dhcp/status") return { ...unavailable, availability };
+    return { status: activation, items: [], runtime_available: false };
+  });
+  resource(<DHCP />);
+  expect(
+    await screen.findByRole("heading", { name: "DHCP is unavailable" }),
+  ).toBeVisible();
+  expect(screen.getByText(availability.reason)).toBeVisible();
+  const toggle = await screen.findByLabelText("Enable DHCP");
+  expect(toggle).toBeDisabled();
+  expect(screen.getByLabelText("Network interface")).toHaveValue(
+    "saved-interface",
+  );
+  expect(screen.getByLabelText("Network interface")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Add reservation" }),
+  ).toBeDisabled();
+  await userEvent.click(screen.getByText("Troubleshooting"));
+  expect(screen.getByRole("button", { name: "Check setup" })).toBeDisabled();
+  expect(screen.getByLabelText("Look for other DHCP servers")).toBeDisabled();
+});
+
+it("keeps setup editable when DHCP runtime is absent but the deployment supports it", async () => {
+  const config: DHCPConfigResponse = {
+    ...initial,
+    availability: { supported: true, code: "supported", reason: "" },
+  };
+  vi.spyOn(api, "get").mockResolvedValue(config);
+  resource(<DHCPForm applied={unavailable} refresh={() => {}} />, config);
+  expect(await screen.findByLabelText("Enable DHCP")).toBeEnabled();
+  expect(screen.getByLabelText("Network interface")).toBeEnabled();
+});
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: Error) => void;

@@ -22,6 +22,9 @@ type ServerProbeResult struct {
 // cannot establish absence of other servers. Exclusive port 68 avoids sharing
 // packets with an existing host DHCP client. No lease/runtime storage is opened.
 func ProbeServers(ctx context.Context, settings Settings, timeout time.Duration) (ServerProbeResult, error) {
+	if err := CurrentAvailability().Check(); err != nil {
+		return ServerProbeResult{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return ServerProbeResult{}, err
 	}

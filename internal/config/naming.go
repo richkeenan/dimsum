@@ -13,7 +13,7 @@ func discoveryInterfacesPath(path []string) bool {
 }
 
 func editableStringListPath(path []string) bool {
-	return discoveryInterfacesPath(path) || slices.Equal(path, []string{"dns", "bootstrap_dns"})
+	return discoveryInterfacesPath(path) || slices.Equal(path, []string{"dns", "bootstrap_dns"}) || slices.Equal(path, []string{"admin", "allowed_hosts"})
 }
 func stringListValue(v any) ([]string, error) {
 	var out []string

@@ -150,7 +150,8 @@ dhcp:
 		writer = &controlFailWriter{LeaseWriter: db}
 		return writer, recovery, nil
 	}
-	shared := control.New(control.Options{Store: store, ConfigPath: path, BootID: "fixture-boot", DHCPStatus: func() any { return safeJSON(service.DHCPStatus()) }, DHCPInspect: service.DHCPInspect, Jobs: map[string]func(context.Context, json.RawMessage) (any, error){"dhcp-check": dhcpDiagnostic(service, func() (dhcp.Settings, uint64) { snap := store.Snapshot(); return snap.Config().DHCP, snap.Generation() })}})
+	// This fixture uses an in-memory packet transport, available on every test OS.
+	shared := control.New(control.Options{Store: store, ConfigPath: path, BootID: "fixture-boot", DHCPAvailability: func() dhcp.Availability { return dhcp.Availability{Supported: true, Code: "supported"} }, DHCPStatus: func() any { return safeJSON(service.DHCPStatus()) }, DHCPInspect: service.DHCPInspect, Jobs: map[string]func(context.Context, json.RawMessage) (any, error){"dhcp-check": dhcpDiagnostic(service, func() (dhcp.Settings, uint64) { snap := store.Snapshot(); return snap.Config().DHCP, snap.Generation() })}})
 	t.Cleanup(shared.Close)
 	api := admin.New(shared, admin.Options{}).LocalHandler()
 	handler, e := mcpserver.New(api)

@@ -22,6 +22,22 @@ import (
 
 var ErrLeaseCursor = errors.New("restart lease pagination")
 
+func (s *Service) dhcpAvailability() dhcp.Availability {
+	if s.options.DHCPAvailability != nil {
+		return s.options.DHCPAvailability()
+	}
+	return dhcp.CurrentAvailability()
+}
+
+func (s *Service) checkDHCPAvailability(d *config.Document) error {
+	if d.Config().DHCP.Enabled {
+		if err := s.dhcpAvailability().Check(); err != nil {
+			return fmt.Errorf("%w: %v", BadRequest, err)
+		}
+	}
+	return nil
+}
+
 // DHCPStatus is passive: it never opens lease storage or sends packets.
 func (s *Service) DHCPStatus() (any, error) {
 	a, err := s.Status()
@@ -32,7 +48,7 @@ func (s *Service) DHCPStatus() (any, error) {
 	if s.options.DHCPStatus != nil {
 		runtime = s.options.DHCPStatus()
 	}
-	return map[string]any{"status": a, "dhcp": runtime, "runtime_available": runtime != nil}, nil
+	return map[string]any{"status": a, "dhcp": runtime, "runtime_available": runtime != nil, "availability": s.dhcpAvailability()}, nil
 }
 
 func (s *Service) DHCPConfig(reservations bool) (any, error) {
@@ -51,7 +67,12 @@ func (s *Service) DHCPConfig(reservations bool) (any, error) {
 	if reservations {
 		return map[string]any{"status": a, "items": c.Reservations}, nil
 	}
-	return map[string]any{"status": a, "config": c, "setup": dhcp.DetectSetup(c)}, nil
+	availability := s.dhcpAvailability()
+	setup := dhcp.Setup{Config: c, Suggested: []string{}, FixedAddress: "unknown", Message: availability.Reason}
+	if availability.Supported {
+		setup = dhcp.DetectSetup(c)
+	}
+	return map[string]any{"status": a, "config": c, "setup": setup, "availability": availability}, nil
 }
 
 type DHCPMutation struct {
@@ -152,6 +173,9 @@ func (s *Service) DHCPMutate(ctx context.Context, method, id string, reservation
 		return nil, fmt.Errorf("unsupported DHCP mutation: %w", BadRequest)
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkDHCPAvailability(d); err != nil {
 		return nil, err
 	}
 	a, err := s.options.Store.Save(ctx, m.Revision, d)

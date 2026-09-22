@@ -1,0 +1,11 @@
+# Native macOS foreground defaults. Paths are relative to this file.
+version: 1
+dns:
+  listen: ["127.0.0.1:5353"]
+  upstreams: ["1.1.1.1:53", "9.9.9.9:53"]
+admin:
+  listen: "127.0.0.1:8080"
+  control_socket: "./run/control.sock"
+paths:
+  data_dir: "./data"
+  secrets_dir: "./secrets"

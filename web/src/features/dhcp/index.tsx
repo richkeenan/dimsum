@@ -24,30 +24,10 @@ import { SetupSummary, setupComplete } from "./setup";
 export const panel =
   "min-w-0 rounded-lg border border-border bg-background p-5 sm:p-6";
 const networkFields = [
-  [
-    "interface",
-    "Network interface",
-    "eth0",
-    "",
-  ],
-  [
-    "server_ip",
-    "Server IP address",
-    "192.0.2.2",
-    "Use a fixed IPv4 address.",
-  ],
-  [
-    "gateway",
-    "Router IP address",
-    "192.0.2.1",
-    "",
-  ],
-  [
-    "subnet",
-    "Subnet",
-    "192.0.2.0/24",
-    "",
-  ],
+  ["interface", "Network interface", "eth0", ""],
+  ["server_ip", "Server IP address", "192.0.2.2", "Use a fixed IPv4 address."],
+  ["gateway", "Router IP address", "192.0.2.1", ""],
+  ["subnet", "Subnet", "192.0.2.0/24", ""],
 ] as const;
 const topology = new Set(["interface", "server_ip", "subnet", "local_domain"]);
 const leaseDurations = [
@@ -88,6 +68,7 @@ export function DHCPError({ error }: { error: Error }) {
 }
 
 export function DHCPState({ value }: { value: DHCPStatusResponse }) {
+  const unsupported = value.availability?.supported === false;
   const d = value.runtime_available ? value.dhcp : null;
   const error = value.status.error || d?.last_error || d?.runtime.error;
   const paused = d?.runtime.clock_suspended;
@@ -97,21 +78,23 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
     d?.state === "starting" ||
     (!!d?.pending_generation && d.pending_generation !== "0") ||
     (!!d && d.desired_enabled !== d.applied_enabled);
-  const title = !d
-    ? "DHCP status unavailable"
-    : paused
-      ? "DHCP is paused"
-      : attention
-        ? "DHCP needs attention"
-        : pending
-          ? d.desired_enabled !== d.applied_enabled || d.state === "starting"
-            ? d.desired_enabled
-              ? "Starting DHCP…"
-              : "Stopping DHCP…"
-            : "Updating DHCP…"
-          : d.applied_enabled
-            ? "DHCP is on"
-            : "DHCP is off";
+  const title = unsupported
+    ? "DHCP is unavailable"
+    : !d
+      ? "DHCP status unavailable"
+      : paused
+        ? "DHCP is paused"
+        : attention
+          ? "DHCP needs attention"
+          : pending
+            ? d.desired_enabled !== d.applied_enabled || d.state === "starting"
+              ? d.desired_enabled
+                ? "Starting DHCP…"
+                : "Stopping DHCP…"
+              : "Updating DHCP…"
+            : d.applied_enabled
+              ? "DHCP is on"
+              : "DHCP is off";
   const Icon = !d
     ? CircleHelp
     : paused || attention
@@ -121,17 +104,19 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
         : d.applied_enabled
           ? CircleCheck
           : Power;
-  const description = !d
-    ? "Can’t read the server’s current status. Try refreshing the page."
-    : paused
-      ? "Check the server’s date and time to resume assigning addresses."
-      : attention
-        ? "Review the error below or run a setup check in Troubleshooting."
-        : pending
-          ? "Applying your saved settings."
-          : d.applied_enabled
-            ? `Assigning addresses on ${d.interface} (${d.server_ip}).`
-            : "";
+  const description = unsupported
+    ? value.availability?.reason
+    : !d
+      ? "Can’t read the server’s current status. Try refreshing the page."
+      : paused
+        ? "Check the server’s date and time to resume assigning addresses."
+        : attention
+          ? "Review the error below or run a setup check in Troubleshooting."
+          : pending
+            ? "Applying your saved settings."
+            : d.applied_enabled
+              ? `Assigning addresses on ${d.interface} (${d.server_ip}).`
+              : "";
   return (
     <section
       className="flex items-start gap-3 px-1 py-1"
@@ -189,7 +174,11 @@ export function DHCPForm({
   const [needsReload, setNeedsReload] = useState(false);
   const [customLease, setCustomLease] = useState(false);
   const [editing, setEditing] = useState<boolean>();
-  const blocked = busy || needsReload;
+  const blocked =
+    busy ||
+    needsReload ||
+    state.data?.availability?.supported === false ||
+    applied?.availability?.supported === false;
   const value = state.data;
   if (!value)
     return (
@@ -198,7 +187,11 @@ export function DHCPForm({
       </Resource>
     );
   const proposed =
-    !value.config.enabled && value.setup ? value.setup.config : value.config;
+    value.availability?.supported !== false &&
+    !value.config.enabled &&
+    value.setup
+      ? value.setup.config
+      : value.config;
   const config = draft?.config ?? proposed;
   const hasSuggestions =
     !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
@@ -548,8 +541,14 @@ export default function DHCP() {
       </Resource>
       <DHCPForm applied={status.data} refresh={refresh} tick={tick} />
       <Leases tick={tick} enabled={status.data?.dhcp?.applied_enabled} />
-      <Reservations tick={tick} refresh={refresh} />
-      <DHCPCheck />
+      <fieldset
+        disabled={status.data?.availability?.supported === false}
+        className="min-w-0 space-y-6"
+      >
+        <legend className="sr-only">DHCP reservations and diagnostics</legend>
+        <Reservations tick={tick} refresh={refresh} />
+        <DHCPCheck />
+      </fieldset>
     </div>
   );
 }

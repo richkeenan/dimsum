@@ -30,6 +30,7 @@ export interface paths {
               status: components["schemas"]["Activation"];
               config: components["schemas"]["DHCPSettings"];
               setup?: components["schemas"]["DHCPSetup"];
+              availability?: components["schemas"]["DHCPAvailability"];
             };
           };
         };
@@ -87,6 +88,7 @@ export interface paths {
               status: components["schemas"]["Activation"];
               /** @description A runtime status provider is installed; this is not DHCP readiness */
               runtime_available: boolean;
+              availability?: components["schemas"]["DHCPAvailability"];
               dhcp: components["schemas"]["DHCPStatus"] | null;
             };
           };
@@ -2277,6 +2279,18 @@ export interface components {
       }[];
     };
     UInt64: components["schemas"]["Decimal"];
+    /** @description Platform and deployment capability, independent of configured/enabled state and runtime readiness. Unsupported deployments reject DHCP enablement and diagnostic jobs through all control transports. */
+    DHCPAvailability: {
+      supported: boolean;
+      /** @enum {string} */
+      code:
+        | "supported"
+        | "unsupported_platform"
+        | "docker_desktop"
+        | "unknown_deployment";
+      /** @description Human-readable explanation when unsupported; empty when supported */
+      reason: string;
+    };
     /** @description Read-only proposed settings with blank fields filled from local Linux network metadata and defaults. Never saved or enabled automatically. Pool suggestions exclude known local and reserved addresses, not unknown leases on other servers. */
     DHCPSetup: {
       config: components["schemas"]["DHCPSettings"];

@@ -5,7 +5,7 @@
 # dimsum
 
 dimsum is a DNS ad blocker for your home or private network that you can manage
-through your AI agent. Run it on a Linux server or Raspberry Pi, point your
+through your AI agent. Run it on a Linux server, Raspberry Pi, or Mac, point your
 devices at it for DNS, and ask your agent to configure filtering, investigate
 blocked domains, or manage local DNS. You can also use the web dashboard or CLI.
 
@@ -74,6 +74,26 @@ downloaded `.deb` instead.
 
 [Download releases](https://github.com/richkeenan/dimsum/releases).
 
+### Mac with Docker Desktop
+
+Install and start Docker Desktop, then run:
+
+```sh
+mkdir -p ~/dimsum-docker
+cd ~/dimsum-docker
+curl -fL https://github.com/richkeenan/dimsum/releases/latest/download/compose.desktop.yaml -o compose.yaml
+docker compose up -d --wait
+```
+
+Open <http://localhost:8080> and sign in with **`admin`**. DNS is published on
+TCP/UDP port 53 for your LAN; the dashboard and MCP stay on localhost. Keep your
+Mac awake and Docker Desktop running. Use your router for DHCP.
+
+The Compose release asset and GHCR images will be published by a future tagged
+release; pushing these changes alone does not publish them. The quickstart needs
+that release to be available. See the [macOS guide](guides/macos.md) for port
+conflicts, upgrades, backups, and the native executable option.
+
 ## Command-line control
 
 Log in once as your normal user with the dashboard password (`admin` on a fresh
@@ -97,6 +117,7 @@ specification at `/api/v1/openapi.json`.
 
 - [Agent control: setup and example requests](guides/agent-control.md)
 - [Deployment and password setup](guides/deployment.md)
+- [macOS: Docker Desktop and native executable](guides/macos.md)
 - [Configuration and supported settings](guides/configuration.md)
 - [Encrypted upstream DNS](guides/encrypted-upstreams.md)
 - [Optional DHCPv4](guides/dhcp.md)
@@ -114,14 +135,31 @@ goreleaser build --snapshot --clean --single-target --output dist/dimsum
 ./dist/dimsum version
 ```
 
-On macOS, select a Linux target explicitly, for example:
+On **macOS**, build a native executable for the current Mac:
+
+```sh
+goreleaser build --snapshot --clean --single-target --output dist/dimsum
+./dist/dimsum version
+```
+
+GoReleaser supports Darwin **arm64** (Apple silicon) and **amd64** (Intel).
+Native macOS archives contain an unsigned executable and a foreground example
+configuration; there is no launchd service or native installer-script support.
+Follow the [native macOS quickstart](guides/macos.md#native-macos-executable).
+To build archives and packages from a clean recorded commit:
+
+```sh
+goreleaser release --snapshot --clean --skip=publish,docker
+```
+
+To cross-compile on macOS for a Linux host, select its target explicitly:
 
 ```sh
 GOOS=linux GOARCH=arm64 goreleaser build --snapshot --clean --single-target --output dist/dimsum
 ```
 
-Run that binary on a Linux arm64 host. Go tests and frontend development can run
-on macOS; the release configuration does not produce a native macOS executable.
+Run that binary on a Linux arm64 host. Go tests and frontend development can also
+run on macOS.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and package builds.
 
 ## License

@@ -98,15 +98,22 @@ func TestDHCPHTTPAndCLIRevisionCRUD(t *testing.T) {
 		assert.True(t, json.Valid([]byte(text)))
 		if name == "dhcp" {
 			var result struct {
-				Config dhcp.Settings `json:"config"`
-				Setup  dhcp.Setup    `json:"setup"`
+				Config       dhcp.Settings     `json:"config"`
+				Setup        dhcp.Setup        `json:"setup"`
+				Availability dhcp.Availability `json:"availability"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(text), &result))
 			assert.False(t, result.Config.Enabled)
 			assert.Empty(t, result.Config.Interface, "inspection must not save detected network values")
 			assert.Equal(t, 0, result.Config.LeaseSeconds)
-			assert.Equal(t, 86400, result.Setup.Config.LeaseSeconds)
-			assert.Equal(t, "home.arpa", result.Setup.Config.LocalDomain)
+			if result.Availability.Supported {
+				assert.Equal(t, 86400, result.Setup.Config.LeaseSeconds)
+				assert.Equal(t, "home.arpa", result.Setup.Config.LocalDomain)
+			} else {
+				assert.Equal(t, result.Config, result.Setup.Config, "unsupported deployments only inspect saved settings")
+				assert.Empty(t, result.Setup.Suggested)
+				assert.NotEmpty(t, result.Availability.Reason)
+			}
 			assert.False(t, result.Setup.Config.Enabled)
 			assert.Equal(t, 0, store.Snapshot().Config().DHCP.LeaseSeconds)
 		}

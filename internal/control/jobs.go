@@ -33,6 +33,11 @@ func (s *Service) Jobs() []Job {
 	return append([]Job{}, s.jobs.entries...)
 }
 func (s *Service) StartJob(ctx context.Context, kind string, input json.RawMessage) (Job, error) {
+	if kind == "dhcp-check" {
+		if err := s.dhcpAvailability().Check(); err != nil {
+			return Job{}, fmt.Errorf("%w: %v", BadRequest, err)
+		}
+	}
 	if len(input) > 3<<20 {
 		return Job{}, fmt.Errorf("job input exceeds 3 MiB")
 	}

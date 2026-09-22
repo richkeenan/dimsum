@@ -115,10 +115,17 @@ func ReadBackupContents(archive []byte) (*BackupContents, error) {
 // Validation has no filesystem effects, so rejected archives cannot partially
 // install configuration or credentials. Activation errors retain Store.Save's
 // saved-versus-active diagnostics; callers must display the returned result.
-func (s *Store) Restore(ctx context.Context, expected string, archive []byte) (ActivationResult, error) {
+// Optional checks validate deployment constraints before any credential staging
+// or configuration publication, while archive parsing remains platform independent.
+func (s *Store) Restore(ctx context.Context, expected string, archive []byte, checks ...func(*Document) error) (ActivationResult, error) {
 	bundle, err := ReadBackupContents(archive)
 	if err != nil {
 		return s.Inspect(), err
+	}
+	for _, check := range checks {
+		if err := check(bundle.Document); err != nil {
+			return s.Inspect(), err
+		}
 	}
 	return s.restoreContents(ctx, expected, bundle)
 }

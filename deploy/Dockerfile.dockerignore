@@ -5,6 +5,7 @@
 !go.sum
 !.goreleaser.yaml
 !LICENSE
+!deploy/dimsum.example.yaml
 !README.md
 !api/*.go
 !api/*.yaml

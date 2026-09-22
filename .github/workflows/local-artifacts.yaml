@@ -6,6 +6,37 @@ on:
 permissions:
   contents: read
 jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.8'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.18.2
+          args: build --snapshot --clean --single-target --output dist/dimsum
+      - run: go test ./...
+      - run: go vet ./...
+      - run: node scripts/qualification.mjs dist/dimsum --output qualification-macos --duration 5
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.runner }}-qualification
+          path: qualification-macos/
+          retention-days: 14
   installer:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -72,6 +103,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      - name: Build native container for Desktop deployment tests
+        run: docker build --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" --build-arg SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" --file deploy/Dockerfile --tag dimsum:smoke .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+      - name: Check first boot, DNS, credentials and persistent volumes
+        run: node scripts/container-smoke.mjs dimsum:smoke
       - name: Export multi-platform OCI image locally
         run: docker buildx build --platform linux/amd64,linux/arm64 --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" --build-arg SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" --file deploy/Dockerfile --output type=oci,dest=dimsum-local.oci.tar .
       - uses: actions/upload-artifact@v4

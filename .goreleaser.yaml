@@ -9,13 +9,17 @@ builds:
     main: ./cmd/dimsum
     binary: dimsum
     env: [CGO_ENABLED=0]
-    goos: [linux]
+    goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags: [-trimpath, -buildvcs=false]
     ldflags:
       - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ with index .Env "SOURCE_COMMIT" }}{{ . }}{{ else }}{{ $.FullCommit }}{{ end }} -X main.date={{ with index .Env "SOURCE_DATE" }}{{ . }}{{ else }}{{ $.CommitDate }}{{ end }}
 archives:
-  - formats: [tar.gz]
+  - id: linux
+    formats: [tar.gz]
+    format_overrides:
+      - goos: darwin
+        formats: [none]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - LICENSE
@@ -28,6 +32,20 @@ archives:
       - deploy/dimsum.example.yaml
       - deploy/setup-service.sh
       - scripts/install-service.sh
+      - src: artifacts/packaging-metadata/**
+        dst: metadata
+  - id: macos
+    formats: [tar.gz]
+    format_overrides:
+      - goos: linux
+        formats: [none]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - guides/**
+      - web/THIRD_PARTY.md
+      - deploy/dimsum.macos.yaml
       - src: artifacts/packaging-metadata/**
         dst: metadata
 nfpms:
@@ -69,16 +87,20 @@ release:
   prerelease: auto
   extra_files:
     - glob: install.sh
+    - glob: deploy/compose.desktop.yaml
 changelog:
   sort: asc
 dockers_v2:
-  - images: [dimsum-local]
-    # Container images are built locally; releases publish archives and packages.
-    disable: "{{ not .IsSnapshot }}"
-    tags: ["{{ .Version }}"]
+  - images: ['{{ if .IsSnapshot }}dimsum-local{{ else }}ghcr.io/richkeenan/dimsum{{ end }}']
+    ids: [dimsum]
+    tags:
+      - "{{ .Version }}"
+      - '{{ if and (not .IsSnapshot) (not .Prerelease) }}latest{{ end }}'
     dockerfile: deploy/Dockerfile.goreleaser
-    extra_files: [artifacts/packaging-metadata]
+    extra_files: [artifacts/packaging-metadata, deploy/dimsum.example.yaml]
     labels:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: https://github.com/richkeenan/dimsum
+      org.opencontainers.image.licenses: MIT
     platforms: [linux/amd64, linux/arm64]

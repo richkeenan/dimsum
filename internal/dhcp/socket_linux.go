@@ -30,6 +30,9 @@ type systemLink struct {
 // OpenSystemLink validates the configured address and opens exclusive UDP/67
 // ingress plus direct L2 egress. It never sends traffic during preparation.
 func OpenSystemLink(s Settings) (Link, ProbeFunc, error) {
+	if err := CurrentAvailability().Check(); err != nil {
+		return nil, nil, err
+	}
 	if !s.Enabled {
 		return nil, nil, fmt.Errorf("dhcp: cannot open disabled packet service")
 	}

@@ -48,6 +48,8 @@ type Options struct {
 	BootID      string
 	DHCPStatus  func() any
 	DHCPInspect func() dhcp.LeaseSnapshot
+	// A custom packet transport can supply its own deployment capability.
+	DHCPAvailability func() dhcp.Availability
 }
 type Service struct {
 	options Options
@@ -330,6 +332,9 @@ func (s *Service) Mutate(ctx context.Context, resource, method string, m Mutatio
 	if e != nil {
 		return nil, e
 	}
+	if e = s.checkDHCPAvailability(d); e != nil {
+		return nil, e
+	}
 	a, e := s.options.Store.Save(ctx, m.Revision, d)
 	result := activation(a)
 	if e == nil && resource == "records" && method != "DELETE" {
@@ -345,6 +350,9 @@ func (s *Service) Stage(m Mutation) (any, error) {
 	if e != nil {
 		return nil, e
 	}
+	if e = s.checkDHCPAvailability(d); e != nil {
+		return nil, e
+	}
 	id, e := s.options.Store.Stage(m.Revision, d)
 	return map[string]any{"id": id, "revision": m.Revision}, e
 }
@@ -352,7 +360,7 @@ func (s *Service) Commit(ctx context.Context, id string) (any, error) {
 	if s.options.Store == nil {
 		return nil, ErrUnavailable
 	}
-	a, e := s.options.Store.CommitStage(ctx, id)
+	a, e := s.options.Store.CommitStage(ctx, id, s.checkDHCPAvailability)
 	return activation(a), e
 }
 func (s *Service) Data(ctx context.Context, resource string, q url.Values) (any, error) {

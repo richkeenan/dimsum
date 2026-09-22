@@ -44,7 +44,9 @@ func (s *Store) Stage(expected string, d *Document) (string, error) {
 	err = lists.WriteArtifact(filepath.Join(s.state, "stages", id+".stage"), payload)
 	return id, err
 }
-func (s *Store) CommitStage(ctx context.Context, id string) (ActivationResult, error) {
+
+// Checks validate deployment constraints again, including stages from a prior process.
+func (s *Store) CommitStage(ctx context.Context, id string, checks ...func(*Document) error) (ActivationResult, error) {
 	if len(id) != 64 {
 		return s.Inspect(), fmt.Errorf("stage: invalid ID")
 	}
@@ -67,6 +69,11 @@ func (s *Store) CommitStage(ctx context.Context, id string) (ActivationResult, e
 	d, err := Parse(stage.Config)
 	if err != nil {
 		return s.Inspect(), err
+	}
+	for _, check := range checks {
+		if err := check(d); err != nil {
+			return s.Inspect(), err
+		}
 	}
 	return s.Save(ctx, stage.Expected, d)
 }

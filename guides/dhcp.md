@@ -96,8 +96,17 @@ DHCP needs LAN broadcasts, ARP, and link-layer replies before a client has an IP
 Publishing UDP port 67 through a NAT bridge is insufficient. Native Linux host
 networking or a LAN-facing network namespace can provide connectivity, with
 NET_RAW and NET_BIND_SERVICE and a permanent server address visible inside the
-namespace. Mount persistent data storage. Docker Desktop is not equivalent to a
-native Linux LAN interface.
+namespace. Mount persistent data storage.
+
+DHCP serving is unsupported on native macOS and in the supplied Docker Desktop
+setup. Docker Desktop runs Linux containers behind its networking layer, without
+the direct LAN broadcast and link-layer access DHCP needs. Publishing UDP 67
+does not provide that access. The Desktop Compose file sets
+`DIMSUM_DEPLOYMENT=docker-desktop` so the backend reports this limitation even
+though the container's operating system is Linux. The dashboard, CLI, and MCP
+report the backend's unsupported reason; removing the marker does not provide
+LAN access. Use your router for DHCP, or a Linux host with direct LAN access.
+See the [macOS guide](macos.md) for DNS-only Docker Desktop setup.
 
 The automated Linux tests use isolated veth interfaces and real client exchanges.
 They do not qualify every physical LAN, host-network, or macvlan deployment.

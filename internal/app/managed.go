@@ -100,7 +100,12 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 			if err != nil {
 				return nil, err
 			}
-			result, err := store.Restore(ctx, request.Revision, archive)
+			result, err := store.Restore(ctx, request.Revision, archive, func(d *config.Document) error {
+				if d.Config().DHCP.Enabled {
+					return dhcp.CurrentAvailability().Check()
+				}
+				return nil
+			})
 			m.refresh()
 			return safeJSON(result), err
 		},

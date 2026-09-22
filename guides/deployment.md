@@ -1,5 +1,8 @@
 # Deployment
 
+For a Mac, see the [macOS guide](macos.md) for Docker Desktop setup and native
+foreground builds. The Linux service instructions below use systemd.
+
 ## Native Linux service
 
 The installer supports systemd on Linux amd64 and arm64. It checks ports 53 and
@@ -119,10 +122,14 @@ open recursive resolver or the local control socket to the internet.
 
 ## Containers
 
-The repository supplies a Dockerfile and Compose definition for native Linux.
+The repository supplies a Dockerfile and [`deploy/compose.yaml`](../deploy/compose.yaml)
+for native Linux. For Docker Desktop, use the separate
+[`compose.desktop.yaml`](../deploy/compose.desktop.yaml) and [macOS guide](macos.md).
 The configuration and state directories must be writable by UID/GID 65532.
 Mount the configuration directory rather than just its YAML file because saves
-use atomic rename. The image contains no initial configuration or credentials.
+use atomic rename. The image includes default configuration with no credentials;
+fresh named volumes inherit its defaults and ownership. Bind mounts used by the
+Linux Compose definition must be prepared explicitly as described below.
 
 Build from a clean checkout. Supply provenance from that checkout:
 
@@ -144,10 +151,15 @@ docker compose -f deploy/compose.yaml up -d
 
 Source archives can also build: omit provenance variables if unknown. The build
 will label them unrecorded; it does not require Git history in the Docker context.
-Container images are built locally; release automation publishes binaries and
-Debian packages, not a public container registry image.
+Tagged release automation is configured to publish multi-platform Linux images
+to `ghcr.io/richkeenan/dimsum`, alongside binaries, Debian packages, and the
+Desktop Compose asset. Version image tags omit the release tag's leading `v`;
+`latest` tracks stable releases. These images and the Desktop asset require a
+future tagged release; a push to the branch does not publish a release. On first
+publication, the package owner may need to set the GHCR package visibility to
+**Public** before unauthenticated pulls work.
 
-The supplied Compose service uses host networking and retains NET_BIND_SERVICE.
+The native Linux Compose service uses host networking and retains NET_BIND_SERVICE.
 Docker Desktop does not provide the same LAN interface behavior as native Linux.
 See the [DHCP guide](dhcp.md) before adding DHCP privileges.
 

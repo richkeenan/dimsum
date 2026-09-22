@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/richkeenan/dimsum/internal/config"
@@ -13,16 +14,69 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func dhcpFixture(t *testing.T) (*Service, *config.Store) {
+func dhcpFixture(t *testing.T, network ...bool) (*Service, *config.Store) {
 	t.Helper()
 	b, e := os.ReadFile("../../testdata/config/dimsum.yaml")
 	require.NoError(t, e)
+	if len(network) > 0 {
+		b = []byte(strings.Replace(string(b), "127.0.0.1:0", "0.0.0.0:53", 1))
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dimsum.yaml")
 	require.NoError(t, os.WriteFile(path, b, 0600))
 	store, e := config.OpenStore(t.Context(), path, filepath.Join(dir, "state"), config.StoreOptions{Offline: true})
 	require.NoError(t, e)
 	return New(Options{Store: store, ConfigPath: path}), store
+}
+
+func TestUnsupportedDHCPRejectsEnablementWithoutSaving(t *testing.T) {
+	t.Setenv("DIMSUM_DEPLOYMENT", "docker-desktop")
+	s, store := dhcpFixture(t, true)
+	// A valid, disabled configuration isolates capability rejection from validation.
+	edits := []config.Edit{
+		{Path: []string{"interface"}, Value: "eth0"},
+		{Path: []string{"server_ip"}, Value: "192.0.2.2"},
+		{Path: []string{"subnet"}, Value: "192.0.2.0/24"},
+		{Path: []string{"gateway"}, Value: "192.0.2.1"},
+		{Path: []string{"range_start"}, Value: "192.0.2.100"},
+		{Path: []string{"range_end"}, Value: "192.0.2.150"},
+		{Path: []string{"lease_seconds"}, Value: 86400},
+		{Path: []string{"local_domain"}, Value: "home.arpa"},
+	}
+	_, err := s.DHCPMutate(t.Context(), "PATCH", "", false, DHCPMutation{Revision: store.Inspect().SavedRevision, Edits: edits})
+	require.NoError(t, err)
+	revision := store.Inspect().SavedRevision
+	_, err = s.DHCPMutate(t.Context(), "PATCH", "", false, DHCPMutation{Revision: revision, Edits: []config.Edit{{Path: []string{"enabled"}, Value: true}}})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Docker Desktop")
+	assert.Equal(t, revision, store.Inspect().SavedRevision)
+	mutation := func() Mutation {
+		return Mutation{Revision: revision, Edits: []config.Edit{{Path: []string{"dhcp", "enabled"}, Value: true}}}
+	}
+	_, err = s.Mutate(t.Context(), "settings", "PATCH", mutation())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Docker Desktop")
+	_, err = s.Stage(mutation())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Docker Desktop")
+	assert.Equal(t, revision, store.Inspect().SavedRevision)
+	value, err := s.DHCPStatus()
+	require.NoError(t, err)
+	availability := value.(map[string]any)["availability"].(dhcp.Availability)
+	assert.False(t, availability.Supported)
+	assert.Equal(t, "docker_desktop", availability.Code)
+	_, err = s.StartJob(t.Context(), "dhcp-check", nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Docker Desktop")
+	// Stages saved by another deployment cannot bypass the current capability.
+	d, err := s.candidate("settings", "PATCH", mutation())
+	require.NoError(t, err)
+	id, err := store.Stage(revision, d)
+	require.NoError(t, err)
+	_, err = s.Commit(t.Context(), id)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Docker Desktop")
+	assert.Equal(t, revision, store.Inspect().SavedRevision)
 }
 
 func TestDHCPReservationOptionalFieldAndScope(t *testing.T) {
