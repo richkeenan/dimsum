@@ -5,9 +5,86 @@ import {
   UpstreamConnectionTest,
   UpstreamEditor,
   UpstreamPoolSummary,
+  UpstreamName,
 } from "./upstreams";
 
 afterEach(() => vi.restoreAllMocks());
+
+it.each([
+  ["HTTPS://resolver.example/DNS-query?Profile=One", "HTTPS (DoH)"],
+  ["tLs://resolver.example:8853", "TLS (DoT)"],
+])("classifies and preserves the saved identity %s", async (address, label) => {
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  const close = vi.fn();
+  const view = render(
+    <>
+      <UpstreamName address={address} />
+      <UpstreamPoolSummary config={{ dns: { upstreams: [address] } }} />
+    </>,
+  );
+  expect(screen.getByText(`Encrypted · ${label}`)).toBeVisible();
+  expect(
+    screen.getByText(/All configured upstreams use encrypted DNS/),
+  ).toBeVisible();
+  expect(screen.getByText(address)).toBeVisible();
+  view.rerender(
+    <UpstreamEditor
+      original={{ address, __index: 2 }}
+      revision="r1"
+      configured={[]}
+      close={close}
+      saved={() => {}}
+    />,
+  );
+  expect(screen.getByRole("radio", { name: /Encrypted/ })).toBeChecked();
+  expect(screen.getByLabelText("Encrypted server URL")).toHaveValue(address);
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  expect(close).toHaveBeenCalledOnce();
+  expect(send).not.toHaveBeenCalled();
+  const edited = address.replace("resolver.example", "Other.example");
+  fireEvent.change(screen.getByLabelText("Encrypted server URL"), {
+    target: { value: edited },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("upstreams", "PATCH", {
+      revision: "r1",
+      edits: [{ path: ["2"], value: edited }],
+    }),
+  );
+});
+
+it.each([
+  {
+    healthy: false,
+    responding: false,
+    transport: "tls",
+    error: "x509: certificate has expired",
+  },
+  {
+    healthy: false,
+    responding: false,
+    transport: "https",
+    error: "upstream bootstrap timeout",
+  },
+  { healthy: false, responding: true, transport: "tcp", rcode: 2 },
+])(
+  "shows unsuccessful probe transport without claiming verification: $transport",
+  async (result) => {
+    vi.spyOn(api, "send").mockResolvedValue({
+      id: "9",
+      state: "succeeded",
+      result,
+    });
+    render(<UpstreamConnectionTest address="192.0.2.53:53" />);
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(
+      `Configured / attempted transport: ${result.transport.toUpperCase()}`,
+    );
+    expect(status).not.toHaveTextContent(/verified/i);
+  },
+);
 
 it.each(["https", "plain"])(
   "adds a provider using the explicit %s choice",

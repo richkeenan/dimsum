@@ -94,13 +94,16 @@ test("encrypted providers, saved custom URLs and measured tests fit desktop and 
     "certificate has expired",
   );
   await expect(provider.getByRole("status")).not.toContainText("verified");
+  await expect(provider.getByRole("status")).toContainText(
+    "Configured / attempted transport: HTTPS",
+  );
   await provider.getByRole("button", { name: "Edit", exact: true }).click();
   await expect(page.getByLabel("Encrypted server URL")).toHaveValue(
     "https://cloudflare-dns.com/dns-query",
   );
   await page
     .getByLabel("Encrypted server URL")
-    .fill("tls://resolver.example:8853");
+    .fill("tLs://resolver.example:8853");
   await page.screenshot({ path: testInfo.outputPath("custom-mobile.png") });
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
@@ -108,7 +111,7 @@ test("encrypted providers, saved custom URLs and measured tests fit desktop and 
     page.getByText("Encrypted · TLS (DoT)", { exact: true }),
   ).toBeVisible();
   expect(writes[1].edits).toEqual([
-    { path: ["1"], value: "tls://resolver.example:8853" },
+    { path: ["1"], value: "tLs://resolver.example:8853" },
   ]);
   await page.getByRole("button", { name: "Add upstream" }).click();
   await page.getByLabel("DNS provider").selectOption("custom");

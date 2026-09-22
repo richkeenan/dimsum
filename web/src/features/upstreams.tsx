@@ -37,8 +37,12 @@ const providers = [
   },
 ];
 
+function encryptedTransport(address: string) {
+  return /^(https|tls):\/\//i.exec(address)?.[1].toLowerCase();
+}
+
 function isEncrypted(address: string) {
-  return /^(https|tls):\/\//.test(address);
+  return encryptedTransport(address) !== undefined;
 }
 
 export function UpstreamPoolSummary({ config }: { config?: Row }) {
@@ -62,6 +66,7 @@ export function UpstreamPoolSummary({ config }: { config?: Row }) {
 }
 
 export function UpstreamName({ address }: { address: string }) {
+  const transport = encryptedTransport(address);
   const provider = providers.find(
     (p) => p.addresses.includes(address) || p.encrypted === address,
   );
@@ -72,9 +77,9 @@ export function UpstreamName({ address }: { address: string }) {
         {address}
       </span>
       <span className="text-xs text-muted-foreground">
-        {address.startsWith("https://")
+        {transport === "https"
           ? "Encrypted · HTTPS (DoH)"
-          : address.startsWith("tls://")
+          : transport === "tls"
             ? "Encrypted · TLS (DoT)"
             : "Standard · unencrypted"}
       </span>
@@ -629,6 +634,13 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
       {message && (
         <div className="mt-2 space-y-1" role="status">
           <p>{message}</p>
+          {result?.healthy !== true &&
+            typeof result?.transport === "string" && (
+              <p>
+                Configured / attempted transport:{" "}
+                {result.transport.toUpperCase()}
+              </p>
+            )}
           {result?.healthy !== true && typeof result?.error === "string" && (
             <p className="[overflow-wrap:anywhere]">
               {result.error}
