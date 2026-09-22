@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/richkeenan/dimsum/internal/clients"
+	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -17,6 +18,7 @@ import (
 )
 
 type Config struct {
+	DHCP       dhcp.Settings        `yaml:"dhcp,omitempty" json:"dhcp"`
 	Version    int                  `yaml:"version"`
 	DNS        DNS                  `yaml:"dns"`
 	Admin      Admin                `yaml:"admin"`
@@ -141,6 +143,7 @@ func checkNodes(n *yaml.Node) error {
 
 func (d *Document) Config() Config {
 	c := d.value
+	c.DHCP = c.DHCP.Clone()
 	c.Admin.AllowedHosts = append([]string(nil), c.Admin.AllowedHosts...)
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)
 	c.DNS.Upstreams = append([]string(nil), c.DNS.Upstreams...)
@@ -152,6 +155,17 @@ func (d *Document) Config() Config {
 	c.Zones = append([]localdns.Zone(nil), c.Zones...)
 	return c
 }
-func (d *Document) Bytes() []byte    { return bytes.Clone(d.source) }
+func (d *Document) Bytes() []byte { return bytes.Clone(d.source) }
+
+func (d *Document) parseEdit(source []byte) (*Document, error) {
+	next, err := Parse(source)
+	if err != nil {
+		return nil, err
+	}
+	if err := dhcp.ValidateTransition(d.value.DHCP, next.value.DHCP); err != nil {
+		return nil, err
+	}
+	return next, nil
+}
 func (d *Document) Revision() string { return revision(d.source) }
 func revision(b []byte) string       { return fmt.Sprintf("%x", sha256.Sum256(b)) }

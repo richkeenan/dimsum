@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"github.com/richkeenan/dimsum/internal/clients"
+	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/richkeenan/dimsum/internal/upstream"
 	"net"
 	"net/netip"
@@ -12,6 +13,12 @@ import (
 // Validate is shared by file loading and future UI/CLI adapters. Port zero is
 // explicitly supported for isolated test runners; hostnames never trigger DNS.
 func Validate(c Config) error {
+	if err := dhcp.ValidateSettings(c.DHCP); err != nil {
+		return err
+	}
+	if err := dhcp.ValidateDNS(c.DHCP, c.DNS.Listen); err != nil {
+		return err
+	}
 	if _, err := clients.NewView(c.Naming, c.Clients, nil); err != nil {
 		return fmt.Errorf("naming: %w", err)
 	}

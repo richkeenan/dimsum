@@ -28,7 +28,7 @@ func (d *Document) Edit(edits []Edit) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Parse(out)
+	return d.parseEdit(out)
 }
 
 func (d *Document) editSource(edits []Edit) ([]byte, error) {

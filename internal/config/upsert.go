@@ -54,7 +54,7 @@ func (d *Document) Upsert(edits []Edit) (*Document, error) {
 			return nil, err
 		}
 	}
-	return Parse(current.source)
+	return d.parseEdit(current.source)
 }
 
 func (d *Document) insertScalar(edit Edit) ([]byte, error) {
