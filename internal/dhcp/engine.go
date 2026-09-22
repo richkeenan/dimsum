@@ -434,7 +434,10 @@ func (e *Engine) Handle(r Request) Outcome {
 		if v.lease.State == Offered && !nonzero(r.ServerID) {
 			return Outcome{}
 		}
-		if v.lease.State == Bound && v.hasACK && v.lastACK == r.XID {
+		// Some clients reuse XIDs across acquisition and later renewals. Only
+		// replay an ACK for the same request phase before the renewal boundary;
+		// otherwise an unchanged XID would prevent extension forever.
+		if v.lease.State == Bound && v.hasACK && v.lastACK == r.XID && v.request.CIAddr == r.CIAddr && now.Before(v.lease.Expiry.Add(-time.Duration(e.settings.LeaseSeconds)*time.Second/2)) {
 			return e.ack(v, r, now)
 		}
 		target := v.lease

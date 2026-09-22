@@ -118,6 +118,33 @@ func TestEngineRequestStates(t *testing.T) {
 	assert.Equal(t, Outcome{}, e.Handle(r))
 }
 
+func TestEngineRenewalReusesTransactionID(t *testing.T) {
+	s := fixtureSettings()
+	s.LeaseSeconds = 60
+	e, now := engineFixture(t, s)
+	r := client(1, Discover)
+	l := bind(t, e, r)
+	// BusyBox keeps the acquisition XID for a subsequent renewal. Changing
+	// SELECTING to RENEWING is a new operation, even with the same XID.
+	r.Type, r.CIAddr = RequestMessage, l.Address
+	*now = now.Add(time.Second)
+	m := e.Handle(r).Mutation
+	require.NotNil(t, m)
+	require.NotNil(t, e.CompleteCommit(CommitResult{Token: m.Token}).Reply)
+	first := m.Lease.Expiry
+	// An immediate retransmission is idempotent and does not write again.
+	out := e.Handle(r)
+	assert.Nil(t, out.Mutation)
+	require.NotNil(t, out.Reply)
+	// At T1, even an identical transaction must be able to renew again.
+	*now = now.Add(30 * time.Second)
+	m = e.Handle(r).Mutation
+	require.NotNil(t, m)
+	assert.True(t, m.Lease.Expiry.After(first))
+	assert.Nil(t, e.Handle(r).Reply, "pending duplicate must not bypass durable commit")
+	require.NotNil(t, e.CompleteCommit(CommitResult{Token: m.Token}).Reply)
+}
+
 func TestEngineReleaseDeclineExpiryAndCapacity(t *testing.T) {
 	s := fixtureSettings()
 	s.RangeEnd = s.RangeStart
