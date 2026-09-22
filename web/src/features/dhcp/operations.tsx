@@ -8,7 +8,7 @@ import {
   type Job,
 } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { DataTable, Details, Resource } from "@/components/data";
+import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DHCPError, panel } from "./index";
@@ -33,6 +33,8 @@ export function Reservations({
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [needsReload, setNeedsReload] = useState(false);
+  const blocked = busy || needsReload;
   const [page, setPage] = useState(0);
   const items = state.data?.items ?? [];
   const currentPage = Math.min(
@@ -42,7 +44,7 @@ export function Reservations({
   const outdated =
     !!draft && draft.revision !== state.data?.status.saved_revision;
   function open(item: DHCPReservation, existing: boolean, remove = false) {
-    if (!state.data) return;
+    if (!state.data || blocked) return;
     setDraft({
       revision: state.data.status.saved_revision,
       item: { ...item },
@@ -58,7 +60,7 @@ export function Reservations({
         <h2 className="text-sm font-medium">Reservations</h2>
         <Button
           variant="outline"
-          disabled={!state.data || busy || !!draft}
+          disabled={!state.data || blocked || !!draft}
           onClick={() =>
             open({ id: "", address: "", mac: "", hostname: "" }, false)
           }
@@ -92,7 +94,7 @@ export function Reservations({
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={busy || !!draft}
+                    disabled={blocked || !!draft}
                     aria-label={`Edit reservation ${r.id}`}
                     onClick={() => open(r as DHCPReservation, true)}
                   >
@@ -100,7 +102,7 @@ export function Reservations({
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={busy || !!draft}
+                    disabled={blocked || !!draft}
                     aria-label={`Remove reservation ${r.id}`}
                     onClick={() => open(r as DHCPReservation, true, true)}
                   >
@@ -137,6 +139,7 @@ export function Reservations({
           className="mt-4 border-t border-border pt-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (blocked || outdated) return;
             setBusy(true);
             setError(undefined);
             try {
@@ -161,9 +164,12 @@ export function Reservations({
                 draft.remove ? "DELETE" : draft.existing ? "PATCH" : "POST",
                 body,
               );
-              setDraft(undefined);
               setSaved(true);
+              setNeedsReload(true);
               refresh();
+              await state.refetch({ cancelRefetch: true, throwOnError: true });
+              setDraft(undefined);
+              setNeedsReload(false);
             } catch (e) {
               setError(e as Error);
             } finally {
@@ -197,7 +203,7 @@ export function Reservations({
                   <Input
                     value={draft.item[key] ?? ""}
                     required={key !== "hostname"}
-                    disabled={busy || (key === "id" && draft.existing)}
+                    disabled={blocked || (key === "id" && draft.existing)}
                     onChange={(e) =>
                       setDraft({
                         ...draft,
@@ -214,7 +220,7 @@ export function Reservations({
                   value={
                     draft.item.client_id !== undefined ? "client_id" : "mac"
                   }
-                  disabled={busy}
+                  disabled={blocked}
                   onChange={(e) =>
                     setDraft({
                       ...draft,
@@ -237,7 +243,7 @@ export function Reservations({
                   : "MAC address"}
                 <Input
                   required
-                  disabled={busy}
+                  disabled={blocked}
                   value={draft.item.client_id ?? draft.item.mac ?? ""}
                   onChange={(e) =>
                     setDraft({
@@ -260,15 +266,20 @@ export function Reservations({
               latest revision.
             </p>
           )}
-          {error && <DHCPError error={error} />}
+          {error &&
+            (needsReload ? (
+              <ErrorNotice error={error} />
+            ) : (
+              <DHCPError error={error} />
+            ))}
           <div className="flex gap-2">
-            <Button disabled={busy || outdated}>
+            <Button disabled={blocked || outdated}>
               {draft.remove ? "Confirm removal" : "Save reservation"}
             </Button>
             <Button
               type="button"
               variant="outline"
-              disabled={busy}
+              disabled={blocked}
               onClick={() => {
                 setDraft(undefined);
                 setError(undefined);
@@ -279,6 +290,37 @@ export function Reservations({
             </Button>
           </div>
         </form>
+      )}
+      {needsReload && (
+        <div className="mt-3 text-xs">
+          <p role="status">
+            {busy
+              ? "Reservation change saved. Refreshing saved reservations…"
+              : "Reservation change saved. Reload saved reservations before editing again."}
+          </p>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await state.refetch({
+                  cancelRefetch: true,
+                  throwOnError: true,
+                });
+                setDraft(undefined);
+                setNeedsReload(false);
+                setError(undefined);
+              } catch (e) {
+                setError(e as Error);
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Reload saved reservations
+          </Button>
+        </div>
       )}
       {saved && (
         <p role="status" className="mt-3 text-xs">

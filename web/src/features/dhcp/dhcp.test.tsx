@@ -220,6 +220,231 @@ it.each(["held", "failed"])(
   },
 );
 
+it.each([false, true])(
+  "settings save awaits authoritative read (failure: %s)",
+  async (fails) => {
+    const updated = {
+      ...initial,
+      status: { ...activation, saved_revision: "two" },
+      config: { ...initial.config, interface: "saved0" },
+    };
+    const read = deferred<DHCPConfigResponse>();
+    const get = vi
+      .spyOn(api, "get")
+      .mockReturnValueOnce(read.promise)
+      .mockResolvedValue(updated);
+    const send = vi.spyOn(api, "send").mockResolvedValue(updated.status);
+    const { client } = resource(
+      <DHCPForm applied={unavailable} refresh={() => {}} />,
+      initial,
+    );
+    await userEvent.type(screen.getByLabelText("LAN interface"), "saved0");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    );
+    expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    await act(async () => {
+      if (fails) read.reject(new APIError(400, "bad_request", "Read failed"));
+      else read.resolve(updated);
+    });
+    if (fails) {
+      await screen.findByText(/saved.*reload.*before editing/i);
+      expect(screen.getByLabelText("LAN interface")).toBeDisabled();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Save DHCP settings" }),
+      );
+      expect(send).toHaveBeenCalledTimes(1);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Reload saved settings" }),
+      );
+    }
+    await waitFor(() =>
+      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+    );
+    expect(screen.getByLabelText("LAN interface")).toHaveValue("saved0");
+    await userEvent.type(screen.getByLabelText("LAN interface"), "1");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save DHCP settings" }),
+    );
+    expect(send).toHaveBeenLastCalledWith("dhcp", "PATCH", {
+      revision: "two",
+      edits: [{ path: ["interface"], value: "saved01" }],
+    });
+    client.clear();
+  },
+);
+
+it.each([false, true])(
+  "reservation save awaits authoritative read (failure: %s)",
+  async (fails) => {
+    const item = {
+      id: "printer",
+      address: "192.0.2.20",
+      mac: "02:00:00:00:00:10",
+      hostname: "printer",
+    };
+    const before = { status: activation, items: [item] };
+    const updated = {
+      status: { ...activation, saved_revision: "two" },
+      items: [{ ...item, hostname: "saved" }],
+    };
+    const read = deferred<typeof updated>();
+    vi.spyOn(api, "get")
+      .mockResolvedValueOnce(before)
+      .mockReturnValueOnce(read.promise)
+      .mockResolvedValue(updated);
+    const send = vi.spyOn(api, "send").mockResolvedValue(updated.status);
+    const { client } = resource(<Reservations tick={0} refresh={() => {}} />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit reservation printer" }),
+    );
+    await userEvent.clear(screen.getByLabelText("Hostname (optional)"));
+    await userEvent.type(screen.getByLabelText("Hostname (optional)"), "saved");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save reservation" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Add reservation" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Edit reservation printer" }),
+    ).toBeDisabled();
+    await act(async () => {
+      if (fails) read.reject(new APIError(400, "bad_request", "Read failed"));
+      else read.resolve(updated);
+    });
+    if (fails) {
+      await screen.findByText(/saved.*reload.*before editing/i);
+      expect(
+        screen.getByRole("button", { name: "Add reservation" }),
+      ).toBeDisabled();
+      expect(send).toHaveBeenCalledTimes(1);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Reload saved reservations" }),
+      );
+    }
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Edit reservation printer" }),
+      ).toBeEnabled(),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Edit reservation printer" }),
+    );
+    expect(screen.getByLabelText("Hostname (optional)")).toHaveValue("saved");
+    await userEvent.type(screen.getByLabelText("Hostname (optional)"), "1");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save reservation" }),
+    );
+    expect(send).toHaveBeenLastCalledWith(
+      "dhcp/reservations/printer",
+      "PATCH",
+      expect.objectContaining({ revision: "two" }),
+    );
+    client.clear();
+  },
+);
+
+it.each(["settings", "reservations"])(
+  "%s save supersedes polling and mutation invalidation before unlocking",
+  async (kind) => {
+    const settings = kind === "settings";
+    const path = settings ? "dhcp" : "dhcp/reservations";
+    const key = ["api", path, path];
+    const item = {
+      id: "printer",
+      address: "192.0.2.20",
+      mac: "02:00:00:00:00:10",
+      hostname: "printer",
+    };
+    const before = settings ? initial : { status: activation, items: [item] };
+    const updated = settings
+      ? {
+          ...initial,
+          status: { ...activation, saved_revision: "two" },
+          config: { ...initial.config, interface: "saved0" },
+        }
+      : {
+          status: { ...activation, saved_revision: "two" },
+          items: [{ ...item, hostname: "saved0" }],
+        };
+    const oldPoll = deferred<typeof before>();
+    const invalidation = deferred<typeof before>();
+    const read = deferred<typeof before>();
+    const signals: (AbortSignal | undefined)[] = [];
+    vi.spyOn(api, "get").mockImplementation(async (requested, signal) => {
+      if (requested === path) {
+        signals.push(signal);
+        return (
+          [oldPoll.promise, invalidation.promise, read.promise][
+            signals.length - 1
+          ] ?? updated
+        );
+      }
+      if (requested === "dhcp") return initial;
+      if (requested === "dhcp/status") return unavailable;
+      return { status: activation, items: [] };
+    });
+    const client = new QueryClient();
+    client.setQueryData(key, before);
+    // api.send dispatches configuration-changed before resolving; the shell
+    // invalidates queries in response. Reproduce that ordering here.
+    vi.spyOn(api, "send").mockImplementation(async () => {
+      void client.invalidateQueries({ queryKey: key, exact: true });
+      return updated.status;
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <DHCP />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("LAN interface")).toBeEnabled(),
+    );
+    if (!settings)
+      await userEvent.click(
+        await screen.findByRole("button", { name: "Edit reservation printer" }),
+      );
+    const input = screen.getByLabelText(
+      settings ? "LAN interface" : "Hostname (optional)",
+    );
+    await userEvent.clear(input);
+    await userEvent.type(input, "saved0");
+    act(() => {
+      void client.invalidateQueries({ queryKey: key, exact: true });
+    });
+    await waitFor(() => expect(signals).toHaveLength(1));
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: settings ? "Save DHCP settings" : "Save reservation",
+      }),
+    );
+    await waitFor(() => expect(signals).toHaveLength(3));
+    expect(input).toBeDisabled();
+    expect(signals[0]?.aborted).toBe(true);
+    expect(signals[1]?.aborted).toBe(true);
+    await act(async () => {
+      read.resolve(updated);
+    });
+    await waitFor(() =>
+      expect(
+        settings
+          ? input
+          : screen.getByRole("button", { name: "Edit reservation printer" }),
+      ).toBeEnabled(),
+    );
+    await act(async () => {
+      oldPoll.resolve(before);
+      invalidation.resolve(before);
+    });
+    expect(client.getQueryData(key)).toEqual(updated);
+    expect(signals).toHaveLength(3);
+    view.unmount();
+    client.clear();
+  },
+);
+
 it("requires complete enable fields and keeps topology locked until disable is applied", async () => {
   resource(<DHCPForm applied={unavailable} refresh={() => {}} />, initial);
   await userEvent.click(screen.getByLabelText("Enable DHCPv4"));

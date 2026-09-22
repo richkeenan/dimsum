@@ -151,6 +151,8 @@ export function DHCPForm({
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<Activation>();
+  const [needsReload, setNeedsReload] = useState(false);
+  const blocked = busy || needsReload;
   const value = state.data;
   if (!value)
     return (
@@ -182,7 +184,7 @@ export function DHCPForm({
         <form
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!draft) return;
+            if (!draft || blocked || outdated) return;
             setBusy(true);
             setError(undefined);
             setSaved(undefined);
@@ -212,8 +214,11 @@ export function DHCPForm({
                 edits,
               });
               setSaved(result);
-              setDraft(undefined);
+              setNeedsReload(true);
               refresh();
+              await state.refetch({ cancelRefetch: true, throwOnError: true });
+              setDraft(undefined);
+              setNeedsReload(false);
             } catch (e) {
               setError(e as Error);
             } finally {
@@ -225,7 +230,7 @@ export function DHCPForm({
             <input
               type="checkbox"
               checked={config.enabled}
-              disabled={busy}
+              disabled={blocked}
               onChange={(e) => change("enabled", e.target.checked)}
             />
             Enable DHCPv4
@@ -246,7 +251,7 @@ export function DHCPForm({
                 <Input
                   placeholder={placeholder}
                   value={config[key] ?? ""}
-                  disabled={busy || (locked && topology.has(key))}
+                  disabled={blocked || (locked && topology.has(key))}
                   required={config.enabled && key !== "max_leases"}
                   type={
                     key === "lease_seconds" || key === "max_leases"
@@ -286,9 +291,21 @@ export function DHCPForm({
               revision before editing again.
             </p>
           )}
-          {error && <DHCPError error={error} />}
+          {needsReload && (
+            <p role="status" className="my-3 text-xs">
+              {busy
+                ? "Settings saved. Refreshing saved settings…"
+                : "Settings saved. Reload the saved settings before editing again."}
+            </p>
+          )}
+          {error &&
+            (needsReload ? (
+              <ErrorNotice error={error} />
+            ) : (
+              <DHCPError error={error} />
+            ))}
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy || !draft || outdated}>
+            <Button disabled={blocked || !draft || outdated}>
               Save DHCP settings
             </Button>
             <Button
@@ -307,6 +324,7 @@ export function DHCPForm({
                   // Reload is not an edit: the next actual change captures a
                   // revision, so later reservation saves cannot stale a clean form.
                   setDraft(undefined);
+                  setNeedsReload(false);
                   setError(undefined);
                   setSaved(undefined);
                 } catch (e) {
