@@ -118,6 +118,8 @@ func TestServiceIdentifiersDoNotOutrankUsefulDeviceLabels(t *testing.T) {
 		{Source: "dns-sd", Hostname: "android.local", Label: "Example Television", Expires: now.Add(time.Minute)},
 	}}}
 	assert.Equal(t, "Example Television", enrichDiscovered(n, now).Name)
+	n.Device.Evidence[0].Label = "Display-01234567890123456789"
+	assert.Equal(t, "Example Television", enrichDiscovered(n, now).Name)
 	for _, label := range []string{"SpotifyConnect", "SpotifyConnect #2", "amazon #0000"} {
 		n.Device.Evidence = []Evidence{{Source: "dns-sd", Hostname: "android.local", Label: label, Expires: now.Add(time.Minute)}}
 		assert.Equal(t, "android.local", enrichDiscovered(n, now).Name, label)

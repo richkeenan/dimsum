@@ -73,6 +73,10 @@ func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 
 func genericName(name string) bool {
 	n := strings.TrimSuffix(strings.TrimSuffix(strings.ToLower(name), "."), ".local")
+	// Check opaque IDs before conflict suffixes: an ID may contain only digits.
+	if i := strings.LastIndexByte(n, '-'); i >= 0 && len(n[i+1:]) >= 16 && strings.Trim(n[i+1:], "0123456789abcdef") == "" {
+		return true
+	}
 	// mDNS conflict resolution appends numeric suffixes to generic hostnames.
 	if i := strings.LastIndexAny(n, "-# "); i >= 0 && i+1 < len(n) && strings.Trim(n[i+1:], "0123456789") == "" {
 		n = strings.TrimRight(n[:i], " #")
@@ -83,11 +87,6 @@ func genericName(name string) bool {
 	}
 	// Opaque service UUIDs and raw hex identifiers are poor display labels.
 	if len(n) >= 16 && strings.Trim(n, "0123456789abcdef-") == "" {
-		return true
-	}
-	// Cast and debugging services often prefix a human-readable model to an
-	// opaque identifier. Those are still service IDs, not useful device labels.
-	if i := strings.LastIndexByte(n, '-'); i >= 0 && len(n[i+1:]) >= 16 && strings.Trim(n[i+1:], "0123456789abcdef") == "" {
 		return true
 	}
 	return false
