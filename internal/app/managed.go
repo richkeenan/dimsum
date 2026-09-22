@@ -39,6 +39,7 @@ type managedRuntime struct {
 	refreshMu    sync.Mutex
 	backupID     string
 	backup       []byte
+	dhcp         *DHCPSupervisor
 }
 
 func newManagedRuntime(service *Service, store *config.Store, o *observability, address string) (*managedRuntime, error) {
@@ -105,7 +106,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 	m.control = control.New(control.Options{Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
 		transport, cache := service.DNSStats()
 		interfaces := dnsInterfaces()
-		return map[string]any{"naming": safeJSON(service.NamingDiagnostics()), "dns_ready": service.Ready(), "dns_addresses": clientDNSAddresses(service.Addresses().DNS, interfaces), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil
+		return map[string]any{"dhcp": safeJSON(service.DHCPStatus()), "naming": safeJSON(service.NamingDiagnostics()), "dns_ready": service.Ready(), "dns_addresses": clientDNSAddresses(service.Addresses().DNS, interfaces), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil
 	}})
 	// Configured hostnames are read from the active snapshot on each request.
 	allowed := []string{address}
@@ -188,6 +189,15 @@ func (m *managedRuntime) refresh() {
 	m.observations.retention(m.store.Snapshot().Config().Statistics)
 }
 func (m *managedRuntime) watch(ctx context.Context) {
+	reconcile := func() {
+		if m.dhcp != nil {
+			snapshot := m.store.Snapshot()
+			applyCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+			_ = m.dhcp.Reconcile(applyCtx, snapshot.Config().DHCP, snapshot.Generation())
+			cancel()
+		}
+	}
+	reconcile()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -196,6 +206,7 @@ func (m *managedRuntime) watch(ctx context.Context) {
 			return
 		case <-ticker.C:
 			m.refresh()
+			reconcile()
 		}
 	}
 }

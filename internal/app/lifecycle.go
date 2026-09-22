@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/config"
@@ -33,6 +34,7 @@ type Service struct {
 	pipeline      *resolve.Pipeline
 	transport     *transport.Server
 	observability *observability
+	dhcp          *DHCPSupervisor
 }
 type Addresses struct {
 	DNS     []string
@@ -205,6 +207,18 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	s.stop = make(chan struct{})
 	s.done = make(chan struct{})
 	runCtx, cancel := context.WithCancel(ctx)
+	dataDir := c.Paths.DataDir
+	if store != nil {
+		dataDir = store.ResolvePath(dataDir)
+	}
+	dhcpDNS := addresses.DNS
+	if server == nil {
+		dhcpDNS = nil
+	} // bound custom-handler sockets are not DNS readiness
+	s.dhcp = NewDHCPSupervisor(dataDir, dhcpDNS)
+	if managed != nil {
+		managed.dhcp = s.dhcp
+	}
 	var workers sync.WaitGroup
 	failures := make(chan error, 1)
 	serve := func(fn func() error) {
@@ -250,6 +264,10 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		}
 		s.ready = true
 	}
+	if store == nil && c.DHCP.Enabled {
+		workers.Add(1)
+		go func() { defer workers.Done(); _ = s.dhcp.Reconcile(runCtx, c.DHCP, 1) }()
+	}
 	success = true
 	go func() {
 		var failure error
@@ -263,6 +281,9 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		s.err = failure
 		s.mu.Unlock()
 		cancel()
+		dhcpClose, dhcpCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		_ = s.dhcp.Close(dhcpClose)
+		dhcpCancel()
 		closeListeners(sockets)
 		if managed != nil {
 			managed.control.Close()
