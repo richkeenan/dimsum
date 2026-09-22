@@ -38,15 +38,6 @@ export function ErrorNotice({
           ? "Your changes haven't been saved. Reload the current settings and try again."
           : error.message}
       </p>
-      {error instanceof APIError && (!!error.requestID || !!error.fields) && (
-        <details>
-          <summary>Technical details</summary>
-          {error.fields != null && (
-            <pre>{JSON.stringify(error.fields, null, 2)}</pre>
-          )}
-          {error.requestID && <small>Request {error.requestID}</small>}
-        </details>
-      )}
       {retry && (
         <Button variant="outline" onClick={retry}>
           Retry

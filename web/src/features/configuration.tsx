@@ -613,12 +613,6 @@ export default function Configuration({
               </a>
             </p>
           )}
-          <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-            <summary className="cursor-pointer text-muted-foreground">
-              Technical details
-            </summary>
-            <Details value={notice} />
-          </details>
         </section>
       )}
       {kind === "rules" && <RuleTester />}

@@ -66,15 +66,6 @@ test("managed DNS history, cursor filters, observed names, backup download and a
       .getByRole("paragraph")
       .filter({ hasText: "custom:browser-block" }),
   ).toBeVisible();
-  await page
-    .getByRole("dialog")
-    .getByText("Technical details", { exact: true })
-    .click();
-  await expect(
-    page
-      .getByRole("dialog")
-      .getByText("Upstream Attempts Available", { exact: false }),
-  ).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("link", { name: "Devices", exact: true }).click();
   await expect(

@@ -536,15 +536,6 @@ function QueryDetail({
           Source: {text(state.data.source_id)}
         </p>
       )}
-      <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-        <summary className="cursor-pointer text-muted-foreground">
-          Technical details
-        </summary>
-        <p className="my-2.5 max-w-[75ch] text-xs leading-relaxed text-muted-foreground">
-          Historical policy scope. Unavailable fields were not retained.
-        </p>
-        <Details value={state.data} />
-      </details>
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
         <h3 className="mb-3 text-sm font-medium">Create a rule</h3>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2">
