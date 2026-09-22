@@ -24,7 +24,6 @@ archives:
       - deploy/dimsum.example.yaml
       - deploy/setup-service.sh
       - scripts/install-service.sh
-      - docs/operations/*.md
       - src: artifacts/packaging-metadata/**
         dst: metadata
 nfpms:

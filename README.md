@@ -32,9 +32,7 @@ DNS server to this machine’s IP address.
 **Upgrade:** run the same command again. Your settings, password, and history stay
 in place.
 
-[Downloads](https://github.com/richkeenan/dimsum/releases) ·
-[Other installation methods and troubleshooting](docs/operations/install.md) ·
-[Pi-hole migration](docs/operations/migration.md)
+[Download releases](https://github.com/richkeenan/dimsum/releases).
 
 ## Connect your agent
 
@@ -57,23 +55,31 @@ sudo -u dimsum dimsum control diagnostics
 sudo -u dimsum dimsum control settings
 ```
 
-See the [CLI and agent reference](docs/operations/agent-control.md) for configuration
-changes, API access, and automation.
+Run `dimsum control help` for available commands. The server exposes its OpenAPI
+specification at `/api/v1/openapi.json` to authenticated clients.
 
 ## Development
 
-See the [development guide](docs/operations/development.md) for source builds,
-running locally, frontend live reload, and tests. Contributors use GoReleaser;
-users install prebuilt releases.
+Install Go **1.26.8**, Node **24.21.0** with npm, GoReleaser **2.18.2**, Python 3.9+,
+and Git. Build from the repository root:
 
-## Documentation
+```sh
+goreleaser build --snapshot --clean --single-target --output dist/dimsum
+./dist/dimsum version
+```
 
-- [Installation and upgrades](docs/operations/install.md)
-- [Configuration, filtering, and local DNS](docs/05-filtering-and-configuration.md)
-- [Backups, recovery, and rollback](docs/operations/recovery.md)
-- [Pi-hole migration](docs/operations/migration.md)
-- [Architecture](docs/01-product-and-architecture.md)
-- [Implementation status and measured limits](docs/implementation-status.md)
+GoReleaser builds the frontend before embedding it in the executable. Git ignores
+the generated bundles. Before running Go tests on a fresh checkout, generate them:
 
-The project license has not yet been selected. See the development guide for
-dependency notices and build metadata.
+```sh
+sh scripts/build-web.sh
+go test ./...
+go vet ./...
+npm --prefix web test
+```
+
+See [web/README.md](web/README.md) for frontend development and browser tests.
+Use `sh scripts/build-local.sh` to build local packages. The packaging hooks write
+dependency notices and build metadata under `artifacts/packaging-metadata/`.
+
+The project license has not yet been selected.

@@ -22,10 +22,13 @@ npm run test:e2e
 Host/Origin when using that proxy. `npm run preview` serves built assets only;
 Playwright fixtures intercept requests and never enter the production bundle.
 
-The production output is **`internal/webassets/dist/`**. Commit this directory
-after a source change so Go builds work without Node. Builds use two Playwright
-workers; for constrained build hosts set `NODE_OPTIONS=--max-old-space-size=1536`
-and `GOMAXPROCS=2`. A Pi build has not been measured.
+The production output is **`internal/webassets/dist/`**. Git ignores this directory.
+Run `sh scripts/build-web.sh` from the repository root before compiling or testing
+Go packages on a fresh checkout. GoReleaser and the container build generate the
+assets before compiling; the executable embeds them and serves the UI without Node.
+Playwright uses two workers; for constrained build hosts set
+`NODE_OPTIONS=--max-old-space-size=1536` and `GOMAXPROCS=2`.
+A Pi build has not been measured.
 
 From the repository root, run the opt-in real API browser harness:
 
@@ -58,11 +61,14 @@ browser scenarios skip in the ordinary fixture run; output is separated under
 Top clients, and query rows. Devices opens an evidence dialog; missing metadata
 uses the generic Device icon. Discovery settings edit `naming.mdns.enabled` and
 the interface string array through the shared revision-checked settings API.
-The backend keeps explicit names authoritative. See
-[`docs/local-policy-and-naming.md`](../docs/local-policy-and-naming.md) for CLI
-equivalents and runtime behavior.
+The backend keeps explicit names authoritative. Run `dimsum control help` for CLI
+commands and consult `api/openapi.yaml` for the API contract.
 
-`src/lib/openapi.d.ts` is generated from `api/openapi.yaml`. `src/lib/api.ts`
+We track generated `src/lib/openapi.d.ts` and `src/routeTree.gen.ts` so editors and
+standalone typechecks can resolve API and route types before a build. Regenerate
+the API types with `npm run api:generate`; Vite updates the route tree during
+development and builds. `src/lib/openapi.d.ts` comes from `api/openapi.yaml`.
+`src/lib/api.ts`
 normalizes nested activation status for visual components, preserves large
 decimal counters, and handles CSRF/session expiry and structured errors.
 Collection PATCH requests contain only changed scalar fields and use the index
@@ -101,8 +107,9 @@ page overflow, consistent time ranges, cursor filters/detail, explicit exact vs
 suffix preview, authentication expiry, incomplete history, unavailable storage,
 conflicts, rejected regex, manual names, pending list edits/failed refresh, timed
 pause, and failed backup. Hook tests cover request cancellation and bounded SSE
-updates, reconnect status, and stream cleanup. Screenshots in `screenshots/` are
-labelled fixture renderings, not a real household traffic report.
+updates, reconnect status, and stream cleanup. Playwright writes screenshots to
+the ignored `test-results/` directory. See `screenshots/README.md` for capture
+scenarios and regeneration commands.
 
 No one-hour browser heap soak, household 200-row p95 measurement, DNS coexistence
 load test, Pi build, household discovery coverage, or release qualification is

@@ -1,5 +1,7 @@
 .worktrees/
 .superpowers/
+superpowers/
+/docs/
 /web/node_modules/
 /web/.vite/
 /web/.tanstack/
@@ -9,4 +11,12 @@
 /dist/
 /build/
 /artifacts/
+/internal/webassets/dist/
+/web/screenshots/*.png
+/qualification-evidence/
+/dimsum-local.oci.tar
+.idea/
+.DS_Store
+__pycache__/
+*.py[cod]
 *.test

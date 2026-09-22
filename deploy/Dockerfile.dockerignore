@@ -1,6 +1,8 @@
 # The build verifies its commit and generates provenance from Git metadata.
 .worktrees
 .superpowers
+docs
+.idea
 web/node_modules
 web/playwright-report
 web/test-results
