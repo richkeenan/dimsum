@@ -153,9 +153,13 @@ export function normalizeSettings(value: unknown): Settings {
   const status =
     raw.status && typeof raw.status === "object"
       ? (raw.status as Activation)
-      : undefined;
+      : typeof raw.saved_revision === "string" &&
+          typeof raw.active_revision === "string"
+        ? (raw as Activation)
+        : undefined;
   return {
     ...raw,
+    status,
     revision: status?.saved_revision ?? String(raw.revision ?? ""),
     active_generation:
       status?.active_generation ??

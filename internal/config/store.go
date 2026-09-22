@@ -201,6 +201,10 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		return s.fail(err)
 	}
 	rules := c.PolicyRules()
+	var reusable map[string]lists.Version
+	if save {
+		reusable = s.reusableSources(c.Lists)
+	}
 	fetcher := s.options.Fetcher
 	if fetcher == nil {
 		var err error
@@ -218,9 +222,13 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 		}
 		status := SourceStatus{ID: sub.ID, Enabled: sub.Enabled}
 		if sub.Enabled {
-			v, err := fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
+			v, reused := reusable[sub.ID]
+			var err error
+			if !reused {
+				v, err = fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
+			}
 			prior, wasUsable := s.previousSource(sub)
-			if err == nil && wasUsable && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
+			if !reused && err == nil && wasUsable && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
 				err = fmt.Errorf("source deletion requires review: %d -> %d rules", prior.Rules, len(v.Rules))
 				v = lists.Version{}
 			}
@@ -319,6 +327,51 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	}
 	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: generation}, statuses, false)
 	return s.Inspect(), nil
+}
+
+// Ordinary saves reuse the exact active membership of unchanged subscriptions.
+// Reload still refreshes feeds. Read provenance from the immutable snapshot so
+// edits need neither network access nor another retained copy of every rule.
+func (s *Store) reusableSources(subs []lists.Subscription) map[string]lists.Version {
+	old := s.Snapshot()
+	if old == nil {
+		return nil
+	}
+	reusable := make(map[string]lists.Version)
+	for _, sub := range subs {
+		if !sub.Enabled {
+			continue
+		}
+		for _, prior := range old.document.value.Lists {
+			if sub != prior {
+				continue
+			}
+			if status, usable := s.previousSource(sub); usable {
+				reusable[sub.ID] = lists.Version{
+					Rules:  make([]policy.Rule, 0, status.Rules),
+					SHA256: status.SHA256, Warning: status.Error,
+				}
+			}
+			break
+		}
+	}
+	if len(reusable) == 0 {
+		return reusable
+	}
+	for number := uint32(1); ; number++ {
+		rule, ok := old.Policy().RuleAt(number)
+		if !ok {
+			break
+		}
+		if rule.Class != policy.SubscriptionAllow && rule.Class != policy.SubscriptionDeny {
+			continue
+		}
+		if version, ok := reusable[rule.SourceID]; ok {
+			version.Rules = append(version.Rules, rule)
+			reusable[rule.SourceID] = version
+		}
+	}
+	return reusable
 }
 func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) {
 	s.mu.Lock()
