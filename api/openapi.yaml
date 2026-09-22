@@ -827,6 +827,26 @@ components:
         model: {type: string}
         manufacturer: {type: string}
         evidence: {type: array, maxItems: 16, items: {$ref: '#/components/schemas/DeviceEvidence'}}
+        dns_guess: {$ref: '#/components/schemas/DNSGuess'}
+    DNSGuess:
+      type: object
+      description: Lowest-priority device-name guess based on recent DNS questions, not verified product identity.
+      required: [rule, reason, domains, expires]
+      properties:
+        rule: {type: string}
+        reason: {type: string}
+        expires: {type: string, format: date-time}
+        domains:
+          type: array
+          maxItems: 16
+          items:
+            type: object
+            required: [domain, first_seen, last_seen, queries]
+            properties:
+              domain: {type: string}
+              first_seen: {type: string, format: date-time}
+              last_seen: {type: string, format: date-time}
+              queries: {type: string, pattern: '^[0-9]+$'}
     ClientsResponse:
       type: object
       required: [status, observed_available]

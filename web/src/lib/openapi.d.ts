@@ -1828,6 +1828,22 @@ export interface components {
       model?: string;
       manufacturer?: string;
       evidence: components["schemas"]["DeviceEvidence"][];
+      dns_guess?: components["schemas"]["DNSGuess"];
+    };
+    /** @description Lowest-priority device-name guess based on recent DNS questions, not verified product identity. */
+    DNSGuess: {
+      rule: string;
+      reason: string;
+      /** Format: date-time */
+      expires: string;
+      domains: {
+        domain: string;
+        /** Format: date-time */
+        first_seen: string;
+        /** Format: date-time */
+        last_seen: string;
+        queries: string;
+      }[];
     };
     ClientsResponse: {
       status: components["schemas"]["Activation"];

@@ -45,8 +45,15 @@ type Props = {
   name?: string;
   device?: Device;
   stale?: boolean;
+  source?: string;
 };
-export function ClientIdentity({ address, name, device, stale }: Props) {
+export function ClientIdentity({
+  address,
+  name,
+  device,
+  stale,
+  source,
+}: Props) {
   const [label, Icon] =
     categories[device?.category ?? "unknown"] ?? categories.unknown;
   return (
@@ -59,6 +66,14 @@ export function ClientIdentity({ address, name, device, stale }: Props) {
       />
       <span className="min-w-0 text-base leading-normal">
         <span className="block wrap-anywhere">{name || address}</span>
+        {device?.dns_guess && (!source || source === "dns-guess") && (
+          <span
+            className="mt-1 inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground"
+            title="Guessed from recent DNS queries, not a verified device name"
+          >
+            DNS guess
+          </span>
+        )}
         {name && name !== address && (
           <span className="mt-0.5 block text-xs text-muted-foreground">
             {address}
@@ -107,6 +122,34 @@ export function DeviceDetails({ device }: { device?: Device }) {
         <dt className="text-muted-foreground">Freshness</dt>
         <dd>{device.fresh ? "Current" : "Unavailable or expired"}</dd>
       </dl>
+      {device.dns_guess && (
+        <section className="space-y-2">
+          <h3 className="font-medium">DNS query clues</h3>
+          <p className="text-xs text-muted-foreground">
+            A guess based on recent DNS requests, not a verified device
+            identity. Expires{" "}
+            {new Date(device.dns_guess.expires).toLocaleString()} without
+            supporting queries.
+          </p>
+          <ul className="space-y-3">
+            {device.dns_guess.domains.map((entry) => (
+              <li
+                key={entry.domain}
+                className="rounded-md border border-border p-3"
+              >
+                <p>{entry.domain}</p>
+                <p className="text-xs text-muted-foreground">
+                  {entry.queries} queries · First seen{" "}
+                  {new Date(entry.first_seen).toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Last seen {new Date(entry.last_seen).toLocaleString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {device.evidence?.length > 0 && (
         <section className="space-y-2">
           <h3 className="font-medium">Local advertisements</h3>

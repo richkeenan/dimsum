@@ -1,5 +1,5 @@
 import { test, expect } from "../../web/e2e";
-import { activation, fixtureAPI } from "./fixtures";
+import { activation, fixtureAPI, query, summary } from "./fixtures";
 
 test("owner name and discovered device details coexist on mobile", async ({
   page,
@@ -117,4 +117,101 @@ test("discovery settings expose a revision-checked interface array", async ({
       { path: ["naming", "mdns", "interfaces"], value: ["eth0", "wlan0"] },
     ],
   });
+});
+
+test("DNS guesses are labelled on clients, queries and overview with inspectable clues", async ({
+  page,
+}, testInfo) => {
+  await fixtureAPI(page);
+  const device = {
+    category: "camera",
+    reason: "Queries to Ring firmware services",
+    inferred: true,
+    fresh: true,
+    evidence: [],
+    dns_guess: {
+      rule: "ring",
+      reason: "Queries to Ring firmware services",
+      expires: "2026-09-23T10:00:00Z",
+      domains: [
+        {
+          domain: "fw-eventstream.ring.com",
+          first_seen: "2026-09-22T09:00:00Z",
+          last_seen: "2026-09-22T10:00:00Z",
+          queries: "3",
+        },
+      ],
+    },
+  };
+  await page.route("**/api/v1/clients?**", (route) =>
+    route.fulfill({
+      json: {
+        status: activation,
+        items: [],
+        observed_available: true,
+        observed: {
+          items: [
+            {
+              address: "192.0.2.20",
+              name: "Ring device",
+              name_source: "dns-guess",
+              name_fresh: true,
+              count: "3",
+              blocked: "0",
+              device,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/v1/queries?**", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            ...query,
+            client: "192.0.2.20",
+            client_name: "Ring device",
+            client_name_source: "dns-guess",
+            client_device: device,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/v1/rankings?**", (route) =>
+    route.fulfill({
+      json: {
+        complete: true,
+        range: summary.range,
+        updated_at: summary.updated_at,
+        clients: [
+          { address: "192.0.2.20", name: "Ring device", count: "3", device },
+        ],
+        domains: [],
+      },
+    }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/clients");
+  await expect(page.getByText("DNS guess", { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Device details for Ring device" })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("DNS query clues");
+  await expect(page.getByRole("dialog")).toContainText(
+    "fw-eventstream.ring.com",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("dns-guess-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
+  await page
+    .getByRole("button", { name: "View queries for Ring device" })
+    .click();
+  await expect(page.getByText("DNS guess", { exact: true })).toBeVisible();
+  await page.goto("/overview");
+  await expect(page.getByText("DNS guess", { exact: true })).toBeVisible();
 });

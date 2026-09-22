@@ -84,6 +84,7 @@ type job struct {
 type Manager struct {
 	mdnsObserve   chan netip.Addr
 	mdnsNames     map[netip.Addr]entry
+	dnsActivity   map[netip.Addr][]DNSActivity
 	diagnostics   DiscoveryDiagnostics
 	openMDNS      func(context.Context, MDNSSettings) (mdnsTransport, []string)
 	lookupSpotify func(context.Context, spotifyEndpoint) (Evidence, error)
@@ -110,11 +111,14 @@ func (m *Manager) Get(address netip.Addr) Name {
 	n := m.get(a, v)
 	m.mu.Lock()
 	found := m.mdnsNames[a]
+	activity := m.dnsActivity[a]
 	m.mu.Unlock()
 	if found.view == v {
-		return mergeDiscovered(n, found.name, time.Now())
+		n = mergeDiscovered(n, found.name, time.Now())
+	} else {
+		n = mergeDiscovered(n, Name{}, time.Now())
 	}
-	return mergeDiscovered(n, Name{}, time.Now())
+	return applyDNSGuess(n, a, activity, time.Now())
 }
 func (m *Manager) get(a netip.Addr, v *View) (n Name) {
 	n = Name{Address: a, Source: "unknown"}

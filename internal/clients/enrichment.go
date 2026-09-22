@@ -20,6 +20,7 @@ type Evidence struct {
 	Expires      time.Time `json:"expires"`
 }
 type Enrichment struct {
+	DNSGuess     *DNSGuess  `json:"dns_guess,omitempty"`
 	Category     string     `json:"category"`
 	Reason       string     `json:"reason"`
 	Inferred     bool       `json:"inferred"`
@@ -36,6 +37,11 @@ func cloneDevice(d *Enrichment) *Enrichment {
 	}
 	c := *d
 	c.Evidence = slices.Clone(d.Evidence)
+	if d.DNSGuess != nil {
+		guess := *d.DNSGuess
+		guess.Domains = slices.Clone(guess.Domains)
+		c.DNSGuess = &guess
+	}
 	return &c
 }
 

@@ -230,6 +230,10 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	if names != nil {
 		workers.Add(1)
 		go func() { defer workers.Done(); names.Run(runCtx) }()
+		if observations != nil && observations.db != nil {
+			workers.Add(1)
+			go func() { defer workers.Done(); runDNSGuesses(runCtx, observations.db, names) }()
+		}
 	}
 	if managed != nil {
 		serve(func() error { return serveHTTP(runCtx, sockets.Admin, managed.handler) })

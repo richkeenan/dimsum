@@ -235,6 +235,11 @@ export default function Queries({
                 width: 190,
                 render: (r) => (
                   <ClientIdentity
+                    source={
+                      r.client_name_source
+                        ? String(r.client_name_source)
+                        : undefined
+                    }
                     address={text(r.client)}
                     name={r.client_name ? String(r.client_name) : undefined}
                     device={r.client_device as Device | undefined}
