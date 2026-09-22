@@ -165,12 +165,22 @@ test("header copies a DNS IP without its port and exposes nonstandard ports", as
     storage: { available: true },
   } }));
   await page.goto("/");
+  await expect(page.getByText("192.0.2.53", { exact: true })).not.toBeVisible();
+  const trigger = page.getByRole("button", { name: "DNS server", exact: true });
+  await trigger.focus();
+  await page.keyboard.press("Enter");
   await page.getByRole("button", { name: "Copy DNS address 192.0.2.53", exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("192.0.2.53");
   await expect(page.getByText("Copied", { exact: true })).toBeVisible();
   await expect(page.getByText("Port 5353", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Copy DNS address 2001:db8::53", exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("2001:db8::53");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "DNS addresses" })).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await page.getByRole("heading", { name: "Overview", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "DNS addresses" })).not.toBeVisible();
 });
 
 test("paused filtering can be resumed from any page", async ({ page }) => {
@@ -184,6 +194,36 @@ test("paused filtering can be resumed from any page", async ({ page }) => {
   await page.getByRole("button", { name: "Resume filtering", exact: true }).click();
   await expect.poll(() => enabled).toBe(true);
   await expect(page.getByText(/Filtering is paused for all devices/)).not.toBeVisible();
+});
+
+test("DNS popover fits a narrow screen and keeps IPv6 copy accessible", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
+    dns_ready: true,
+    dns_addresses: ["[2001:db8:1234:5678:abcd:1234:5678:abcd]:53"],
+    storage: { available: true },
+  } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS server", exact: true }).click();
+  const popover = page.getByRole("dialog", { name: "DNS addresses" });
+  await expect(popover).toBeVisible();
+  const bounds = await popover.boundingBox();
+  expect(bounds).not.toBeNull();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375);
+  await expect(popover.getByRole("button", { name: /^Copy DNS address/ })).toBeInViewport();
+});
+
+test("DNS popover explains when no client-facing address exists", async ({ page }) => {
+  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
+    dns_ready: true,
+    dns_addresses: [],
+    storage: { available: true },
+  } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "DNS server", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "DNS addresses" })).toContainText("No client-facing address");
+  await expect(page.getByRole("button", { name: /^Copy DNS address/ })).toHaveCount(0);
 });
 
 test("service faults appear and clear when diagnostics recover", async ({ page }) => {
@@ -205,6 +245,7 @@ test("DNS copying works without the secure-context Clipboard API", async ({ page
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
   await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
+  await page.getByRole("button", { name: "DNS server", exact: true }).click();
   await page.getByRole("button", { name: "Copy DNS address 192.0.2.53", exact: true }).click();
   await expect(page.getByText("Copied", { exact: true })).toBeVisible();
   await page.evaluate(() => delete (navigator as unknown as Record<string, unknown>).clipboard);

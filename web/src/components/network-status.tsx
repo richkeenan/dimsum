@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Copy } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Copy } from "lucide-react";
+import { Popover } from "radix-ui";
 import { api, type Row, type Settings } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { Button } from "./ui/button";
@@ -13,6 +14,7 @@ type Diagnostics = {
 
 export function DNSAddresses() {
   const diagnostics = useResource<Diagnostics>("diagnostics");
+  const content = useRef<HTMLDivElement>(null);
   const [feedback, setFeedback] = useState("");
   useEffect(() => {
     if (!feedback) return;
@@ -31,7 +33,9 @@ export function DNSAddresses() {
         input.value = address;
         input.style.position = "fixed";
         input.style.opacity = "0";
-        document.body.append(input);
+        // Keep fallback focus inside the popover so it does not dismiss itself.
+        if (!content.current) return;
+        content.current.append(input);
         try {
           input.select();
           if (!document.execCommand("copy")) throw new Error("Copy failed");
@@ -47,44 +51,81 @@ export function DNSAddresses() {
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-      <span className="text-muted-foreground">DNS server</span>
-      {diagnostics.data?.dns_addresses?.map((endpoint) => {
-        const split = endpoint.lastIndexOf(":");
-        const address = endpoint.slice(0, split).replace(/^\[|\]$/g, "");
-        const port = endpoint.slice(split + 1);
-        return (
-          <div key={endpoint} className="flex min-w-0 items-center gap-1">
-            <code className="select-all wrap-anywhere text-foreground">
-              {address}
-            </code>
-            {port !== "53" && (
-              <span className="text-muted-foreground">Port {port}</span>
+    <Popover.Root onOpenChange={() => setFeedback("")}>
+      <Popover.Trigger asChild>
+        <Button
+          variant="ghost"
+          className="group text-muted-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        >
+          DNS server
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            className="group-data-[state=open]:rotate-180"
+          />
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          ref={content}
+          aria-label="DNS addresses"
+          align="start"
+          sideOffset={8}
+          collisionPadding={16}
+          className="z-50 w-96 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto rounded-lg border border-border bg-background p-3 text-xs shadow-lg outline-none"
+        >
+          <p className="px-1 pb-2 font-semibold">DNS addresses</p>
+          <div className="grid gap-1">
+            {diagnostics.data?.dns_addresses?.map((endpoint) => {
+              const split = endpoint.lastIndexOf(":");
+              const address = endpoint.slice(0, split).replace(/^\[|\]$/g, "");
+              const port = endpoint.slice(split + 1);
+              return (
+                <div
+                  key={endpoint}
+                  className="flex min-w-0 items-center justify-between gap-3 rounded-md px-1 hover:bg-muted"
+                >
+                  <div className="min-w-0">
+                    <code className="select-all wrap-anywhere text-foreground">
+                      {address}
+                    </code>
+                    {port !== "53" && (
+                      <span className="block text-muted-foreground">
+                        Port {port}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Copy DNS address ${address}`}
+                    onClick={() => void copy(address)}
+                  >
+                    <Copy size={14} />
+                  </Button>
+                </div>
+              );
+            })}
+            {diagnostics.loading && (
+              <p className="px-1 text-muted-foreground">Loading addresses…</p>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={`Copy DNS address ${address}`}
-              onClick={() => void copy(address)}
-            >
-              <Copy size={14} />
-            </Button>
+            {!diagnostics.loading &&
+              !diagnostics.data?.dns_addresses?.length && (
+                <span className="text-muted-foreground">
+                  {diagnostics.error
+                    ? "Address unavailable"
+                    : "No client-facing address"}
+                </span>
+              )}
+            {feedback && (
+              <span role="status" className="text-muted-foreground">
+                {feedback}
+              </span>
+            )}
           </div>
-        );
-      })}
-      {!diagnostics.loading && !diagnostics.data?.dns_addresses?.length && (
-        <span className="text-muted-foreground">
-          {diagnostics.error
-            ? "Address unavailable"
-            : "No client-facing address"}
-        </span>
-      )}
-      {feedback && (
-        <span role="status" className="text-muted-foreground">
-          {feedback}
-        </span>
-      )}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
