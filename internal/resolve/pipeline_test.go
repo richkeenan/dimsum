@@ -34,7 +34,7 @@ func TestForwardRejectHeaderDependentNames(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer u.Close()
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 	require.NoError(t, err)
 	n, err := resolve.New(c).Resolve(context.Background(), &r, make([]byte, 65535))
 	assert.Error(t, err, "client flag patch changed owner semantics")
@@ -53,7 +53,7 @@ func TestForwardCompressedQuestionGeneralPath(t *testing.T) {
 	})
 	require.NoError(t, err)
 	defer u.Close()
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}, Timeout: 50 * time.Millisecond})
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}, Timeout: 50 * time.Millisecond})
 	require.NoError(t, err)
 	wire := []byte{0x12, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'A', 0, 0, 1, 0, 1}
 	r := transport.Request{Wire: wire}
@@ -116,7 +116,7 @@ func TestForwardOptionsFlagsAndOpaqueData(t *testing.T) {
 	})
 	require.NoError(t, e)
 	defer u.Close()
-	c, e := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+	c, e := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 	require.NoError(t, e)
 	r := transport.Request{Wire: wire}
 	require.NoError(t, dnswire.ParseRequest(wire, &r.Message))
@@ -158,7 +158,7 @@ func TestForwardConcurrentClientOwnership(t *testing.T) {
 	})
 	require.NoError(t, e)
 	defer u.Close()
-	c, e := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}, MaxOutstanding: 32})
+	c, e := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}, MaxOutstanding: 32})
 	require.NoError(t, e)
 	pipeline := resolve.New(c)
 	type outcome struct {

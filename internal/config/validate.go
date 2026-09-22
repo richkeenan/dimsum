@@ -52,18 +52,33 @@ func Validate(c Config) error {
 	if c.Naming.Resolver != "" {
 		endpoints = append(endpoints, c.Naming.Resolver)
 	}
+	bootstrapStart := len(endpoints)
+	bootstrap := c.DNS.BootstrapDNS
+	if bootstrap == nil {
+		bootstrap = []string{"1.1.1.1:53", "9.9.9.9:53"}
+	}
+	endpoints = append(endpoints, bootstrap...)
 	for i, a := range endpoints {
 		field := fmt.Sprintf("dns.upstreams[%d]", i)
 		if i >= len(c.DNS.Upstreams) {
 			field = fmt.Sprintf("dns.fallback_upstreams[%d]", i-len(c.DNS.Upstreams))
 		}
-		if i == len(c.DNS.Upstreams)+len(c.DNS.Fallback) {
+		if c.Naming.Resolver != "" && i == len(c.DNS.Upstreams)+len(c.DNS.Fallback) {
 			field = "naming.resolver"
 		}
-		endpoint, err := netip.ParseAddrPort(a)
-		if err != nil || endpoint.Port() == 0 || endpoint.Addr().Unmap().IsUnspecified() || endpoint.Addr().Unmap().IsMulticast() {
+		if i >= bootstrapStart {
+			field = fmt.Sprintf("dns.bootstrap_dns[%d]", i-bootstrapStart)
+		}
+		endpoint, err := upstream.ParseEndpoint(a)
+		if err != nil {
+			return fmt.Errorf("%s: %w", field, err)
+		}
+		if i >= len(c.DNS.Upstreams)+len(c.DNS.Fallback) && endpoint.Transport() != "udp" {
 			return fmt.Errorf("%s: expected unicast literal IP and nonzero port", field)
 		}
+		if !endpoint.Addr().IsValid() {
+			continue
+		} // Hostname validation never performs network I/O.
 		for _, listen := range c.DNS.Listen {
 			listener, _ := netip.ParseAddrPort(listen) // validated above
 			if listener.Port() != endpoint.Port() {
@@ -101,7 +116,7 @@ func Validate(c Config) error {
 		if len(o.Fallback) > 0 {
 			return fmt.Errorf("dns.upstreams: primary required with fallback")
 		}
-		o.Endpoints = []netip.AddrPort{netip.MustParseAddrPort("127.0.0.1:53")}
+		o.Endpoints = []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort("127.0.0.1:53"))}
 	}
 	if err := upstream.ValidateOptions(o); err != nil {
 		return fmt.Errorf("dns.upstream_policy: %w", err)

@@ -16,6 +16,7 @@ type upstreamLease struct {
 	options  upstream.Options
 	refs     int
 	retired  bool
+	stop     func() bool
 }
 type upstreams struct {
 	mu         sync.Mutex
@@ -38,8 +39,8 @@ func (p *Pipeline) UpstreamHealth() []upstream.Health {
 	return nil
 }
 
-// exchange uses the same snapshot as policy/local resolution. Retired clients
-// survive only while requests hold leases; their idle sockets are then closed.
+// exchange uses the same snapshot as policy/local resolution. Changed transport
+// settings retire the previous client and cancel its active work immediately.
 func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, route upstream.RouteKey, wire, out []byte) (result upstream.ExchangeResult, err error) {
 	if p.observeExchange != nil {
 		defer func() {
@@ -49,6 +50,9 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 	}
 	if snapshot == nil {
 		return p.upstream.ExchangeRoute(ctx, route, wire, out)
+	}
+	if err := snapshot.UpstreamContext().Err(); err != nil {
+		return result, err
 	}
 	m := &p.upstreams
 	m.mu.Lock()
@@ -66,12 +70,12 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 				return upstream.ExchangeResult{}, err
 			}
 			entry = &upstreamLease{client: client, snapshot: snapshot, options: options}
+			entry.stop = context.AfterFunc(snapshot.UpstreamContext(), func() { client.Close() })
 			if snapshot.Generation() >= m.generation {
 				if old := m.current; old != nil {
 					old.retired = true
-					if old.refs == 0 {
-						old.client.Close()
-					}
+					old.stop()
+					old.client.Close()
 				}
 				m.current = entry
 			} else {
@@ -90,6 +94,7 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 		defer m.mu.Unlock()
 		entry.refs--
 		if entry.retired && entry.refs == 0 {
+			entry.stop()
 			entry.client.Close()
 		}
 	}()
@@ -106,9 +111,8 @@ func (p *Pipeline) Close() error {
 	m.closed = true
 	if m.current != nil {
 		m.current.retired = true
-		if m.current.refs == 0 {
-			m.current.client.Close()
-		}
+		m.current.stop()
+		m.current.client.Close()
 		m.current = nil
 	}
 	if p.upstream != nil {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -10,12 +11,14 @@ import (
 // Snapshot is immutable. A request loads it once and holds that pointer through
 // all name checks. No generation registry retains retired snapshots.
 type Snapshot struct {
-	document      *Document
-	policy        *policy.PolicySnapshot
-	generation    uint64
-	local         *localdns.Zones
-	names         *clients.View
-	subscriptions *subscriptionState
+	document        *Document
+	policy          *policy.PolicySnapshot
+	generation      uint64
+	local           *localdns.Zones
+	names           *clients.View
+	subscriptions   *subscriptionState
+	upstreamContext context.Context
+	upstreamCancel  context.CancelFunc
 }
 
 func (s *Snapshot) Config() Config                 { return s.document.Config() }
@@ -30,6 +33,15 @@ func (s *Snapshot) Revision() string               { return s.document.Revision(
 
 // UpstreamOptions returns owned endpoint slices from the captured generation.
 func (s *Snapshot) UpstreamOptions() upstream.Options { return s.document.value.DNS.UpstreamOptions() }
+
+// UpstreamContext is cancelled when changed transport settings are published.
+// Unrelated policy generations share it so established transport pools survive.
+func (s *Snapshot) UpstreamContext() context.Context {
+	if s.upstreamContext == nil {
+		return context.Background()
+	}
+	return s.upstreamContext
+}
 
 type SourceStatus struct {
 	ID      string `json:"id"`

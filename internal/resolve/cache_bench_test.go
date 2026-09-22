@@ -39,7 +39,7 @@ func BenchmarkCoalescedClients(b *testing.B) {
 			}
 		}
 	}()
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 	require.NoError(b, err)
 	p := New(c)
 	defer p.Close()

@@ -10,8 +10,8 @@ import (
 )
 
 func TestAdaptivePriorityExplorationAndProbeLease(t *testing.T) {
-	a := netip.MustParseAddrPort("127.0.0.1:1053")
-	c, err := New(Options{Endpoints: []netip.AddrPort{a, a}, Fallback: []netip.AddrPort{a}, Mode: "adaptive"})
+	a := PlainEndpoint(netip.MustParseAddrPort("127.0.0.1:1053"))
+	c, err := New(Options{Endpoints: []Endpoint{a, a}, Fallback: []Endpoint{a}, Mode: "adaptive"})
 	require.NoError(t, err)
 	c.health[0].Latency = 20 * time.Millisecond
 	c.health[1].Latency = time.Millisecond
@@ -34,8 +34,8 @@ func TestAdaptivePriorityExplorationAndProbeLease(t *testing.T) {
 }
 
 func TestCircuitBackoffAndReachabilitySignals(t *testing.T) {
-	a := netip.MustParseAddrPort("127.0.0.1:1053")
-	c, err := New(Options{Endpoints: []netip.AddrPort{a}, OpenInterval: time.Second, MaxBackoff: 2 * time.Second})
+	a := PlainEndpoint(netip.MustParseAddrPort("127.0.0.1:1053"))
+	c, err := New(Options{Endpoints: []Endpoint{a}, OpenInterval: time.Second, MaxBackoff: 2 * time.Second})
 	require.NoError(t, err)
 	for range 3 {
 		ok, lease := c.claim(0)

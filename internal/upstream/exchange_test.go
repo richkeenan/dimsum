@@ -30,7 +30,7 @@ func answer(q []byte) []byte {
 }
 func client(t *testing.T, address string, timeout time.Duration) *upstream.Client {
 	t.Helper()
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(address)}, Timeout: timeout, AttemptTimeout: timeout, MaxOutstanding: 1})
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(address))}, Timeout: timeout, AttemptTimeout: timeout, MaxOutstanding: 1})
 	require.NoError(t, err)
 	t.Cleanup(func() { c.Close() })
 	return c
@@ -168,7 +168,7 @@ func TestExchangeFailoverAndAttemptBudget(t *testing.T) {
 			second, e := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} })
 			require.NoError(t, e)
 			defer second.Close()
-			c, e := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(first.Address()), netip.MustParseAddrPort(second.Address())}, Timeout: time.Second, AttemptTimeout: 30 * time.Millisecond})
+			c, e := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(first.Address())), upstream.PlainEndpoint(netip.MustParseAddrPort(second.Address()))}, Timeout: time.Second, AttemptTimeout: 30 * time.Millisecond})
 			require.NoError(t, e)
 			result, e := c.Exchange(context.Background(), query(), make([]byte, 65535))
 			require.NoError(t, e)
@@ -184,8 +184,8 @@ func TestExchangeFailoverAndAttemptBudget(t *testing.T) {
 	u, e := testutil.NewUpstream(testutil.NewClock(time.Now()), func(testutil.Request) testutil.Response { return testutil.Response{Drop: true} })
 	require.NoError(t, e)
 	defer u.Close()
-	endpoint := netip.MustParseAddrPort(u.Address())
-	c, e := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{endpoint, endpoint, endpoint, endpoint}, Timeout: time.Second, AttemptTimeout: 20 * time.Millisecond})
+	endpoint := upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))
+	c, e := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{endpoint, endpoint, endpoint, endpoint}, Timeout: time.Second, AttemptTimeout: 20 * time.Millisecond})
 	require.NoError(t, e)
 	_, e = c.Exchange(context.Background(), query(), make([]byte, 65535))
 	assert.Error(t, e)

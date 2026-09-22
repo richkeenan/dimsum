@@ -1,12 +1,11 @@
 package upstream
 
 import (
-	"net/netip"
 	"time"
 )
 
 type Health struct {
-	Endpoint                               netip.AddrPort
+	Endpoint                               Endpoint
 	Fallback                               bool
 	State                                  string
 	RetryAt                                time.Time

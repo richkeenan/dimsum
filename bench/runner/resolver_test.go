@@ -72,7 +72,7 @@ func TestLocalResolverManifest(t *testing.T) {
 				}
 			}()
 			defer func() { assert.NoError(t, u.Close()); close(done); <-drained }()
-			client, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}, Timeout: time.Second})
+			client, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}, Timeout: time.Second})
 			require.NoError(t, err)
 			defer func() { assert.NoError(t, client.Close()) }()
 			pipeline := resolve.New(client)

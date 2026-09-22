@@ -71,7 +71,7 @@ func TestCacheTransportReplyBudgets(t *testing.T) {
 					assert.NoError(t, err)
 				}
 			})
-			client, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+			client, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 			require.NoError(t, err)
 			pipeline := resolve.New(client)
 			t.Cleanup(func() { assert.NoError(t, pipeline.Close()) })

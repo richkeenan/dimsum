@@ -33,7 +33,7 @@ func TestPrimaryFallbackOutcomes(t *testing.T) {
 				return testutil.Response{Wire: p}
 			})
 			fallback := poolFixture(t, func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} })
-			c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(primary.Address())}, Fallback: []netip.AddrPort{netip.MustParseAddrPort(fallback.Address())}, AttemptTimeout: 20 * time.Millisecond})
+			c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(primary.Address()))}, Fallback: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(fallback.Address()))}, AttemptTimeout: 20 * time.Millisecond})
 			require.NoError(t, err)
 			result, err := c.Exchange(context.Background(), query(), make([]byte, 65535))
 			require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestCircuitRecoveryAndCancellation(t *testing.T) {
 		return testutil.Response{Wire: answer(r.Wire)}
 	})
 	fallback := poolFixture(t, func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} })
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(primary.Address())}, Fallback: []netip.AddrPort{netip.MustParseAddrPort(fallback.Address())}, AttemptTimeout: 10 * time.Millisecond, OpenInterval: 40 * time.Millisecond})
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(primary.Address()))}, Fallback: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(fallback.Address()))}, AttemptTimeout: 10 * time.Millisecond, OpenInterval: 40 * time.Millisecond})
 	require.NoError(t, err)
 	for range 2 {
 		_, err = c.Exchange(context.Background(), query(), make([]byte, 65535))
@@ -85,14 +85,14 @@ func TestCircuitRecoveryAndCancellation(t *testing.T) {
 
 func TestPoolBudget(t *testing.T) {
 	u := poolFixture(t, func(testutil.Request) testutil.Response { return testutil.Response{Drop: true} })
-	ep := netip.MustParseAddrPort(u.Address())
-	c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{ep, ep}, Fallback: []netip.AddrPort{ep}, MaxAttempts: 1, AttemptTimeout: 10 * time.Millisecond})
+	ep := upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{ep, ep}, Fallback: []upstream.Endpoint{ep}, MaxAttempts: 1, AttemptTimeout: 10 * time.Millisecond})
 	require.NoError(t, err)
 	r, err := c.Exchange(context.Background(), query(), make([]byte, 65535))
 	assert.Error(t, err)
 	assert.Equal(t, 1, r.Attempts)
 	assert.Len(t, u.Requests(), 1)
-	c, err = upstream.New(upstream.Options{Endpoints: []netip.AddrPort{ep, ep}, Fallback: []netip.AddrPort{ep}})
+	c, err = upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{ep, ep}, Fallback: []upstream.Endpoint{ep}})
 	require.NoError(t, err)
 	start := time.Now()
 	r, err = c.Exchange(context.Background(), query(), make([]byte, 65535))
@@ -115,7 +115,7 @@ func TestRouteNamespaceDoesNotEscapeDefaultPool(t *testing.T) {
 func TestAdaptiveSamplesPrimaryBeforeFallback(t *testing.T) {
 	handler := func(r testutil.Request) testutil.Response { return testutil.Response{Wire: answer(r.Wire)} }
 	a, b, f := poolFixture(t, handler), poolFixture(t, handler), poolFixture(t, handler)
-	c, err := upstream.New(upstream.Options{Mode: "adaptive", Endpoints: []netip.AddrPort{netip.MustParseAddrPort(a.Address()), netip.MustParseAddrPort(b.Address())}, Fallback: []netip.AddrPort{netip.MustParseAddrPort(f.Address())}})
+	c, err := upstream.New(upstream.Options{Mode: "adaptive", Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(a.Address())), upstream.PlainEndpoint(netip.MustParseAddrPort(b.Address()))}, Fallback: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(f.Address()))}})
 	require.NoError(t, err)
 	defer c.Close()
 	for _, endpoint := range []string{a.Address(), b.Address()} {
@@ -142,7 +142,7 @@ func BenchmarkPoolExchange(b *testing.B) {
 			})
 			require.NoError(b, err)
 			defer u.Close()
-			c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+			c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 			require.NoError(b, err)
 			defer c.Close()
 			wire, out := query(), make([]byte, 65535)

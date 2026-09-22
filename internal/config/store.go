@@ -298,7 +298,16 @@ func (s *Store) reusableSources(subs []lists.Subscription) map[string]lists.Vers
 func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	old := s.active.Load()
+	if old != nil && old.upstreamContext != nil && reflect.DeepEqual(old.UpstreamOptions(), snap.UpstreamOptions()) {
+		snap.upstreamContext, snap.upstreamCancel = old.upstreamContext, old.upstreamCancel
+	} else {
+		snap.upstreamContext, snap.upstreamCancel = context.WithCancel(context.Background())
+	}
 	s.active.Store(snap)
+	if old != nil && old.upstreamContext != snap.upstreamContext && old.upstreamCancel != nil {
+		old.upstreamCancel()
+	}
 	s.status = ActivationResult{SavedRevision: snap.Revision(), ActiveRevision: snap.Revision(), ActiveGeneration: snap.generation, Recovered: recovered, Sources: sources}
 	for _, source := range sources {
 		if source.Enabled && source.Usable {

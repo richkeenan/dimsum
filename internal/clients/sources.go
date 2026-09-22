@@ -102,7 +102,7 @@ func routerPTR(ctx context.Context, endpoint string, a netip.Addr) (string, uint
 		wire = append(wire, label...)
 	}
 	wire = append(wire, 0, 0, 12, 0, 1)
-	client, e := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(endpoint)}, Timeout: 500 * time.Millisecond, MaxOutstanding: 1})
+	client, e := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(endpoint))}, Timeout: 500 * time.Millisecond, MaxOutstanding: 1})
 	if e != nil {
 		return "", 0, e
 	}

@@ -11,6 +11,8 @@ import (
 	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 type Fetcher struct {
@@ -43,6 +45,55 @@ func NewFetcherWithUpstreams(upstreams []string) (*Fetcher, error) {
 		endpoints[i] = endpoint
 	}
 	return NewFetcher(bootstrapClient(endpoints)), nil
+}
+
+// NewFetcherWithOptions applies the same DNS transport policy as forwarding.
+// A lookup-scoped client owns and closes encrypted sockets after each dial;
+// the HTTP transport still reuses subscription connections normally.
+func NewFetcherWithOptions(options upstream.Options) (*Fetcher, error) {
+	if len(options.Endpoints) == 0 {
+		return NewFetcher(nil), nil
+	}
+	if err := upstream.ValidateOptions(options); err != nil {
+		return nil, err
+	}
+	options.Endpoints = append([]upstream.Endpoint(nil), options.Endpoints...)
+	options.Fallback = append([]upstream.Endpoint(nil), options.Fallback...)
+	if options.BootstrapDNS != nil {
+		options.BootstrapDNS = append([]netip.AddrPort{}, options.BootstrapDNS...)
+	}
+	if options.RootCAs != nil {
+		options.RootCAs = options.RootCAs.Clone()
+	}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, DisableCompression: true, MaxIdleConns: 4, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 10 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
+		if _, err := netip.ParseAddr(host); err == nil {
+			return dialer.DialContext(ctx, network, address)
+		}
+		client, err := upstream.New(options)
+		if err != nil {
+			return nil, err
+		}
+		defer client.Close()
+		addresses, err := client.LookupIP(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range addresses {
+			conn, e := dialer.DialContext(ctx, network, net.JoinHostPort(a.String(), port))
+			if e == nil {
+				return conn, nil
+			}
+			err = e
+		}
+		return nil, err
+	}
+	return NewFetcher(&http.Client{Transport: transport}), nil
 }
 
 func bootstrapClient(endpoints []netip.AddrPort) *http.Client {

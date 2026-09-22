@@ -3,7 +3,6 @@ package upstream
 import (
 	"context"
 	"errors"
-	"net/netip"
 	"sort"
 )
 
@@ -22,7 +21,7 @@ func (c *Client) ExchangeRoute(ctx context.Context, route RouteKey, wire, out []
 	return c.Exchange(ctx, wire, out)
 }
 
-func (c *Client) endpoint(i int) netip.AddrPort {
+func (c *Client) endpoint(i int) Endpoint {
 	if i < len(c.options.Endpoints) {
 		return c.options.Endpoints[i]
 	}

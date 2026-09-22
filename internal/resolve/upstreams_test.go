@@ -61,12 +61,18 @@ func TestUpstreamLeasesPinGenerationAndRetire(t *testing.T) {
 	require.NoError(t, err)
 	_, err = store.Save(ctx, old.Revision(), d)
 	require.NoError(t, err)
+	// Publication alone must cancel old work; no query on the new generation
+	// should be needed to retire active encrypted sockets.
+	select {
+	case result := <-done:
+		require.Error(t, result.err)
+		assert.Equal(t, 1, result.result.Attempts)
+	case <-time.After(250 * time.Millisecond):
+		require.FailNow(t, "reload did not cancel old upstream work")
+	}
 	r, err := pipeline.exchange(ctx, store.Snapshot(), upstream.DefaultRoute, wire, make([]byte, 65535))
 	require.NoError(t, err)
 	assert.Equal(t, 1, r.Attempts)
-	result := <-done
-	require.NoError(t, result.err)
-	assert.Equal(t, 2, result.result.Attempts)
 	_, err = retired.client.Exchange(ctx, wire, make([]byte, 65535))
 	assert.ErrorIs(t, err, net.ErrClosed)
 	current := pipeline.upstreams.current

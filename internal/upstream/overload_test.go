@@ -33,7 +33,7 @@ func TestIDExhaustionDoesNotPenalizeEndpoints(t *testing.T) {
 					fallback, err := testutil.NewUpstream(testutil.NewClock(time.Now()), handler)
 					require.NoError(t, err)
 					defer fallback.Close()
-					c, err := New(Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(primary.Address())}, Fallback: []netip.AddrPort{netip.MustParseAddrPort(fallback.Address())}, FailureThreshold: 1})
+					c, err := New(Options{Endpoints: []Endpoint{PlainEndpoint(netip.MustParseAddrPort(primary.Address()))}, Fallback: []Endpoint{PlainEndpoint(netip.MustParseAddrPort(fallback.Address()))}, FailureThreshold: 1})
 					require.NoError(t, err)
 					defer c.Close()
 					if halfOpen {

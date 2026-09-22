@@ -3,6 +3,7 @@ package upstream_test
 import (
 	"context"
 	"encoding/binary"
+	"github.com/richkeenan/dimsum/internal/upstream"
 	"io"
 	"net"
 	"net/netip"
@@ -66,7 +67,7 @@ func TestTCPReuseAndClose(t *testing.T) {
 		r, e := c.Exchange(context.Background(), wire, make([]byte, 65535))
 		require.NoError(t, e)
 		assert.True(t, r.TCP)
-		assert.Equal(t, netip.MustParseAddrPort(ln.Addr().String()), r.Endpoint)
+		assert.Equal(t, upstream.PlainEndpoint(netip.MustParseAddrPort(ln.Addr().String())), r.Endpoint)
 	}
 	require.NoError(t, c.Close())
 	require.NoError(t, <-done)

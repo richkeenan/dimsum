@@ -17,7 +17,6 @@ import (
 	"github.com/miekg/dns"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/policy"
-	"github.com/richkeenan/dimsum/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,16 +44,17 @@ func TestSubscriptionBootstrap(t *testing.T) {
 	}}
 	t.Cleanup(func() { net.DefaultResolver = original })
 	workerErrors := make(chan error, 16)
-	upstream, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
-		var q dns.Msg
-		if e := q.Unpack(r.Wire); e != nil {
-			workerErrors <- e
-			return testutil.Response{Drop: true}
-		}
+	// Real concurrent TCP serving is needed now that A and AAAA each lease a
+	// reusable connection; a single-connection fixture blocks the second family.
+	tcp, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	udp, err := net.ListenPacket("udp", tcp.Addr().String())
+	require.NoError(t, err)
+	handler := dns.HandlerFunc(func(w dns.ResponseWriter, q *dns.Msg) {
 		answer := new(dns.Msg)
-		answer.SetReply(&q)
+		answer.SetReply(q)
 		answer.RecursionAvailable = true
-		if r.Network == "udp" {
+		if w.LocalAddr().Network() == "udp" {
 			udpCalls.Add(1)
 			answer.Truncated = true
 		} else {
@@ -63,14 +63,18 @@ func TestSubscriptionBootstrap(t *testing.T) {
 				answer.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IPv4(127, 0, 0, 1)}}
 			}
 		}
-		wire, e := answer.Pack()
-		if e != nil {
+		if e := w.WriteMsg(answer); e != nil {
 			workerErrors <- e
 		}
-		return testutil.Response{Wire: wire}
 	})
-	require.NoError(t, err)
-	defer upstream.Close()
+	servers := []*dns.Server{{Listener: tcp, Handler: handler}, {PacketConn: udp, Handler: handler}}
+	for _, server := range servers {
+		started := make(chan struct{})
+		server.NotifyStartedFunc = func() { close(started) }
+		go func() { _ = server.ActivateAndServe() }()
+		<-started
+		defer server.Shutdown()
+	}
 	var base string
 	var httpCalls atomic.Int32
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +96,7 @@ func TestSubscriptionBootstrap(t *testing.T) {
 		sourceURL = "http://feed.bootstrap.invalid:12345/list"
 	}
 	p, state := fixtureStore(t)
-	d, err := Parse([]byte(strings.Replace(storeFixture, "127.0.0.1:9", upstream.Address(), 1)))
+	d, err := Parse([]byte(strings.Replace(storeFixture, "127.0.0.1:9", tcp.Addr().String(), 1)))
 	require.NoError(t, err)
 	d, err = d.Append([]string{"lists"}, lists.Subscription{ID: "bootstrap", URL: sourceURL, Dialect: lists.Domains, DomainKind: policy.Exact, Enabled: true})
 	require.NoError(t, err)
@@ -113,7 +117,9 @@ func TestSubscriptionBootstrap(t *testing.T) {
 	} else {
 		assert.EqualValues(t, 1, httpCalls.Load())
 	}
-	require.NoError(t, upstream.Close())
+	for _, server := range servers {
+		require.NoError(t, server.Shutdown())
+	}
 	close(workerErrors)
 	for e := range workerErrors {
 		assert.NoError(t, e)

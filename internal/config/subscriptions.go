@@ -33,7 +33,7 @@ func (s *Store) prepareSubscriptions(ctx context.Context, c Config, refresh bool
 	fetcher := s.options.Fetcher
 	if fetcher == nil {
 		var err error
-		fetcher, err = lists.NewFetcherWithUpstreams(c.DNS.Upstreams)
+		fetcher, err = lists.NewFetcherWithOptions(c.DNS.UpstreamOptions())
 		if err != nil {
 			return nil, err
 		}

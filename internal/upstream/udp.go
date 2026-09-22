@@ -4,9 +4,11 @@ package upstream
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"net"
+	"net/http"
 	"net/netip"
 	"sync"
 	"time"
@@ -17,8 +19,11 @@ import (
 var ErrOverloaded = errors.New("upstream: outstanding or ID capacity exhausted")
 
 type Options struct {
-	Endpoints                     []netip.AddrPort
-	Fallback                      []netip.AddrPort
+	Endpoints    []Endpoint
+	Fallback     []Endpoint
+	BootstrapDNS []netip.AddrPort
+	// RootCAs optionally supplies an application's trust store. Nil uses system trust.
+	RootCAs                       *x509.CertPool
 	Mode                          string
 	MaxAttempts, FailureThreshold int
 	OpenInterval, MaxBackoff      time.Duration
@@ -33,6 +38,11 @@ type Client struct {
 	health      []endpointHealth
 	selections  uint64
 	connections connections
+	lifetime    context.Context
+	cancel      context.CancelFunc
+	bootstrap   bootstrapCache
+	httpMu      sync.Mutex
+	httpClients map[Endpoint]*http.Client
 }
 
 // ExchangeResult refers only to validated bytes copied to caller-owned output.
@@ -40,7 +50,8 @@ type Client struct {
 // not blindly patch client ID/case/flags: compressed names can depend on them.
 type ExchangeResult struct {
 	N, Attempts int
-	Endpoint    netip.AddrPort
+	Endpoint    Endpoint
+	Transport   string
 	TCP         bool
 	Route       RouteKey
 	EndpointID  uint32
@@ -59,11 +70,22 @@ func normalizeOptions(o *Options) error {
 	if len(o.Fallback) > 16 {
 		return errors.New("upstream: at most 16 fallback endpoints")
 	}
-	for _, endpoints := range [][]netip.AddrPort{o.Endpoints, o.Fallback} {
+	for _, endpoints := range [][]Endpoint{o.Endpoints, o.Fallback} {
 		for _, a := range endpoints {
-			if !a.IsValid() || a.Port() == 0 || a.Addr().Unmap().IsUnspecified() || a.Addr().Unmap().IsMulticast() {
-				return errors.New("upstream: require unicast literal IP and nonzero port")
+			if _, err := ParseEndpoint(a.String()); err != nil {
+				return err
 			}
+		}
+	}
+	if o.BootstrapDNS == nil {
+		o.BootstrapDNS = []netip.AddrPort{netip.MustParseAddrPort("1.1.1.1:53"), netip.MustParseAddrPort("9.9.9.9:53")}
+	}
+	if len(o.BootstrapDNS) < 1 || len(o.BootstrapDNS) > 16 {
+		return errors.New("upstream: require 1..16 bootstrap endpoints")
+	}
+	for _, a := range o.BootstrapDNS {
+		if a.Port() == 0 || !unicast(a.Addr()) {
+			return errors.New("upstream: invalid bootstrap endpoint")
 		}
 	}
 	if o.MaxOutstanding == 0 {
@@ -103,9 +125,14 @@ func New(o Options) (*Client, error) {
 	if err := normalizeOptions(&o); err != nil {
 		return nil, err
 	}
-	o.Endpoints = append([]netip.AddrPort(nil), o.Endpoints...)
-	o.Fallback = append([]netip.AddrPort(nil), o.Fallback...)
-	return &Client{options: o, slots: make(chan struct{}, o.MaxOutstanding), health: make([]endpointHealth, len(o.Endpoints)+len(o.Fallback))}, nil
+	o.Endpoints = append([]Endpoint(nil), o.Endpoints...)
+	o.Fallback = append([]Endpoint(nil), o.Fallback...)
+	o.BootstrapDNS = append([]netip.AddrPort(nil), o.BootstrapDNS...)
+	if o.RootCAs != nil {
+		o.RootCAs = o.RootCAs.Clone()
+	}
+	lifetime, cancel := context.WithCancel(context.Background())
+	return &Client{options: o, slots: make(chan struct{}, o.MaxOutstanding), health: make([]endpointHealth, len(o.Endpoints)+len(o.Fallback)), lifetime: lifetime, cancel: cancel, httpClients: make(map[Endpoint]*http.Client)}, nil
 }
 func (c *Client) Outstanding() int { return len(c.slots) }
 
@@ -124,6 +151,8 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 	defer func() { <-c.slots }()
 	ctx, cancel := context.WithTimeout(parent, c.options.Timeout)
 	defer cancel()
+	stop := context.AfterFunc(c.lifetime, cancel)
+	defer stop()
 	query, q, err := prepare(wire)
 	if err != nil {
 		return result, err
@@ -153,7 +182,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 		attempts++
 		tcp := len(query) > 1232
 		n, m, e := c.attempt(ctx, endpoint, query, &q, buf, tcp)
-		if e == nil && !tcp && m.Question.Header.Flags&dnswire.FlagTC != 0 {
+		if e == nil && endpoint.Transport() == "udp" && !tcp && m.Question.Header.Flags&dnswire.FlagTC != 0 {
 			if attempts >= c.options.MaxAttempts {
 				last = ErrResponse
 				c.record(index, epoch, time.Since(started), nil, 0, true)
@@ -174,7 +203,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 			c.record(index, epoch, time.Since(started), nil, 0, true)
 			return result, e
 		}
-		c.record(index, epoch, time.Since(started), e, m.RCode, parent.Err() != nil)
+		c.record(index, epoch, time.Since(started), e, m.RCode, parent.Err() != nil || c.lifetime.Err() != nil)
 		if e != nil {
 			last = e
 			continue
@@ -194,7 +223,11 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 			return result, dnswire.ErrBounds
 		}
 		copy(out, buf[:n])
-		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, TCP: tcp, Route: DefaultRoute, EndpointID: uint32(index + 1), Fallback: index >= len(c.options.Endpoints)}, nil
+		transport := endpoint.Transport()
+		if transport == "udp" && tcp {
+			transport = "tcp"
+		}
+		return ExchangeResult{N: n, Attempts: attempts, Endpoint: endpoint, Transport: transport, TCP: transport == "tcp", Route: DefaultRoute, EndpointID: uint32(index + 1), Fallback: index >= len(c.options.Endpoints)}, nil
 	}
 	if ctx.Err() != nil {
 		last = ctx.Err()
@@ -202,7 +235,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 	return result, last
 }
 
-func (c *Client) attempt(parent context.Context, endpoint netip.AddrPort, query []byte, q *dnswire.Question, out []byte, tcp bool) (int, dnswire.Message, error) {
+func (c *Client) attempt(parent context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, out []byte, tcp bool) (int, dnswire.Message, error) {
 	ctx, cancel := context.WithTimeout(parent, c.options.AttemptTimeout)
 	defer cancel()
 	id, err := c.ids.acquire()
@@ -214,10 +247,12 @@ func (c *Client) attempt(parent context.Context, endpoint netip.AddrPort, query 
 	binary.BigEndian.PutUint16(query, id)
 	var n int
 	var m dnswire.Message
-	if tcp {
+	if endpoint.Transport() == "doh" {
+		n, m, err = c.exchangeDoH(ctx, endpoint, query, q, id, out)
+	} else if tcp || endpoint.Transport() == "dot" {
 		n, m, err = c.exchangeTCP(ctx, endpoint, query, q, id, out)
 	} else {
-		n, m, err = exchangeUDP(ctx, endpoint, query, q, id, out)
+		n, m, err = exchangeUDP(ctx, netip.AddrPortFrom(endpoint.Addr(), endpoint.Port()), query, q, id, out)
 	}
 	if ctx.Err() != nil {
 		err = ctx.Err()

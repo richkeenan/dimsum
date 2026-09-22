@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
-	"net/netip"
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/dnswire"
 )
 
-func (c *Client) exchangeTCP(ctx context.Context, endpoint netip.AddrPort, query []byte, q *dnswire.Question, id uint16, out []byte) (n int, m dnswire.Message, err error) {
-	conn, err := c.connections.take(ctx, endpoint)
+func (c *Client) exchangeTCP(ctx context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, id uint16, out []byte) (n int, m dnswire.Message, err error) {
+	conn, err := c.connections.take(ctx, endpoint, c.dialEndpoint)
 	if err != nil {
 		return 0, dnswire.Message{}, err
 	}

@@ -116,7 +116,7 @@ func TestCacheIntegrationFreshPersonalization(t *testing.T) {
 				store, _, _ := cacheIntegrationStore(t, u, "")
 				p = resolve.NewWithStore(nil, store)
 			} else {
-				c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+				c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 				require.NoError(t, err)
 				p = resolve.New(c)
 			}
@@ -187,7 +187,7 @@ func TestCacheIntegrationConservativeEDNSBypass(t *testing.T) {
 	for _, variant := range []string{"cookie", "unknown-option", "udp512", "udp4096"} {
 		t.Run(variant, func(t *testing.T) {
 			u, calls := cacheIntegrationUpstream(t, false)
-			c, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{netip.MustParseAddrPort(u.Address())}})
+			c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
 			require.NoError(t, err)
 			p := resolve.New(c)
 			t.Cleanup(func() { assert.NoError(t, p.Close()) })

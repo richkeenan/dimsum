@@ -43,12 +43,19 @@ func (d DNS) UpstreamOptions() upstream.Options {
 	p := d.UpstreamPolicy
 	o := upstream.Options{Mode: p.Mode, Timeout: time.Duration(p.TimeoutMS) * time.Millisecond, AttemptTimeout: time.Duration(p.AttemptTimeoutMS) * time.Millisecond, MaxAttempts: p.MaxAttempts, MaxOutstanding: p.MaxOutstanding, FailureThreshold: p.FailureThreshold, OpenInterval: time.Duration(p.OpenMS) * time.Millisecond, MaxBackoff: time.Duration(p.MaxBackoffMS) * time.Millisecond}
 	for _, s := range d.Upstreams {
-		a, _ := netip.ParseAddrPort(s)
+		a, _ := upstream.ParseEndpoint(s)
 		o.Endpoints = append(o.Endpoints, a)
 	}
 	for _, s := range d.Fallback {
-		a, _ := netip.ParseAddrPort(s)
+		a, _ := upstream.ParseEndpoint(s)
 		o.Fallback = append(o.Fallback, a)
+	}
+	if d.BootstrapDNS != nil {
+		o.BootstrapDNS = make([]netip.AddrPort, 0, len(d.BootstrapDNS))
+	}
+	for _, s := range d.BootstrapDNS {
+		a, _ := netip.ParseAddrPort(s)
+		o.BootstrapDNS = append(o.BootstrapDNS, a)
 	}
 	return o
 }

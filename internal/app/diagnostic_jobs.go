@@ -93,10 +93,9 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 	snapshot := m.store.Snapshot()
 	options := snapshot.UpstreamOptions()
 	configured := false
-	for _, pool := range [][]netip.AddrPort{options.Endpoints, options.Fallback} {
+	for _, pool := range [][]upstream.Endpoint{options.Endpoints, options.Fallback} {
 		for _, candidate := range pool {
-			candidate = netip.AddrPortFrom(candidate.Addr().Unmap(), candidate.Port())
-			if endpoint == candidate {
+			if candidate.Transport() == "udp" && endpoint == netip.AddrPortFrom(candidate.Addr().Unmap(), candidate.Port()) {
 				configured = true
 			}
 		}
@@ -105,7 +104,7 @@ func (m *managedRuntime) upstreamProbe(ctx context.Context, input json.RawMessag
 		return nil, fmt.Errorf("%w: endpoint is not an active configured primary or fallback upstream", control.BadRequest)
 	}
 	timeout := time.Duration(timeoutMS) * time.Millisecond
-	client, err := upstream.New(upstream.Options{Endpoints: []netip.AddrPort{endpoint}, MaxOutstanding: 1, MaxAttempts: 2, Timeout: timeout, AttemptTimeout: timeout})
+	client, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(endpoint)}, MaxOutstanding: 1, MaxAttempts: 2, Timeout: timeout, AttemptTimeout: timeout})
 	if err != nil {
 		return nil, err
 	}
