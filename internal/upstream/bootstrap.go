@@ -100,7 +100,7 @@ func (c *Client) bootstrapExchange(ctx context.Context, wire, out []byte) (int, 
 		attempt, cancel := context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(c.options.BootstrapDNS)-i))
 		n, m, err := exchangeUDP(attempt, a, query, &q, id, out)
 		if err == nil && m.Question.Header.Flags&dnswire.FlagTC != 0 {
-			n, m, err = c.exchangeTCP(attempt, PlainEndpoint(a), query, &q, id, out)
+			n, m, err = c.exchangeTCP(attempt, PlainEndpoint(a), query, &q, id, out, false)
 		}
 		cancel()
 		if err == nil && m.RCode == 0 && m.Question.Header.Flags&dnswire.FlagTC == 0 {

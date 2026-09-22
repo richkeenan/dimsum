@@ -52,35 +52,35 @@ func (p *connections) track(conn net.Conn) (net.Conn, error) {
 }
 
 func (p *connections) isClosed() bool { p.mu.Lock(); defer p.mu.Unlock(); return p.closed }
-func (p *connections) take(ctx context.Context, endpoint Endpoint, dial func(context.Context, Endpoint) (net.Conn, error)) (net.Conn, error) {
+func (p *connections) take(ctx context.Context, endpoint Endpoint, dial func(context.Context, Endpoint) (net.Conn, error), fresh bool) (net.Conn, bool, error) {
 	p.mu.Lock()
 	if p.closed {
 		p.mu.Unlock()
-		return nil, net.ErrClosed
+		return nil, false, net.ErrClosed
 	}
-	if v := p.idle[endpoint]; v != nil {
+	if v := p.idle[endpoint]; v != nil && !fresh {
 		delete(p.idle, endpoint)
 		v.timer.Stop()
 		p.mu.Unlock()
-		return v.conn, nil
+		return v.conn, true, nil
 	}
 	p.mu.Unlock()
 	conn, err := dial(ctx, endpoint)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {
 		conn.Close()
-		return nil, net.ErrClosed
+		return nil, false, net.ErrClosed
 	}
 	if p.all == nil {
 		p.all = make(map[net.Conn]struct{})
 		p.idle = make(map[Endpoint]*idleConnection)
 	}
 	p.all[conn] = struct{}{}
-	return conn, nil
+	return conn, false, nil
 }
 func (p *connections) put(endpoint Endpoint, conn net.Conn, healthy bool) {
 	p.mu.Lock()

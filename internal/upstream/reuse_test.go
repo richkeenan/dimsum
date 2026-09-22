@@ -82,7 +82,7 @@ func TestTCPRepeatedDisconnectAndLateCancellation(t *testing.T) {
 	const cycles = 30
 	done := make(chan error, 1)
 	go func() {
-		for range cycles {
+		for range cycles * 2 {
 			conn, e := ln.Accept()
 			if e != nil {
 				done <- e
@@ -117,10 +117,10 @@ func TestTCPRepeatedDisconnectAndLateCancellation(t *testing.T) {
 		cancel()
 		require.NoError(t, err)
 		_, err = c.Exchange(context.Background(), wire, out)
-		assert.Error(t, err, "EOF on retired peer must discard reused connection")
+		assert.NoError(t, err, "EOF on retired peer must reconnect within the shared budget")
 		assert.Zero(t, c.Outstanding())
 	}
 	require.NoError(t, <-done)
-	assert.Equal(t, uint64(cycles), c.Health()[0].Responses)
-	assert.Equal(t, uint64(cycles), c.Health()[0].Failures)
+	assert.Equal(t, uint64(cycles*2), c.Health()[0].Responses)
+	assert.Zero(t, c.Health()[0].Failures)
 }

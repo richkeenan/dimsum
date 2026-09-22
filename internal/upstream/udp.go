@@ -181,7 +181,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 		started := time.Now()
 		attempts++
 		tcp := len(query) > 1232
-		n, m, e := c.attempt(ctx, endpoint, query, &q, buf, tcp)
+		n, m, e := c.attempt(ctx, endpoint, query, &q, buf, tcp, false)
 		if e == nil && endpoint.Transport() == "udp" && !tcp && m.Question.Header.Flags&dnswire.FlagTC != 0 {
 			if attempts >= c.options.MaxAttempts {
 				last = ErrResponse
@@ -190,7 +190,14 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 			}
 			attempts++
 			tcp = true
-			n, m, e = c.attempt(ctx, endpoint, query, &q, buf, true)
+			n, m, e = c.attempt(ctx, endpoint, query, &q, buf, true, false)
+		}
+		// A retired idle peer is recoverable, but the fresh lease is a real
+		// attempt under the same overall deadline and shared retry budget.
+		var stale *reusedTransportError
+		if errors.As(e, &stale) && attempts < c.options.MaxAttempts && ctx.Err() == nil {
+			attempts++
+			n, m, e = c.attempt(ctx, endpoint, query, &q, buf, tcp, true)
 		}
 		if e == nil && m.Question.Header.Flags&dnswire.FlagTC != 0 {
 			e = ErrResponse
@@ -235,7 +242,7 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 	return result, last
 }
 
-func (c *Client) attempt(parent context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, out []byte, tcp bool) (int, dnswire.Message, error) {
+func (c *Client) attempt(parent context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, out []byte, tcp, fresh bool) (int, dnswire.Message, error) {
 	ctx, cancel := context.WithTimeout(parent, c.options.AttemptTimeout)
 	defer cancel()
 	id, err := c.ids.acquire()
@@ -250,7 +257,7 @@ func (c *Client) attempt(parent context.Context, endpoint Endpoint, query []byte
 	if endpoint.Transport() == "doh" {
 		n, m, err = c.exchangeDoH(ctx, endpoint, query, q, id, out)
 	} else if tcp || endpoint.Transport() == "dot" {
-		n, m, err = c.exchangeTCP(ctx, endpoint, query, q, id, out)
+		n, m, err = c.exchangeTCP(ctx, endpoint, query, q, id, out, fresh)
 	} else {
 		n, m, err = exchangeUDP(ctx, netip.AddrPortFrom(endpoint.Addr(), endpoint.Port()), query, q, id, out)
 	}

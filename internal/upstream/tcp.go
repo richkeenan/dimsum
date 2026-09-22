@@ -9,16 +9,24 @@ import (
 	"github.com/richkeenan/dimsum/internal/dnswire"
 )
 
-func (c *Client) exchangeTCP(ctx context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, id uint16, out []byte) (n int, m dnswire.Message, err error) {
-	conn, err := c.connections.take(ctx, endpoint, c.dialEndpoint)
+type reusedTransportError struct{ error }
+
+func (e *reusedTransportError) Unwrap() error { return e.error }
+
+func (c *Client) exchangeTCP(ctx context.Context, endpoint Endpoint, query []byte, q *dnswire.Question, id uint16, out []byte, fresh bool) (n int, m dnswire.Message, err error) {
+	conn, reused, err := c.connections.take(ctx, endpoint, c.dialEndpoint, fresh)
 	if err != nil {
 		return 0, dnswire.Message{}, err
 	}
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	transportFailure := true
 	defer func() {
 		// If cancellation has started, never return the socket to another lease.
 		stopped := stop()
 		c.connections.put(endpoint, conn, err == nil && stopped && ctx.Err() == nil)
+		if err != nil && reused && transportFailure && ctx.Err() == nil {
+			err = &reusedTransportError{err}
+		}
 	}()
 	deadline, _ := ctx.Deadline()
 	if err = conn.SetDeadline(deadline); err != nil {
@@ -43,11 +51,13 @@ func (c *Client) exchangeTCP(ctx context.Context, endpoint Endpoint, query []byt
 	}
 	n = int(binary.BigEndian.Uint16(prefix[:]))
 	if n < 12 {
+		transportFailure = false
 		return 0, dnswire.Message{}, ErrResponse
 	}
 	if _, err = io.ReadFull(conn, out[:n]); err != nil {
 		return 0, dnswire.Message{}, err
 	}
+	transportFailure = false
 	if ctx.Err() != nil || !time.Now().Before(deadline) {
 		return 0, dnswire.Message{}, context.DeadlineExceeded
 	}
