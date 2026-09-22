@@ -303,6 +303,60 @@ func TestManifestCleanupDoesNotFollowDirectorySymlink(t *testing.T) {
 	assert.FileExists(t, path, "maintenance must not follow a directory symlink")
 }
 
+func TestManifestRefreshReplacesSymlinkBeforePublication(t *testing.T) {
+	s, _ := manifestFeedStore(t, 1)
+	path := filepath.Join(s.state, "subscriptions", s.Snapshot().subscriptions.artifact.Name)
+	copyPath := filepath.Join(t.TempDir(), "original.artifact")
+	contents, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(copyPath, contents, 0600))
+	require.NoError(t, os.Remove(path))
+	require.NoError(t, os.Symlink(copyPath, path))
+	_, err = s.Reload(context.Background())
+	require.NoError(t, err)
+	info, err := os.Lstat(path)
+	require.NoError(t, err)
+	assert.True(t, info.Mode().IsRegular(), "acknowledged refresh must leave a recoverable regular artifact")
+	unchanged, err := os.ReadFile(copyPath)
+	require.NoError(t, err)
+	assert.Equal(t, contents, unchanged, "replace the link, not its target")
+	require.NoError(t, os.RemoveAll(filepath.Join(s.state, "sources")))
+	restarted, err := OpenStore(context.Background(), s.path, s.state, StoreOptions{Offline: true})
+	require.NoError(t, err)
+	assert.Equal(t, s.Snapshot().Generation(), restarted.Snapshot().Generation())
+	name, err := policy.NormalizeName("ads0.example")
+	require.NoError(t, err)
+	assert.Equal(t, policy.Block, restarted.Snapshot().Policy().Match(name).Result)
+}
+
+func TestManifestRejectsNonDirectorySubscriptionStorage(t *testing.T) {
+	for _, kind := range []string{"symlink", "file"} {
+		t.Run(kind, func(t *testing.T) {
+			s, d := manifestFeedStore(t, 1)
+			active := s.Snapshot()
+			manifestPath := filepath.Join(s.state, "active.manifest")
+			before, err := os.ReadFile(manifestPath)
+			require.NoError(t, err)
+			dir := filepath.Join(s.state, "subscriptions")
+			require.NoError(t, os.Rename(dir, dir+".original"))
+			if kind == "symlink" {
+				require.NoError(t, os.Symlink(dir+".original", dir))
+			} else {
+				require.NoError(t, os.WriteFile(dir, nil, 0600))
+			}
+			assert.Error(t, (&Store{state: s.state}).recover())
+			_, err = s.Save(context.Background(), d.Revision(), d)
+			assert.Error(t, err)
+			_, err = s.Reload(context.Background())
+			assert.Error(t, err)
+			assert.Same(t, active, s.Snapshot())
+			after, err := os.ReadFile(manifestPath)
+			require.NoError(t, err)
+			assert.Equal(t, before, after, "reject before manifest publication")
+		})
+	}
+}
+
 func TestManifestCleanupBoundedAndPreservesActive(t *testing.T) {
 	s, _ := manifestFeedStore(t, 1)
 	dir := filepath.Join(s.state, "subscriptions")

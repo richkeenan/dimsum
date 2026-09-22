@@ -60,9 +60,23 @@ func validArtifactName(name string) bool {
 	return err == nil && h == strings.ToLower(h)
 }
 
+func (s *Store) statSubscriptionDirectory() error {
+	info, err := os.Lstat(filepath.Join(s.state, "subscriptions"))
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("recovery: subscription storage is not a directory")
+	}
+	return nil
+}
+
 func (s *Store) statSubscriptionArtifact(ref artifactReference) error {
 	if !validArtifactName(ref.Name) || ref.Size <= 0 || ref.Size > maxRecoveryBytes {
 		return fmt.Errorf("recovery: invalid subscription reference")
+	}
+	if err := s.statSubscriptionDirectory(); err != nil {
+		return err
 	}
 	info, err := os.Lstat(filepath.Join(s.state, "subscriptions", ref.Name))
 	if err != nil {
@@ -131,12 +145,28 @@ func (s *Store) compileSubscriptions(c Config, rules []policy.Rule, sources []So
 	}
 	ref := artifactReference{Name: fmt.Sprintf("%x.artifact", sha256.Sum256(b)), Size: int64(len(b))}
 	path := filepath.Join(s.state, "subscriptions", ref.Name)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, err
+	}
+	if err := s.statSubscriptionDirectory(); err != nil {
+		return nil, err
+	}
 	// Refresh may produce identical content. Verify existing data before reusing;
 	// the ordinary Save path only stats its already validated immutable artifact.
-	if existing, err := lists.ReadArtifact(path, maxRecoveryBytes); err != nil || !bytes.Equal(existing, b) {
+	reuse := false
+	if err := s.statSubscriptionArtifact(ref); err == nil {
+		existing, err := lists.ReadArtifact(path, maxRecoveryBytes)
+		reuse = err == nil && bytes.Equal(existing, b)
+	}
+	if !reuse {
+		// The durable writer renames over the path, replacing a bad file or
+		// symlink without following it or modifying its target.
 		if err := lists.WriteArtifact(path, b); err != nil {
 			return nil, err
 		}
+	}
+	if err := s.statSubscriptionArtifact(ref); err != nil {
+		return nil, err
 	}
 	// WriteArtifact syncs the subscriptions directory; also persist its entry in
 	// the state directory before any manifest can reference it.
