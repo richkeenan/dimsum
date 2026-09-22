@@ -49,7 +49,6 @@ func Entries() []Entry {
 		{ID: "hagezi-tif-mini", Label: "HaGeZi Threat Intelligence Mini", Description: "Optional threats feed", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt"},
 		{ID: "oisd-small", Label: "OISD Small", Description: "Small DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://small.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
 		{ID: "oisd-big", Label: "OISD Big", Description: "Expanded DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://big.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
-		{ID: "adguard-dns", Label: "AdGuard DNS", Description: "AdGuard DNS filter; richer dialect", Homepage: "https://github.com/AdguardTeam/AdGuardSDNSFilter", URL: "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt", Attribution: "AdGuard Software Ltd and contributors; GPL-3.0, upstream source attribution in feed", Family: "base", Dialect: lists.Adblock, UnavailableReason: "Contains unsupported DNS Adblock modifiers and patterns; candidate must be rejected"},
 	}
 	for i := range entries {
 		e := &entries[i]

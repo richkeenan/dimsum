@@ -3,7 +3,8 @@
 These are small excerpts of feeds downloaded on **2026-09-21**. Rule lines are
 verbatim; attribution comments were shortened/added for these fixtures. Synthetic
 edge cases live in `internal/lists/parse_test.go`. These excerpts are syntax
-regressions, not complete protective lists. URLs are in `internal/catalog/catalog.go`.
+regressions, not complete protective lists. Supported feed URLs are in
+`internal/catalog/catalog.go`.
 
 ## Attribution
 
@@ -27,11 +28,12 @@ The counts below record the original strict audit. The current parser skips
 malformed domain blocking entries with diagnostics rather than rejecting the
 whole feed. HaGeZi TIF Mini and OISD Big are now available: their one and three
 invalid-domain lines respectively can be omitted. Their checked-in excerpts pass
-with these warnings. AdGuard DNS remains unavailable because unsupported syntax
-and exceptions still reject the entire candidate. No fresh full-feed download
+with these warnings. AdGuard DNS is excluded from the catalog because unsupported
+syntax and exceptions still reject the entire candidate. Its excerpt and audit
+results below are retained as historical evidence. No fresh full-feed download
 is implied by this policy update.
 
-All eight catalog URLs returned HTTP 200. Downloads used a 120-second timeout
+All eight originally audited URLs returned HTTP 200. Downloads used a 120-second timeout
 and 128 MiB expanded-body limit, into local temporary files. The final parser
 was run against those same bytes after adding conventional header/boilerplate
 support. Counts below precede whole-source rejection: accepted counts for an

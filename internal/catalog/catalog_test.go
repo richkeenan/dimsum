@@ -36,7 +36,7 @@ func TestAttributedFixtures(t *testing.T) {
 
 func TestCatalog(t *testing.T) {
 	entries := Entries()
-	require.Len(t, entries, 8)
+	require.Len(t, entries, 7)
 	seen := map[string]bool{}
 	enabled := 0
 	for _, e := range entries {
