@@ -63,7 +63,7 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
       .getByLabel("MAC address", { exact: true })
       .fill("02:00:00:00:00:10");
     await page.getByRole("button", { name: "Save reservation" }).click();
-    await expect(page.getByText(/Reservation change saved/)).toBeVisible();
+    await expect(page.getByText("Reservation change saved.", { exact: true })).toBeVisible();
     const reservations = await call("list_dhcp_reservations");
     expect(reservations.items[0].hostname).toBe("lab-printer");
     await call("update_dhcp_reservation", {

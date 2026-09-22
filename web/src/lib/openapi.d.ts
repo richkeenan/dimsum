@@ -29,6 +29,7 @@ export interface paths {
             "application/json": {
               status: components["schemas"]["Activation"];
               config: components["schemas"]["DHCPSettings"];
+              setup?: components["schemas"]["DHCPSetup"];
             };
           };
         };
@@ -2274,6 +2275,19 @@ export interface components {
       }[];
     };
     UInt64: components["schemas"]["Decimal"];
+    /** @description Read-only proposed settings with blank fields filled from local Linux network metadata and defaults. Never saved or enabled automatically. Pool suggestions exclude known local and reserved addresses, not unknown leases on other servers. */
+    DHCPSetup: {
+      config: components["schemas"]["DHCPSettings"];
+      /** @description Fields filled in by detection or defaults rather than saved configuration */
+      suggested: string[];
+      /**
+       * @description Whether the detected IPv4 address is currently permanent on the host; not proof of persistent network configuration
+       * @enum {string}
+       */
+      fixed_address: "yes" | "no" | "unknown";
+      /** @description Explanation when automatic network selection is unavailable or incomplete */
+      message: string;
+    };
     DHCPSettings: {
       /** @default false */
       enabled: boolean;

@@ -19,6 +19,7 @@ import { Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Reservations, Leases, DHCPCheck } from "./operations";
+import { SetupSummary, setupComplete } from "./setup";
 
 export const panel =
   "min-w-0 rounded-lg border border-border bg-background p-5 sm:p-6";
@@ -185,6 +186,7 @@ export function DHCPForm({
   const [saved, setSaved] = useState<Activation>();
   const [needsReload, setNeedsReload] = useState(false);
   const [customLease, setCustomLease] = useState(false);
+  const [editing, setEditing] = useState<boolean>();
   const blocked = busy || needsReload;
   const value = state.data;
   if (!value)
@@ -193,7 +195,12 @@ export function DHCPForm({
         {null}
       </Resource>
     );
-  const config = draft?.config ?? value.config;
+  const proposed =
+    !value.config.enabled && value.setup ? value.setup.config : value.config;
+  const config = draft?.config ?? proposed;
+  const hasSuggestions =
+    !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
+  const canSave = !!draft || hasSuggestions;
   const outdated = !!draft && draft.revision !== value.status.saved_revision;
   // Saving disable is a separate boundary; unchecking the draft cannot unlock topology.
   const locked =
@@ -223,8 +230,8 @@ export function DHCPForm({
       </label>
       <Input
         id={`dhcp-${key}`}
-        className="h-11"
-        placeholder={placeholder}
+        className="h-11 placeholder:text-muted-foreground/60 placeholder:italic"
+        placeholder={`e.g. ${placeholder}`}
         value={String(config[key] ?? "")}
         disabled={blocked || (locked && topology.has(key))}
         required={config.enabled && key !== "max_leases"}
@@ -264,14 +271,23 @@ export function DHCPForm({
     <Resource state={state} retry={refresh}>
       <section className={panel}>
         <form
+          onInvalidCapture={(e) => {
+            // Reveal native validation targets before the browser focuses them.
+            let details = (e.target as HTMLElement).closest("details");
+            while (details) {
+              details.open = true;
+              details = details.parentElement?.closest("details") ?? null;
+            }
+            setEditing(true);
+          }}
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!draft || blocked || outdated) return;
+            if (!canSave || blocked || outdated) return;
             setBusy(true);
             setError(undefined);
             setSaved(undefined);
             try {
-              const edits = Object.entries(draft.config)
+              const edits = Object.entries(config)
                 .filter(
                   ([key, v]) =>
                     key !== "reservations" &&
@@ -292,7 +308,7 @@ export function DHCPForm({
                 });
               if (!edits.length) throw new Error("No settings have changed.");
               const result = await api.send<Activation>("dhcp", "PATCH", {
-                revision: draft.revision,
+                revision: draft?.revision ?? value.status.saved_revision,
                 edits,
               });
               setSaved(result);
@@ -335,100 +351,110 @@ export function DHCPForm({
               Enable DHCP
             </label>
           </div>
-          <fieldset className="mt-6 min-w-0">
-            <legend className="mb-4 text-sm font-medium">Your network</legend>
-            {locked && (
-              <p className="mb-4 text-xs text-muted-foreground">
-                Save with DHCP off to change the interface, server address,
-                subnet or domain.
-              </p>
-            )}
-            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-              {networkFields.map(([key, label, placeholder, help]) =>
-                field(key, label, placeholder, help),
-              )}
-            </div>
-          </fieldset>
-          <fieldset className="mt-7 min-w-0 border-t border-border pt-5">
-            <legend className="pr-3 text-sm font-medium">
-              Addresses for devices
-            </legend>
-            <p className="mb-4 text-xs text-muted-foreground">
-              Choose a range that excludes your router, server and other fixed
-              addresses.
-            </p>
-            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-              {field("range_start", "First IP address", "192.0.2.100")}
-              {field("range_end", "Last IP address", "192.0.2.199")}
-              <div>
-                <label
-                  htmlFor="dhcp-duration"
-                  className="mb-2 block text-xs font-medium"
-                >
-                  Lease duration
-                </label>
-                <select
-                  id="dhcp-duration"
-                  className={selectClass}
-                  value={
-                    customDuration
-                      ? "custom"
-                      : String(config.lease_seconds || "")
-                  }
-                  disabled={blocked}
-                  required={config.enabled}
-                  aria-describedby="dhcp-duration-help"
-                  onChange={(e) => {
-                    setCustomLease(e.target.value === "custom");
-                    if (e.target.value !== "custom")
-                      change("lease_seconds", e.target.value || "0");
-                  }}
-                >
-                  <option value="">Choose duration</option>
-                  {leaseDurations.map(([seconds, label]) => (
-                    <option key={seconds} value={seconds}>
-                      {label}
-                    </option>
-                  ))}
-                  <option value="custom">Custom duration</option>
-                </select>
-                <p
-                  id="dhcp-duration-help"
-                  className="mt-1.5 text-[13px] text-muted-foreground"
-                >
-                  How long a device keeps its address before renewing.
+          <SetupSummary config={config} value={value} />
+          <details
+            className="border-t border-border"
+            open={editing ?? !setupComplete(config)}
+            onToggle={(e) => setEditing(e.currentTarget.open)}
+          >
+            <summary className="w-fit py-3 text-xs font-medium text-primary">
+              Edit settings
+            </summary>
+            <fieldset className="mt-6 min-w-0">
+              <legend className="mb-4 text-sm font-medium">Your network</legend>
+              {locked && (
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Save with DHCP off to change the interface, server address,
+                  subnet or domain.
                 </p>
-                {customDuration && (
-                  <div className="mt-3">
-                    {field(
-                      "lease_seconds",
-                      "Custom duration (seconds)",
-                      "86400",
-                      "From 60 seconds to 7 days.",
-                    )}
-                  </div>
+              )}
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                {networkFields.map(([key, label, placeholder, help]) =>
+                  field(key, label, placeholder, help),
                 )}
               </div>
-              {field(
-                "local_domain",
-                "Local domain",
-                "home.arpa",
-                "Used for device names, such as printer.home.arpa.",
-              )}
-            </div>
-          </fieldset>
-          <details className="mt-6 border-t border-border pt-2">
-            <summary className="w-fit py-3 text-xs font-medium">
-              Advanced settings
-            </summary>
-            <div className="max-w-sm pb-4 pt-1">
-              {field(
-                "max_leases",
-                "Maximum leases",
-                "1024",
-                "Use 0 for the default of 1,024. Maximum: 4,096.",
-              )}
-            </div>
+            </fieldset>
+            <fieldset className="mt-7 min-w-0 border-t border-border pt-5">
+              <legend className="pr-3 text-sm font-medium">
+                Addresses for devices
+              </legend>
+              <p className="mb-4 text-xs text-muted-foreground">
+                Choose a range that excludes your router, server and other fixed
+                addresses.
+              </p>
+              <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                {field("range_start", "First IP address", "192.0.2.100")}
+                {field("range_end", "Last IP address", "192.0.2.199")}
+                <div>
+                  <label
+                    htmlFor="dhcp-duration"
+                    className="mb-2 block text-xs font-medium"
+                  >
+                    Lease duration
+                  </label>
+                  <select
+                    id="dhcp-duration"
+                    className={selectClass}
+                    value={
+                      customDuration
+                        ? "custom"
+                        : String(config.lease_seconds || "")
+                    }
+                    disabled={blocked}
+                    required={config.enabled}
+                    aria-describedby="dhcp-duration-help"
+                    onChange={(e) => {
+                      setCustomLease(e.target.value === "custom");
+                      if (e.target.value !== "custom")
+                        change("lease_seconds", e.target.value || "0");
+                    }}
+                  >
+                    <option value="">Choose duration</option>
+                    {leaseDurations.map(([seconds, label]) => (
+                      <option key={seconds} value={seconds}>
+                        {label}
+                      </option>
+                    ))}
+                    <option value="custom">Custom duration</option>
+                  </select>
+                  <p
+                    id="dhcp-duration-help"
+                    className="mt-1.5 text-[13px] text-muted-foreground"
+                  >
+                    How long a device keeps its address before renewing.
+                  </p>
+                  {customDuration && (
+                    <div className="mt-3">
+                      {field(
+                        "lease_seconds",
+                        "Custom duration (seconds)",
+                        "86400",
+                        "From 60 seconds to 7 days.",
+                      )}
+                    </div>
+                  )}
+                </div>
+                {field(
+                  "local_domain",
+                  "Local domain",
+                  "home.arpa",
+                  "Used for device names, such as printer.home.arpa.",
+                )}
+              </div>
+            </fieldset>
+            <details className="mt-6 border-t border-border pt-2">
+              <summary className="w-fit py-3 text-xs font-medium">
+                Advanced settings
+              </summary>
+              <div className="max-w-sm pb-4 pt-1">
+                {field(
+                  "max_leases",
+                  "Maximum leases",
+                  "1024",
+                  "Use 0 for the default of 1,024. Maximum: 4,096.",
+                )}
+              </div>
+            </details>
           </details>
           {config.enabled && !value.config.enabled && (
             <p className="my-4 rounded-md bg-accent px-4 py-3 text-xs">
@@ -457,7 +483,7 @@ export function DHCPForm({
           <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-5">
             <Button
               className="min-h-11"
-              disabled={blocked || !draft || outdated}
+              disabled={blocked || !canSave || outdated}
             >
               {busy
                 ? "Saving…"
@@ -499,9 +525,11 @@ export function DHCPForm({
                 Reload settings
               </Button>
             )}
-            {draft && !busy && !needsReload && !outdated && (
+            {canSave && !busy && !needsReload && !outdated && (
               <span className="text-xs text-muted-foreground">
-                Unsaved changes
+                {draft
+                  ? "Unsaved changes"
+                  : "Suggested settings · not saved yet"}
               </span>
             )}
           </div>

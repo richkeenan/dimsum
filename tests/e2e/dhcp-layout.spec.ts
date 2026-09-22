@@ -2,7 +2,7 @@ import { test, expect, type Page } from "../../web/e2e";
 import { activation, fixtureAPI } from "./fixtures";
 import type { DHCPSettings } from "../../web/src/lib/api";
 
-async function dhcpFixture(page: Page) {
+async function dhcpFixture(page: Page, detect = false) {
   await fixtureAPI(page);
   const config: DHCPSettings = {
     enabled: false,
@@ -100,13 +100,85 @@ async function dhcpFixture(page: Page) {
     } else if (path.endsWith("/reservations")) {
       await route.fulfill({ json: { status, items: [] } });
     } else {
-      await route.fulfill({ json: { status, config } });
+      const setup =
+        detect && !config.interface
+          ? {
+              config: {
+                ...config,
+                interface: "eth0",
+                server_ip: "192.0.2.2",
+                gateway: "192.0.2.1",
+                subnet: "192.0.2.0/24",
+                range_start: "192.0.2.128",
+                range_end: "192.0.2.227",
+                lease_seconds: 86400,
+                local_domain: "home.arpa",
+              },
+              suggested: [
+                "interface",
+                "server_ip",
+                "gateway",
+                "subnet",
+                "range_start",
+                "range_end",
+                "lease_seconds",
+                "local_domain",
+              ],
+              fixed_address: "yes",
+              message: "",
+            }
+          : undefined;
+      await route.fulfill({ json: { status, config, setup } });
     }
   });
   return writes;
 }
 
 for (const width of [390, 1440]) {
+  test(`DHCP detected setup needs no typing at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1100 });
+    const writes = await dhcpFixture(page, true);
+    await page.goto("/dhcp");
+    await expect(page.getByText("192.0.2.128 – 192.0.2.227")).toBeVisible();
+    await expect(
+      page.getByLabel("Server IP address", { exact: true }),
+    ).toBeHidden();
+    await page.screenshot({
+      path: testInfo.outputPath(`dhcp-detected-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("switch", { name: "Enable DHCP" }).check();
+    await page.getByRole("button", { name: "Save and enable" }).click();
+    await expect(
+      page.getByRole("heading", { name: "DHCP is on" }),
+    ).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].edits).toEqual(
+      expect.arrayContaining([
+        { path: ["enabled"], value: true },
+        { path: ["server_ip"], value: "192.0.2.2" },
+        { path: ["lease_seconds"], value: 86400 },
+      ]),
+    );
+    await page.getByText("Edit settings", { exact: true }).click();
+    await expect(page.getByLabel("Router IP address")).toHaveValue("192.0.2.1");
+    await page
+      .getByLabel("Lease duration", { exact: true })
+      .selectOption("custom");
+    await page.getByLabel("Custom duration (seconds)").fill("1");
+    await page.getByText("Edit settings", { exact: true }).click();
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await expect(page.getByLabel("Custom duration (seconds)")).toBeVisible();
+    expect(writes).toHaveLength(1);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+
   test(`DHCP setup and enable flow at ${width}px`, async ({
     page,
   }, testInfo) => {

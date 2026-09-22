@@ -96,6 +96,20 @@ func TestDHCPHTTPAndCLIRevisionCRUD(t *testing.T) {
 		code, text := run("get", name)
 		assert.Equal(t, 0, code, text)
 		assert.True(t, json.Valid([]byte(text)))
+		if name == "dhcp" {
+			var result struct {
+				Config dhcp.Settings `json:"config"`
+				Setup  dhcp.Setup    `json:"setup"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(text), &result))
+			assert.False(t, result.Config.Enabled)
+			assert.Empty(t, result.Config.Interface, "inspection must not save detected network values")
+			assert.Equal(t, 0, result.Config.LeaseSeconds)
+			assert.Equal(t, 86400, result.Setup.Config.LeaseSeconds)
+			assert.Equal(t, "home.arpa", result.Setup.Config.LocalDomain)
+			assert.False(t, result.Setup.Config.Enabled)
+			assert.Equal(t, 0, store.Snapshot().Config().DHCP.LeaseSeconds)
+		}
 	}
 	body := mutation(t, store, map[string]any{"edits": []config.Edit{{Path: []string{"subnet"}, Value: "192.0.2.0/24"}, {Path: []string{"max_leases"}, Value: 1}}})
 	code, text := run("patch", "dhcp", body)

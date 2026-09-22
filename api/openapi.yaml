@@ -43,6 +43,7 @@ paths:
                 properties:
                   status: {$ref: '#/components/schemas/Activation'}
                   config: {$ref: '#/components/schemas/DHCPSettings'}
+                  setup: {$ref: '#/components/schemas/DHCPSetup'}
         default: {$ref: '#/components/responses/Error'}
     patch:
       description: Relative scalar paths only. Disable before changing interface, server_ip, subnet or local_domain while serving. Reservations use their own collection. A saved/active configuration generation does not mean DHCP has applied it.
@@ -1130,6 +1131,22 @@ components:
               url: {type: string, format: uri}
     UInt64:
       $ref: '#/components/schemas/Decimal'
+    DHCPSetup:
+      type: object
+      additionalProperties: false
+      required: [config, suggested, fixed_address, message]
+      description: Read-only proposed settings with blank fields filled from local Linux network metadata and defaults. Never saved or enabled automatically. Pool suggestions exclude known local and reserved addresses, not unknown leases on other servers.
+      properties:
+        config: {$ref: '#/components/schemas/DHCPSettings'}
+        suggested:
+          type: array
+          items: {type: string}
+          description: Fields filled in by detection or defaults rather than saved configuration
+        fixed_address:
+          type: string
+          enum: ['yes', 'no', unknown]
+          description: Whether the detected IPv4 address is currently permanent on the host; not proof of persistent network configuration
+        message: {type: string, description: Explanation when automatic network selection is unavailable or incomplete}
     DHCPSettings:
       type: object
       required: [enabled, interface, server_ip, subnet, gateway, range_start, range_end, lease_seconds, local_domain, max_leases, reservations]

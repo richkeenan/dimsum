@@ -51,7 +51,7 @@ func (s *Service) DHCPConfig(reservations bool) (any, error) {
 	if reservations {
 		return map[string]any{"status": a, "items": c.Reservations}, nil
 	}
-	return map[string]any{"status": a, "config": c}, nil
+	return map[string]any{"status": a, "config": c, "setup": dhcp.DetectSetup(c)}, nil
 }
 
 type DHCPMutation struct {

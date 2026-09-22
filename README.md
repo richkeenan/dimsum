@@ -60,6 +60,19 @@ specification at `/api/v1/openapi.json` to authenticated clients.
 
 ## Optional DHCPv4 (Linux)
 
+The DHCP page pre-fills blank settings from the server’s IPv4 interface and
+default route, with a 24-hour lease and `home.arpa` local domain. It shows a
+summary first; **Edit settings** exposes every field. Saved values are preserved,
+and suggestions are only written when you save. Ambiguous networks fall back to
+manual entry. Detection reads local metadata only, without sending probes.
+
+The suggested range excludes the server, router, other detected local addresses,
+and configured reservations. It cannot account for leases or reservations held
+by your previous DHCP server. The fixed-address indicator describes the address
+currently installed on the server; ensure its network configuration keeps that
+address across reboots. The CLI (`dimsum control dhcp`) and MCP (`get_dhcp`) return
+the same proposal under `setup`, alongside the authoritative saved `config`.
+
 DHCP is **disabled by default**. The **DHCP** dashboard page manages settings,
 reservations, lease inspection and an explicit environment-check job. A saved
 change is not proof of service: inspect **Desired**, **Applied**, the pending
