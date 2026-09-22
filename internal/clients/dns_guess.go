@@ -147,12 +147,29 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 }
 
 func applyDNSGuess(n Name, address netip.Addr, rows []DNSActivity, now time.Time) Name {
-	if n.Name != "" {
+	guess := dnsGuess(address, rows, now)
+	if guess.Name == "" {
 		return n
 	}
-	if guess := dnsGuess(address, rows, now); guess.Name != "" {
-		return guess
+	// Name precedence and device evidence are independent. DHCP/configured
+	// names must not discard eligible history evidence, nor may inferred history
+	// replace a category/model already supplied by stronger discovery.
+	device := cloneDevice(n.Device)
+	if n.Name == "" {
+		n = guess
 	}
+	if device == nil {
+		device = guess.Device
+	} else {
+		device.DNSGuess = guess.Device.DNSGuess
+		if device.Category == "" || device.Category == "unknown" {
+			device.Category = guess.Device.Category
+			device.Reason = guess.Device.Reason
+			device.Inferred = guess.Device.Inferred
+			device.Fresh = guess.Device.Fresh
+		}
+	}
+	n.Device = device
 	return n
 }
 
