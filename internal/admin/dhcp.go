@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/richkeenan/dimsum/internal/control"
@@ -22,7 +23,12 @@ func (s *Server) dhcpRoute(w http.ResponseWriter, r *http.Request, resource stri
 		case "dhcp/status":
 			v, err = s.service.DHCPStatus()
 		case "dhcp/leases":
-			v, err = s.service.DHCPLeases(r.URL.Query())
+			query, parseErr := url.ParseQuery(r.URL.RawQuery)
+			if parseErr != nil {
+				s.fail(w, r, http.StatusBadRequest, "bad_request", "malformed lease query: "+parseErr.Error())
+				return
+			}
+			v, err = s.service.DHCPLeases(query)
 		case "dhcp/reservations":
 			v, err = s.service.DHCPConfig(true)
 		default:

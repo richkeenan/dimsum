@@ -9,14 +9,68 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/cli"
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/control"
+	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestDHCPLeaseMalformedRawQueryHTTPAndCLI(t *testing.T) {
+	_, store, path := fixture(t)
+	var inspections atomic.Int32
+	service := control.New(control.Options{Store: store, ConfigPath: path, DHCPInspect: func() dhcp.LeaseSnapshot {
+		inspections.Add(1)
+		return dhcp.LeaseSnapshot{Generation: 1, Revision: 1}
+	}})
+	server := admin.New(service, admin.Options{})
+	h := server.LocalHandler()
+	dir, err := os.MkdirTemp("", "dhcp-query-")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	socket := filepath.Join(dir, "s")
+	listener, err := server.ListenUnix(socket)
+	require.NoError(t, err)
+	srv := &http.Server{Handler: h}
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(listener) }()
+	t.Cleanup(func() { srv.Close(); assert.ErrorIs(t, <-done, http.ErrServerClosed) })
+
+	for _, query := range []string{
+		"cursor=%ZZ", "state=bound%ZZ", "limit=1;state=bound",
+		"state=bound&state=%ZZ", "limit=1&cursor=%ZZ",
+		"limit=1&state=bound;hostname=printer", "%ZZ=bound", "cursor=%",
+	} {
+		t.Run(query, func(t *testing.T) {
+			before := inspections.Load()
+			w := request(h, "GET", "/api/v1/dhcp/leases?"+query, "")
+			assert.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), `"code":"bad_request"`)
+			assert.NotContains(t, w.Body.String(), `"items"`)
+
+			var out, stderr bytes.Buffer
+			code := cli.Run(t.Context(), []string{"--socket", socket, "dhcp-leases", "--query", query}, &out, &stderr)
+			assert.Equal(t, 4, code, stderr.String())
+			assert.Empty(t, out.String(), "a malformed query must not return a successful lease page")
+			assert.Contains(t, stderr.String(), `"code":"bad_request"`)
+			assert.Equal(t, before, inspections.Load(), "reject malformed raw input before reading leases")
+		})
+	}
+
+	// Well-formed escaping still reaches the shared filter operation.
+	query := "limit=1&state=%62ound"
+	w := request(h, "GET", "/api/v1/dhcp/leases?"+query, "")
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var out, stderr bytes.Buffer
+	require.Equal(t, 0, cli.Run(t.Context(), []string{"--socket", socket, "dhcp-leases", "--query", query}, &out, &stderr), stderr.String())
+	assert.JSONEq(t, w.Body.String(), out.String())
+	assert.EqualValues(t, 2, inspections.Load())
+}
 
 func TestDHCPHTTPAndCLIRevisionCRUD(t *testing.T) {
 	service, store, path := fixture(t)
