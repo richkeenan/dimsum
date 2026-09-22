@@ -109,8 +109,15 @@ type Outcome struct {
 	Mutation *Mutation
 }
 
+// Runtime deadlines never replace the exact wall timestamps in Lease. Recovery
+// anchors their remaining durations to the process's monotonic clock.
+type leaseDeadlines struct{ expiry, hold time.Time }
+
 type entry struct {
 	lease           Lease
+	timing          leaseDeadlines
+	previousTiming  leaseDeadlines
+	pendingTiming   leaseDeadlines
 	request         Request
 	token           Token
 	deadline        time.Time
@@ -133,15 +140,18 @@ type Engine struct {
 	settings             Settings
 	generation, sequence uint64
 	clock                func() time.Time
-	lastTime             time.Time
-	suspended            bool
-	byIP                 map[netip.Addr]*entry
-	byID                 map[string]*entry
-	reservations         map[string]Reservation
-	reserved             map[netip.Addr]string
-	bitmap               []uint64
-	start, end           uint32
-	probes               int
+	// runtimeClock optionally supplies an independent elapsed-time source. With
+	// no override, use the monotonic reading in the sampled wall clock time.
+	runtimeClock func() time.Time
+	lastTime     time.Time
+	suspended    bool
+	byIP         map[netip.Addr]*entry
+	byID         map[string]*entry
+	reservations map[string]Reservation
+	reserved     map[netip.Addr]string
+	bitmap       []uint64
+	start, end   uint32
+	probes       int
 }
 
 func NewEngine(s Settings, generation uint64, clock func() time.Time) (*Engine, error) {
@@ -211,7 +221,25 @@ func (e *Engine) now() (time.Time, bool) {
 	return n, true
 }
 func (e *Engine) ClockSuspended() bool { return e.suspended }
-func (e *Engine) token() Token         { e.sequence++; return Token{e.generation, e.sequence} }
+func (e *Engine) runtimeNow(wall time.Time) time.Time {
+	if e.runtimeClock != nil {
+		return e.runtimeClock()
+	}
+	return wall
+}
+
+// grant never shortens runtime ownership when issuing a shorter grant.
+func (e *Engine) grant(v *entry, now time.Time, duration time.Duration) (Lease, leaseDeadlines) {
+	runtime := e.runtimeNow(now)
+	target := v.lease
+	target.Expiry = now.Add(duration)
+	timing := leaseDeadlines{expiry: runtime.Add(duration), hold: runtime.Add(duration)}
+	if v.timing.hold.After(timing.hold) {
+		timing.hold = v.timing.hold
+	}
+	return target, timing
+}
+func (e *Engine) token() Token { e.sequence++; return Token{e.generation, e.sequence} }
 func identity(r Request) string {
 	if r.ClientID != "" {
 		return "id:" + r.ClientID
@@ -276,7 +304,7 @@ func (e *Engine) reply(kind MessageType, ip netip.Addr, r Request) *Reply {
 }
 
 func (e *Engine) ack(v *entry, r Request, now time.Time) Outcome {
-	seconds := int(v.lease.Expiry.Sub(now) / time.Second)
+	seconds := int(v.timing.expiry.Sub(e.runtimeNow(now)) / time.Second)
 	if seconds < 1 {
 		return Outcome{}
 	}
@@ -357,9 +385,21 @@ func (e *Engine) discover(r Request, now time.Time, attempt int) Outcome {
 	e.probes++
 	return Outcome{Probe: &Probe{Token: v.token, Address: ip, Deadline: v.deadline}}
 }
-func (e *Engine) mutate(v *entry, kind MutationKind, target Lease, r Request) Outcome {
+func (e *Engine) mutate(v *entry, kind MutationKind, target Lease, timing leaseDeadlines, r Request) Outcome {
+	if kind == PutLease {
+		// After a forward wall step the runtime hold can outlast the stored
+		// wall horizon. Persist its remaining duration relative to today's wall
+		// time, including quarantine retries, so restart cannot lose ownership.
+		// Compare wall readings explicitly; never shorten the stored horizon.
+		hold := e.lastTime.Add(timing.hold.Sub(e.runtimeNow(e.lastTime)))
+		if hold.UnixNano() > target.HoldUntil.UnixNano() {
+			target.HoldUntil = hold
+		}
+	}
 	v.previous = v.lease
+	v.previousTiming = v.timing
 	v.pending = target
+	v.pendingTiming = timing
 	v.lease.State = CommitPending
 	v.token = e.token()
 	v.mutation = kind
@@ -381,7 +421,7 @@ func (e *Engine) Handle(r Request) Outcome {
 	if v != nil && v.lease.State == CommitPending {
 		return Outcome{}
 	}
-	if v != nil && (v.lease.State == Offered || v.lease.State == Bound) && !now.Before(v.lease.HoldUntil) {
+	if v != nil && (v.lease.State == Offered || v.lease.State == Bound) && !e.runtimeNow(now).Before(v.timing.hold) {
 		return Outcome{}
 	} // Tick must retire ownership first.
 	switch r.Type {
@@ -437,25 +477,20 @@ func (e *Engine) Handle(r Request) Outcome {
 		// Some clients reuse XIDs across acquisition and later renewals. Only
 		// replay an ACK for the same request phase before the renewal boundary;
 		// otherwise an unchanged XID would prevent extension forever.
-		if v.lease.State == Bound && v.hasACK && v.lastACK == r.XID && v.request.CIAddr == r.CIAddr && now.Before(v.lease.Expiry.Add(-time.Duration(e.settings.LeaseSeconds)*time.Second/2)) {
+		if v.lease.State == Bound && v.hasACK && v.lastACK == r.XID && v.request.CIAddr == r.CIAddr && e.runtimeNow(now).Before(v.timing.expiry.Add(-time.Duration(e.settings.LeaseSeconds)*time.Second/2)) {
 			return e.ack(v, r, now)
 		}
-		target := v.lease
+		target, timing := e.grant(v, now, time.Duration(e.settings.LeaseSeconds)*time.Second)
 		target.MAC = r.MAC
 		target.State = Bound
-		target.Expiry = now.Add(time.Duration(e.settings.LeaseSeconds) * time.Second)
-		target.HoldUntil = target.Expiry
-		if v.durable && v.lease.HoldUntil.After(target.HoldUntil) {
-			target.HoldUntil = v.lease.HoldUntil
-		}
-		out := e.mutate(v, PutLease, target, r)
+		out := e.mutate(v, PutLease, target, timing, r)
 		v.deadline = target.Expiry
 		return out
 	case Release:
 		if v == nil || v.lease.State != Bound || r.CIAddr != v.lease.Address {
 			return Outcome{}
 		}
-		return e.mutate(v, DeleteLease, v.lease, r)
+		return e.mutate(v, DeleteLease, v.committed, v.timing, r)
 	case Decline:
 		if r.ServerID != server || v == nil || v.lease.Address != r.RequestedIP || v.lease.State != Bound && v.lease.State != Offered {
 			return Outcome{}
@@ -476,14 +511,10 @@ func (e *Engine) quarantine(v *entry, now time.Time) Outcome {
 	if (!v.durable || v.committed.State != Bound) && e.byID[v.lease.Identity] == v {
 		delete(e.byID, v.lease.Identity)
 	}
-	target := v.lease
+	target, timing := e.grant(v, now, 10*time.Minute)
 	target.State = Quarantined
-	target.Expiry = now.Add(10 * time.Minute)
-	if target.Expiry.After(target.HoldUntil) {
-		target.HoldUntil = target.Expiry
-	}
 	v.dirtyQuarantine = true
-	return e.mutate(v, PutLease, target, Request{})
+	return e.mutate(v, PutLease, target, timing, Request{})
 }
 func (e *Engine) find(t Token) *entry {
 	if t.Generation != e.generation {
@@ -516,6 +547,7 @@ func (e *Engine) CompleteProbe(result ProbeResult) Outcome {
 	v.lease.State = Offered
 	v.lease.Expiry = now.Add(30 * time.Second)
 	v.lease.HoldUntil = v.lease.Expiry
+	v.timing = leaseDeadlines{expiry: e.runtimeNow(now).Add(30 * time.Second), hold: e.runtimeNow(now).Add(30 * time.Second)}
 	return Outcome{Reply: e.reply(Offer, v.lease.Address, v.request)}
 }
 func (e *Engine) CompleteCommit(result CommitResult) Outcome {
@@ -527,8 +559,10 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 	if result.Err != nil {
 		if v.dirtyQuarantine {
 			v.lease = v.pending
+			v.timing = v.pendingTiming
 		} else {
 			v.lease = v.previous
+			v.timing = v.previousTiming
 		}
 		return Outcome{}
 	}
@@ -537,6 +571,7 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 		return Outcome{}
 	}
 	v.lease = v.pending
+	v.timing = v.pendingTiming
 	v.durable = true
 	v.committed = v.pending
 	v.dirtyQuarantine = false
@@ -549,7 +584,7 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 	v.lease.State = Bound
 	v.hasACK = true
 	v.lastACK = v.request.XID
-	if !clockOK || !now.Before(v.lease.Expiry) || !e.settings.Enabled {
+	if !clockOK || !e.runtimeNow(now).Before(v.timing.expiry) || !e.settings.Enabled {
 		return Outcome{}
 	}
 	return e.ack(v, v.request, now)
@@ -568,7 +603,7 @@ func (e *Engine) Tick() []Mutation {
 	// is irrelevant to expiry; avoid sorting/copying all ownership every tick.
 	for _, v := range e.byIP {
 		if v.dirtyQuarantine && v.lease.State != CommitPending {
-			out = append(out, *e.mutate(v, PutLease, v.lease, Request{}).Mutation)
+			out = append(out, *e.mutate(v, PutLease, v.lease, v.timing, Request{}).Mutation)
 			continue
 		}
 		switch v.lease.State {
@@ -578,9 +613,9 @@ func (e *Engine) Tick() []Mutation {
 				e.remove(v)
 			}
 		case Offered, Bound, Quarantined:
-			if !now.Before(v.lease.HoldUntil) {
+			if !e.runtimeNow(now).Before(v.timing.hold) {
 				if v.durable {
-					m := e.mutate(v, DeleteLease, v.lease, Request{})
+					m := e.mutate(v, DeleteLease, v.committed, v.timing, Request{})
 					out = append(out, *m.Mutation)
 				} else {
 					e.remove(v)
@@ -680,6 +715,7 @@ func (e *Engine) Restore(leases []Lease, lastKnown time.Time) error {
 		return fmt.Errorf("dhcp: recovery requires unused engine")
 	}
 	now := e.clock()
+	runtime := e.runtimeNow(now)
 	if now.UnixNano() < lastKnown.UnixNano() {
 		return fmt.Errorf("dhcp: clock precedes durable last-known time")
 	}
@@ -699,7 +735,9 @@ func (e *Engine) Restore(leases []Lease, lastKnown time.Time) error {
 		if err := retainedTopology(e.settings, l); err != nil {
 			return err
 		}
-		v := &entry{lease: l, durable: true, committed: l}
+		v := &entry{lease: l, durable: true, committed: l, timing: leaseDeadlines{
+			expiry: runtime.Add(l.Expiry.Sub(now)), hold: runtime.Add(l.HoldUntil.Sub(now)),
+		}}
 		ips[l.Address] = v
 		if l.State == Bound {
 			if ids[l.Identity] != nil {
