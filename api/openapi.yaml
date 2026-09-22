@@ -905,7 +905,8 @@ components:
                 oneOf:
                   - {type: [string, integer, boolean]}
                   - {type: array, maxItems: 8, items: {type: string, minLength: 1, maxLength: 64}}
-        item: {}
+        item:
+          description: 'Collection item. For upstreams, accepts a literal IP (default port 53), IP:port, or {"preset":"cloudflare|google|quad9"}. Presets add both standard IPv4 servers atomically, skipping existing addresses.'
         index: {type: integer, minimum: 0}
     Job:
       type: object

@@ -37,6 +37,12 @@ Mutation operations:
 Use --query with GET commands for server-side filtering. JSON may be literal,
 @FILE, or @- to read standard input (4 MiB maximum).
 Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
+Upstream presets (cloudflare, google, quad9):
+  add upstreams '{"revision":"...","item":{"preset":"cloudflare"}}'
+Adds both provider addresses together, skipping existing servers.
+Custom upstreams accept an IP address (port defaults to 53) or IP:port:
+  add upstreams '{"revision":"...","item":"192.0.2.53"}'
+Test a saved server with job '{"kind":"upstream-probe","input":{"endpoint":"192.0.2.53:53"}}'.
 Exit: 0 success, 2 usage, 3 connection/I/O, 4 rejected request, 5 conflict, 6 unavailable.
 `
 

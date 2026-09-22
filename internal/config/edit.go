@@ -15,6 +15,15 @@ import (
 // in block mappings. Unsupported shapes fail rather than reformat user content.
 // Collection insertion/deletion is deliberately left to later control tasks.
 func (d *Document) Edit(edits []Edit) (*Document, error) {
+	for _, edit := range edits {
+		editable, err := d.editableUpstreams(edit.Path)
+		if err != nil {
+			return nil, err
+		}
+		if editable != d {
+			return editable.Edit(edits)
+		}
+	}
 	out, err := d.editSource(edits)
 	if err != nil {
 		return nil, err

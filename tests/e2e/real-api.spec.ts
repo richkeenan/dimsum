@@ -7,7 +7,7 @@ test.skip(
 );
 test("real Go authentication, scalar text edit, collection writes, conflicts and file activation", async ({
   page,
-}) => {
+}, testInfo) => {
   const file = process.env.DIMSUM_E2E_CONFIG!;
   const original = await readFile(file, "utf8");
   await page.goto("/settings");
@@ -29,16 +29,26 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(tokenField).toBeVisible();
   const agentToken = await tokenField.inputValue();
   expect(agentToken.length).toBeGreaterThan(32);
-  await expect(page.getByRole("link", { name: "OpenAPI specification" })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "OpenAPI specification" }),
+  ).toHaveCount(0);
   // Localhost is a secure context; remove the modern API to exercise LAN HTTP copying.
   await page.evaluate(() => {
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: undefined,
+    });
   });
   for (const name of ["Copy token", "Copy connection fields"]) {
     await page.getByRole("button", { name, exact: true }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Copied to clipboard." })).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: "Copied to clipboard." }),
+    ).toBeVisible();
   }
-  const compatibility = await checkMCP(new URL("/mcp", page.url()).href, agentToken);
+  const compatibility = await checkMCP(
+    new URL("/mcp", page.url()).href,
+    agentToken,
+  );
   expect(compatibility.tools).toBeGreaterThan(0);
   const agentHeaders = {
     Authorization: `Bearer ${agentToken}`,
@@ -110,11 +120,11 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
-    page.getByRole("cell", {
-      name: "Browser workstation 192.0.2.12",
+    page.getByRole("button", {
+      name: "View queries for Browser workstation",
       exact: true,
     }),
-  ).toBeVisible();
+  ).toContainText(/Browser workstation\s*192\.0\.2\.12/);
   await page.getByRole("link", { name: "Custom rules", exact: true }).click();
   await page.getByRole("button", { name: "Add rule" }).click();
   await page
@@ -150,12 +160,78 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   ).toBeVisible();
   await page.getByRole("link", { name: "Upstreams", exact: true }).click();
   await page.getByRole("button", { name: "Add upstream" }).click();
-  await page.getByLabel("Address and port").fill("192.0.2.53:53");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByLabel("DNS provider").selectOption("google");
+  await page.screenshot({
+    path: testInfo.outputPath("upstream-provider-desktop.png"),
+  });
+  await page.getByRole("button", { name: "Add provider" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(
-    page.getByRole("cell", { name: "192.0.2.53:53", exact: true }),
+    page.getByRole("cell", {
+      name: "Google Public DNS 8.8.8.8:53",
+      exact: true,
+    }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("cell", {
+      name: "Google Public DNS 8.8.4.4:53",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(await readFile(file, "utf8")).toContain("# keep upstream comment");
+  await page.getByRole("button", { name: "Add upstream" }).click();
+  await page.getByLabel("DNS provider").selectOption("google");
+  await expect(
+    page.getByRole("button", { name: "Already configured" }),
+  ).toBeDisabled();
+  await page.getByLabel("DNS provider").selectOption("custom");
+  await page
+    .getByLabel("IP address", { exact: true })
+    .fill("https://dns.example/dns-query");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "URLs and hostnames are not supported",
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: testInfo.outputPath("upstream-custom-mobile.png"),
+  });
+  const dialog = page.getByRole("dialog");
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth),
+  ).toBe(true);
+  await page.getByLabel("IP address", { exact: true }).fill("192.0.2.53");
+  await expect(page.getByLabel("Port", { exact: true })).toHaveValue("53");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await expect(
+    page.getByRole("cell", {
+      name: "Custom DNS server 192.0.2.53:53",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page
+    .getByRole("row")
+    .filter({ hasText: "192.0.2.53:53" })
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await page.getByLabel("IP address", { exact: true }).fill("2001:db8::53");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page
+    .getByRole("row")
+    .filter({ hasText: "[2001:db8::53]:53" })
+    .getByRole("button", { name: "Edit", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Remove server" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    page.getByRole("cell", {
+      name: "Custom DNS server [2001:db8::53]:53",
+      exact: true,
+    }),
+  ).not.toBeVisible();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByLabel("Maximum expired-answer age (seconds)").fill("180");
   const beforeExternal = await readFile(file, "utf8");

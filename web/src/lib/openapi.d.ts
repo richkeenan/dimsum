@@ -1881,6 +1881,7 @@ export interface components {
         /** @description String arrays are accepted only for naming.mdns.interfaces; other paths require scalars. */
         value: (string | number | boolean) | string[];
       }[];
+      /** @description Collection item. For upstreams, accepts a literal IP (default port 53), IP:port, or {"preset":"cloudflare|google|quad9"}. Presets add both standard IPv4 servers atomically, skipping existing addresses. */
       item?: unknown;
       index?: number;
     };

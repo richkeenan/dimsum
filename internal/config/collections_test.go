@@ -76,6 +76,32 @@ cache:
   max_stale_seconds: 60
 `
 
+func TestInlineUpstreamLifecyclePreservesSurroundingText(t *testing.T) {
+	for _, sequence := range []string{"[127.0.0.1:9]", "[127.0.0.1:9, '[2001:db8::1]:53']", "[]", "[ ]"} {
+		t.Run(sequence, func(t *testing.T) {
+			source := strings.Replace(storeFixture, "[127.0.0.1:9]", sequence+" # preferred ] servers", 1)
+			d, err := Parse([]byte(source))
+			require.NoError(t, err)
+			before := d.Config().DNS.Upstreams
+			added, err := d.Append([]string{"dns", "upstreams"}, "192.0.2.53:53")
+			require.NoError(t, err)
+			assert.Equal(t, append(before, "192.0.2.53:53"), added.Config().DNS.Upstreams)
+			assert.Contains(t, string(added.Bytes()), "# preferred ] servers")
+			assert.Contains(t, string(added.Bytes()), "listen: [127.0.0.1:0] # untouched flow")
+			assert.Equal(t, source, string(d.Bytes()))
+			if len(before) > 0 {
+				edited, err := d.Edit([]Edit{{Path: []string{"dns", "upstreams", "0"}, Value: "192.0.2.54:53"}})
+				require.NoError(t, err)
+				assert.Equal(t, "192.0.2.54:53", edited.Config().DNS.Upstreams[0])
+				removed, err := d.Remove([]string{"dns", "upstreams", "0"})
+				require.NoError(t, err)
+				assert.Len(t, removed.Config().DNS.Upstreams, len(before)-1)
+				assert.Contains(t, string(removed.Bytes()), "# preferred ] servers")
+			}
+		})
+	}
+}
+
 func TestCollectionEditsPreserveUnrelatedBytes(t *testing.T) {
 	d, err := Parse([]byte(storeFixture))
 	require.NoError(t, err)

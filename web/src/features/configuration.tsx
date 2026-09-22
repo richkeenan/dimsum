@@ -25,6 +25,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Revision } from "./settings";
+import {
+  UpstreamEditor,
+  UpstreamName,
+  UpstreamConnectionTest,
+} from "./upstreams";
 type Field = {
   key: string;
   label: string;
@@ -105,7 +110,7 @@ const descriptions: Record<string, string> = {
   records:
     "Give devices and services on your network an easy-to-remember name.",
   upstreams:
-    "DNS servers used when an answer is not available locally. Test a server with Probe.",
+    "DNS servers used when dimsum cannot answer a lookup locally. Choose a provider or add your own server, then test its connection.",
   clients:
     "Name devices to make their activity easier to recognise. Some routers share one address across several devices.",
 };
@@ -512,7 +517,9 @@ export default function Configuration({
                       } as Record<string, string>
                     )[key] ?? key,
                   render: (r: Row) =>
-                    key === "label" ? (
+                    kind === "upstreams" && key === "address" ? (
+                      <UpstreamName address={text(r.address)} />
+                    ) : key === "label" ? (
                       <ListName row={r} />
                     ) : key === "enabled" ? (
                       r.enabled === true ? (
@@ -546,19 +553,10 @@ export default function Configuration({
                         Edit
                       </Button>
                       {kind === "upstreams" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() =>
-                            operation("jobs", {
-                              kind: "upstream-probe",
-                              input: { endpoint: r.address },
-                            })
-                          }
-                        >
-                          Probe
-                        </Button>
+                        <UpstreamConnectionTest
+                          key={text(r.address)}
+                          address={text(r.address)}
+                        />
                       )}
                       {kind === "lists" && (
                         <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
@@ -645,8 +643,21 @@ export default function Configuration({
           </div>
         </DialogContent>
       </Dialog>
+      {kind === "upstreams" && editing && (
+        <UpstreamEditor
+          original={original}
+          revision={editRevision}
+          configured={collectionRows(state.data)}
+          close={() => setEditing(undefined)}
+          saved={(result) => {
+            setNotice(result);
+            setEditing(undefined);
+            setTick((t) => t + 1);
+          }}
+        />
+      )}
       <Dialog
-        open={!!editing}
+        open={!!editing && kind !== "upstreams"}
         onOpenChange={(open) => {
           if (!open && !busy) setEditing(undefined);
         }}

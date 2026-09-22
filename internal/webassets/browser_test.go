@@ -1,6 +1,7 @@
 package webassets_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,7 @@ func TestBrowserAgainstGoAPI(t *testing.T) {
 	dir := t.TempDir()
 	source, err := os.ReadFile("../../testdata/config/dimsum.yaml")
 	require.NoError(t, err)
+	source = bytes.Replace(source, []byte("dns:\n"), []byte("dns:\n  upstreams: [192.0.2.1:53] # keep upstream comment\n"), 1)
 	configPath := filepath.Join(dir, "dimsum.yaml")
 	require.NoError(t, os.WriteFile(configPath, source, 0600))
 	ctx, cancel := context.WithCancel(t.Context())

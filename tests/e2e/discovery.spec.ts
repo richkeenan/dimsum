@@ -88,7 +88,9 @@ test("owner name and discovered device details coexist on mobile", async ({
     .getByRole("button", { name: "View queries for Owner television" })
     .click();
   await expect(page).toHaveURL(/\/queries\?.*client=192\.0\.2\.20/);
-  await expect(page.getByLabel("Filter client")).toHaveValue("192.0.2.20");
+  await expect(page.getByLabel("Filter client")).toHaveValue(
+    "Owner television (192.0.2.20)",
+  );
 });
 
 test("discovery settings expose a revision-checked interface array", async ({

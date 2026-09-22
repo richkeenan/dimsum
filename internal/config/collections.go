@@ -115,6 +115,13 @@ func appendBoundary(source []byte, n *yaml.Node, pos int) error {
 // Append inserts only newly encoded text; existing collections are never
 // serialized. Block collections are supported; ambiguous shapes fail explicitly.
 func (d *Document) Append(path []string, value any) (*Document, error) {
+	editable, err := d.editableUpstreams(path)
+	if err != nil {
+		return nil, err
+	}
+	if editable != d {
+		return editable.Append(path, value)
+	}
 	if len(path) == 0 {
 		return nil, fmt.Errorf("append: empty path")
 	}
@@ -146,13 +153,14 @@ func (d *Document) Append(path []string, value any) (*Document, error) {
 		start := lineStart(d.source, n.Line)
 		end := lineStart(d.source, n.Line+1)
 		line := string(d.source[start:end])
-		token := strings.Index(line, "[]")
-		if token < 0 {
+		token := len(string([]rune(line)[:n.Column-1]))
+		close := strings.IndexByte(line[token:], ']') + token
+		if token >= len(line) || line[token] != '[' || close < token || strings.TrimSpace(line[token+1:close]) != "" {
 			return nil, fmt.Errorf("append: unsupported empty sequence")
 		}
 		indent := len(line) - len(strings.TrimLeft(line, " ")) + 2
 		out := append([]byte(nil), d.source[:start]...)
-		header := line[:token] + line[token+2:]
+		header := line[:token] + line[close+1:]
 		out = append(out, header...)
 		if !strings.HasSuffix(header, "\n") {
 			out = append(out, '\n')
@@ -196,6 +204,13 @@ func indentItem(b []byte, spaces int) string {
 // Remove deletes a block-sequence item. Comment-bearing items are rejected,
 // rather than silently dropping or reassociating comments the owner wrote.
 func (d *Document) Remove(path []string) (*Document, error) {
+	editable, err := d.editableUpstreams(path)
+	if err != nil {
+		return nil, err
+	}
+	if editable != d {
+		return editable.Remove(path)
+	}
 	if len(path) < 2 {
 		return nil, fmt.Errorf("remove: expected sequence item")
 	}

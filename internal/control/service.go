@@ -294,11 +294,10 @@ func (s *Service) candidate(resource, method string, m Mutation) (*config.Docume
 		if e != nil {
 			return nil, e
 		}
-		candidate, err := d.Append(path(resource), item)
-		if err != nil && resource == "upstreams" {
-			return insertMissingField(d, "dns", "upstreams", []any{item})
+		if resource == "upstreams" {
+			return appendUpstream(d, item)
 		}
-		return candidate, err
+		return d.Append(path(resource), item)
 	case "DELETE":
 		if m.Index == nil || *m.Index < 0 {
 			return nil, fmt.Errorf("nonnegative index required")

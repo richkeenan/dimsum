@@ -75,6 +75,60 @@ it("waits for an editable revision before opening a form", () => {
   expect(screen.getByRole("button", { name: "Add record" })).toBeEnabled();
 });
 
+it("adds a provider as one revision-checked mutation", async () => {
+  resources.values.upstreams = {
+    loading: false,
+    data: { revision: "original-revision", items: ["1.1.1.1:53"] },
+  };
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  render(<Configuration kind="upstreams" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add upstream" }));
+  fireEvent.change(screen.getByLabelText("DNS provider"), {
+    target: { value: "cloudflare" },
+  });
+  expect(screen.getByText(/1.0.0.1/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("upstreams", "POST", {
+      revision: "original-revision",
+      item: { preset: "cloudflare" },
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+});
+
+it("validates custom upstreams locally and formats IPv6 with the default port", async () => {
+  resources.values.upstreams = {
+    loading: false,
+    data: { revision: "original-revision", items: [] },
+  };
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  render(<Configuration kind="upstreams" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add upstream" }));
+  fireEvent.change(screen.getByLabelText("DNS provider"), {
+    target: { value: "custom" },
+  });
+  fireEvent.change(screen.getByLabelText("IP address"), {
+    target: { value: "https://dns.example/dns-query" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/IP address/);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("IP address"), {
+    target: { value: "2001:db8::53" },
+  });
+  expect(screen.getByLabelText("Port")).toHaveValue(53);
+  fireEvent.click(screen.getByRole("button", { name: "Add server" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("upstreams", "POST", {
+      revision: "original-revision",
+      item: "[2001:db8::53]:53",
+    }),
+  );
+});
+
 it("uses catalog values and generates an ID without requiring a manual one", async () => {
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   render(<Configuration kind="lists" range="" />);
