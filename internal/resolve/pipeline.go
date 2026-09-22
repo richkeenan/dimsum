@@ -10,6 +10,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/dnswire"
+	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/transport"
 	"github.com/richkeenan/dimsum/internal/upstream"
@@ -22,7 +23,12 @@ type Pipeline struct {
 	upstreams       upstreams
 	cache           cacheState
 	observeExchange func(upstream.ExchangeResult, error)
+	leases          func(*config.Snapshot) *localdns.Leases
 }
+
+// SetLeases installs a bounded publication capture before resolution starts.
+// Lease answers bypass policy compilation and the ordinary/stale upstream cache.
+func (p *Pipeline) SetLeases(capture func(*config.Snapshot) *localdns.Leases) { p.leases = capture }
 
 func New(c *upstream.Client) *Pipeline { return &Pipeline{upstream: c} }
 
@@ -62,11 +68,24 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			return 0, errors.New("resolve: no active policy")
 		}
 		r.Result.Generation = snapshot.Generation()
-		if !snapshot.Local().Empty() {
-			if n, handled, err := snapshot.Local().Answer(out, &r.Message); handled || err != nil {
+	}
+	var leases *localdns.Leases
+	if p.leases != nil {
+		leases = p.leases(snapshot)
+		if leases != nil && snapshot != nil && leases.Generation() != snapshot.Generation() {
+			leases = nil
+		}
+	}
+	var now time.Time
+	if leases != nil {
+		now = time.Now()
+	}
+	if snapshot != nil {
+		if !snapshot.Local().Empty() || leases != nil {
+			if n, handled, err := snapshot.Local().AnswerWithLeases(out, &r.Message, leases, now); handled || err != nil {
 				r.Result.Outcome = transport.LocalAnswer
 				if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
-					if target := snapshot.Local().Continuation(&r.Message); target != nil {
+					if target := snapshot.Local().ContinuationWithLeases(&r.Message, leases, now); target != nil {
 						return p.completeLocal(ctx, r, out, n, target, snapshot)
 					}
 				}
@@ -74,7 +93,11 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			}
 		}
 		settings = snapshot.Filtering()
-		paused = settings.Paused(time.Now())
+		if leases != nil {
+			paused = settings.Paused(now)
+		} else {
+			paused = settings.Paused(time.Now())
+		}
 		if policy.PrivateReverse(name) {
 			r.Result.Outcome = transport.PolicyBlock
 			return policy.BuildBlocked(out, &r.Message, policy.Settings{Mode: "nxdomain"})
@@ -85,6 +108,12 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 			r.Result.RuleNumber = number
 			r.Result.Rule, _ = snapshot.Policy().RuleAt(number)
 			return buildBlock(out, &r.Message, settings, decision)
+		}
+	}
+	if snapshot == nil && leases != nil {
+		if n, handled, err := leases.Answer(out, &r.Message, now); handled || err != nil {
+			r.Result.Outcome = transport.LocalAnswer
+			return n, err
 		}
 	}
 	if policy.PrivateReverse(name) {

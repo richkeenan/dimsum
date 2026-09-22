@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Zones struct {
@@ -172,7 +173,11 @@ func (z *Zones) Origin(name policy.Name) string {
 // The result is independent wire storage; no forwarding is needed for CNAME
 // questions or for a terminal owner inside our records/owned zones.
 func (z *Zones) Continuation(q *dnswire.Message) []byte {
-	if q.Question.Type == 5 {
+	return z.ContinuationWithLeases(q, nil, time.Time{})
+}
+
+func (z *Zones) ContinuationWithLeases(q *dnswire.Message, leases *Leases, now time.Time) []byte {
+	if z.Empty() || q.Question.Type == 5 {
 		return nil
 	}
 	n, e := policy.NameFromWire(q.Question.Name.Canonical[:q.Question.Name.Length])
@@ -183,6 +188,12 @@ func (z *Zones) Continuation(q *dnswire.Message) []byte {
 	for depth := 0; depth <= 16; depth++ {
 		rr := z.lookup(name)
 		if len(rr) == 0 {
+			if leases != nil {
+				target := wire(name)
+				if _, ok := leases.lookup(target, q.Question.Type, now); ok || leases.owns(target) {
+					return nil
+				}
+			}
 			if depth > 0 && z.zone(name) == nil {
 				return wire(name)
 			}
@@ -197,12 +208,24 @@ func (z *Zones) Continuation(q *dnswire.Message) []byte {
 }
 
 func (z *Zones) Answer(dst []byte, q *dnswire.Message) (int, bool, error) {
+	return z.AnswerWithLeases(dst, q, nil, time.Time{})
+}
+
+// AnswerWithLeases preserves explicit/wildcard/alias precedence while deferring
+// owned-zone negatives until the captured lease view has been consulted.
+func (z *Zones) AnswerWithLeases(dst []byte, q *dnswire.Message, leases *Leases, now time.Time) (int, bool, error) {
+	if z.Empty() && leases != nil {
+		return leases.Answer(dst, q, now)
+	}
 	n, e := policy.NameFromWire(q.Question.Name.Canonical[:q.Question.Name.Length])
 	if e != nil {
 		return 0, false, e
 	}
 	name := n.Display()
 	if len(z.lookup(name)) == 0 && z.zone(name) == nil {
+		if leases != nil {
+			return leases.Answer(dst, q, now)
+		}
 		return 0, false, nil
 	}
 	var answers, authority []dnswire.SyntheticRecord
@@ -238,6 +261,20 @@ func (z *Zones) Answer(dst []byte, q *dnswire.Message) (int, bool, error) {
 			name = alias
 			continue
 		}
+		if len(rr) == 0 && leases != nil {
+			if name == leases.domain && q.Question.Type == 6 {
+				answers = append(answers, leases.negative[30])
+				break
+			}
+			if record, ok := leases.lookup(wire(name), q.Question.Type, now); ok {
+				if record.Type == 6 {
+					authority = append(authority, record)
+				} else {
+					answers = append(answers, record)
+				}
+				break
+			}
+		}
 		if len(rr) == 0 || len(answers) == 0 || answers[len(answers)-1].Type == 5 && q.Question.Type != 5 {
 			if zone := z.zone(name); zone != nil {
 				if !z.exists[name] && len(rr) == 0 {
@@ -246,10 +283,18 @@ func (z *Zones) Answer(dst []byte, q *dnswire.Message) (int, bool, error) {
 				authority = append(authority, dnswire.NegativeSOA(wire(zone.Name), zone.NegativeTTL))
 			} else if len(rr) > 0 {
 				authority = append(authority, dnswire.NegativeSOA([]byte{0}, 2))
+			} else if leases != nil && leases.owns(wire(name)) {
+				if name != leases.domain {
+					code = 3
+				}
+				authority = append(authority, dnswire.NegativeSOA(leases.domainWire, 30))
 			}
 		}
 		break
 	}
-	size, err := dnswire.BuildSynthetic(dst, q, code, z.zone(n.Display()) != nil, answers, authority)
+	if len(answers) == 0 && len(authority) == 0 && len(z.lookup(n.Display())) == 0 {
+		return 0, false, nil
+	}
+	size, err := dnswire.BuildSynthetic(dst, q, code, z.zone(n.Display()) != nil || leases.owns(q.Question.Name.Canonical[:q.Question.Name.Length]), answers, authority)
 	return size, true, err
 }

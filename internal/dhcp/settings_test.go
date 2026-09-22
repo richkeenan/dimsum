@@ -3,11 +3,20 @@ package dhcp
 import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"strings"
 	"testing"
 )
 
 func fixtureSettings() Settings {
 	return Settings{Enabled: true, Interface: "eth0", ServerIP: "192.0.2.2", Subnet: "192.0.2.0/24", Gateway: "192.0.2.1", RangeStart: "192.0.2.100", RangeEnd: "192.0.2.199", LeaseSeconds: 86400, LocalDomain: "home.arpa", MaxLeases: 1024}
+}
+
+func TestLocalDomainLeavesRoomForLeaseHostname(t *testing.T) {
+	s := fixtureSettings()
+	s.LocalDomain = strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 61)
+	require.NoError(t, ValidateSettings(s), "189-byte domain plus a 63-byte host label fits the DNS name limit")
+	s.LocalDomain += "c"
+	assert.Error(t, ValidateSettings(s), "must not configure a domain that can produce oversized lease A/PTR names")
 }
 
 func TestSettingsValidation(t *testing.T) {

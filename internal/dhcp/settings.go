@@ -58,7 +58,9 @@ func validLabel(s string) bool {
 	return true
 }
 func validDomain(s string) bool {
-	if len(s) > 253 || strings.EqualFold(s, "local") || strings.HasSuffix(strings.ToLower(s), ".local") {
+	// Reserve a full 63-byte hostname label plus its dot within the 253-byte
+	// presentation limit; PTR RDATA must obey the same DNS name bound.
+	if len(s) > 189 || strings.EqualFold(s, "local") || strings.HasSuffix(strings.ToLower(s), ".local") {
 		return false
 	}
 	for _, l := range strings.Split(s, ".") {
@@ -118,7 +120,7 @@ func ValidateSettings(s Settings) error {
 		return fail("lease_seconds", "must be 60..604800")
 	}
 	if (s.Enabled || s.LocalDomain != "") && !validDomain(s.LocalDomain) {
-		return fail("local_domain", "expected DNS domain outside .local")
+		return fail("local_domain", "expected DNS domain outside .local, at most 189 bytes")
 	}
 	var p netip.Prefix
 	if s.Enabled || s.Subnet != "" {
