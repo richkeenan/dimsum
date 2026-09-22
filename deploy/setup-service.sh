@@ -23,7 +23,16 @@ dimsum_prepare() {
     if [ ! -e /etc/dimsum/dimsum.yaml ]; then
         install -o dimsum -g dimsum -m 0600 /usr/lib/dimsum/dimsum.example.yaml /etc/dimsum/dimsum.yaml || return 1
     fi
-    runuser -u dimsum -- /usr/bin/dimsum validate -config /etc/dimsum/dimsum.yaml >/dev/null
+    runuser -u dimsum -- /usr/bin/dimsum validate -config /etc/dimsum/dimsum.yaml >/dev/null || return 1
+    # Configuration can survive an interrupted first install without a credential.
+    # Inspect the configured credential, not just whether the YAML already exists.
+    initial_credential=$(runuser -u dimsum -- /usr/bin/dimsum bootstrap -config /etc/dimsum/dimsum.yaml -generate -if-needed) || return 1
+    case "$initial_credential" in
+        *'"created":true'*)
+            echo 'Save this initial administrator password; it is displayed only during setup:'
+            printf '%s\n' "$initial_credential" ;;
+    esac
+    unset initial_credential
 }
 
 dimsum_ready() {
@@ -57,7 +66,7 @@ dimsum_summary() {
         address=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
         [ -n "$address" ] || address=$(hostname -I | awk '{print $1}')
         echo "Dashboard: http://${address:-localhost}:8080/"
-        echo 'Sign in with admin, then change your password in Settings.'
+        echo 'Sign in with the generated password printed during setup.'
         echo 'Choose subscriptions in Filter lists, then set your router DNS to this server.'
     else
         echo 'Your dashboard address, configuration, credentials and history are unchanged.'

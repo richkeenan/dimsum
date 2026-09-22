@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/app"
 	"github.com/richkeenan/dimsum/internal/cli"
 	"github.com/richkeenan/dimsum/internal/config"
@@ -27,6 +28,9 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ndns:\n  listen: [127.0.0.1:0]\n  upstreams: [127.0.0.1:9]\nadmin:\n  listen: 127.0.0.1:0\npaths:\n  data_dir: data\n  secrets_dir: secrets\n"), 0600))
 	store, err := config.OpenStore(context.Background(), path, path+".state", config.StoreOptions{Offline: true})
 	require.NoError(t, err)
+	hash, err := admin.HashPassword("fixture-password")
+	require.NoError(t, err)
+	require.NoError(t, store.EnsureAdminSecret([]byte(hash+"\n")))
 	s := new(app.Service)
 	require.NoError(t, s.StartManaged(context.Background(), store))
 	t.Cleanup(func() { assert.NoError(t, s.Close()) })
@@ -34,7 +38,7 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	// Linux CI can exceed one second even when the local service is healthy.
 	client := http.Client{Timeout: 10 * time.Second}
 	base := "http://" + s.Addresses().Admin
-	login, err := client.Post(base+"/session", "application/json", strings.NewReader(`{"password":"admin"}`))
+	login, err := client.Post(base+"/session", "application/json", strings.NewReader(`{"password":"fixture-password"}`))
 	require.NoError(t, err)
 	login.Body.Close()
 	require.Equal(t, http.StatusOK, login.StatusCode)
@@ -106,7 +110,7 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	require.NoError(t, err)
 	r.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, r.StatusCode)
-	for password, status := range map[string]int{"admin": 401, "new": 200} {
+	for password, status := range map[string]int{"fixture-password": 401, "new": 200} {
 		r, err := client.Post(base+"/session", "application/json", strings.NewReader(`{"password":"`+password+`"}`))
 		require.NoError(t, err)
 		r.Body.Close()
@@ -127,4 +131,22 @@ func TestManagedAdminHealthAndProtectedAPI(t *testing.T) {
 	require.NoError(t, err)
 	r.Body.Close()
 	assert.Equal(t, http.StatusOK, r.StatusCode)
+}
+
+func TestManagedWithoutBootstrapRejectsDefaultPassword(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dimsum.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("version: 1\ndns:\n  listen: [127.0.0.1:0]\n  upstreams: [127.0.0.1:9]\nadmin:\n  listen: 127.0.0.1:0\npaths:\n  data_dir: data\n  secrets_dir: secrets\n"), 0600))
+	store, err := config.OpenStore(t.Context(), path, path+".state", config.StoreOptions{Offline: true})
+	require.NoError(t, err)
+	s := new(app.Service)
+	require.NoError(t, s.StartManaged(t.Context(), store))
+	t.Cleanup(func() { assert.NoError(t, s.Close()) })
+	client := http.Client{Timeout: 10 * time.Second}
+	response, err := client.Post("http://"+s.Addresses().Admin+"/session", "application/json", strings.NewReader(`{"password":"admin"}`))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	assert.Equal(t, http.StatusServiceUnavailable, response.StatusCode)
+	assert.Empty(t, response.Cookies())
+	_, err = store.ActiveSecret(config.AdminSecretName)
+	assert.True(t, os.IsNotExist(err), "startup must not invent an administrator credential")
 }

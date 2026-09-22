@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/richkeenan/dimsum/internal/admin"
 	"github.com/richkeenan/dimsum/internal/app"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,8 @@ func TestManagedHTTPAgentAccess(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "dimsum.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("version: 1\ndns:\n  listen: [127.0.0.1:0]\n  upstreams: [127.0.0.1:9]\nadmin:\n  listen: 127.0.0.1:0\npaths:\n  data_dir: data\n  secrets_dir: secrets\n"), 0600))
+	require.NoError(t, os.Mkdir(filepath.Join(dir, "secrets"), 0700))
+	require.NoError(t, admin.BootstrapPassword(filepath.Join(dir, "secrets", "admin.hash"), "fixture-password"))
 	start := func() *app.Service {
 		store, err := config.OpenStore(t.Context(), path, path+".state", config.StoreOptions{Offline: true})
 		require.NoError(t, err)
@@ -61,7 +64,7 @@ func TestManagedHTTPAgentAccess(t *testing.T) {
 		require.NoError(t, json.Unmarshal(b, &result), string(b))
 		return res.StatusCode, result
 	}
-	login, err := client.Post(base+"/session", "application/json", bytes.NewBufferString(`{"password":"admin"}`))
+	login, err := client.Post(base+"/session", "application/json", bytes.NewBufferString(`{"password":"fixture-password"}`))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, login.StatusCode)
 	require.NotEmpty(t, login.Cookies())

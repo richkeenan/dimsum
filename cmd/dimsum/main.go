@@ -35,7 +35,7 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		return 0
 	}
-	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml [-state path/to/derived-state]\n       dimsum control --socket PATH help\n       dimsum bootstrap -config PATH -password-file PATH\n       dimsum version\n\nserve forwards DNS and serves administration; watches configuration edits.\n-state defaults to CONFIG.state; retain this directory for offline recovery.\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
+	const usage = "Usage: dimsum <serve|validate> -config path/to/dimsum.yaml [-state path/to/derived-state]\n       dimsum control --socket PATH help\n       dimsum bootstrap -config PATH <-password-file PATH|-generate>\n       dimsum version\n\nserve forwards DNS and serves administration; watches configuration edits.\n-state defaults to CONFIG.state; retain this directory for offline recovery.\nvalidate checks configuration offline and prints JSON.\nExit codes: 0 success, 1 validation/runtime error, 2 usage error.\n"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprint(out, usage)
 		return 0

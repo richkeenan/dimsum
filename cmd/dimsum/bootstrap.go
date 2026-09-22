@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -17,8 +20,10 @@ func bootstrap(args []string, out, stderr io.Writer) int {
 	f.SetOutput(stderr)
 	path := f.String("config", "dimsum.yaml", "configuration path")
 	password := f.String("password-file", "", "owner-only password file, or - for stdin")
-	if f.Parse(args) != nil || f.NArg() != 0 || *password == "" {
-		fmt.Fprintln(stderr, "bootstrap requires -config PATH -password-file PATH (or -)")
+	generate := f.Bool("generate", false, "generate a random password and print it once as JSON")
+	ifNeeded := f.Bool("if-needed", false, "with -generate, preserve an existing credential (installer retries)")
+	if f.Parse(args) != nil || f.NArg() != 0 || (*password == "") == !*generate || (*ifNeeded && !*generate) {
+		fmt.Fprintln(stderr, "bootstrap requires -config PATH and exactly one of -password-file PATH (or -) or -generate")
 		return 2
 	}
 	fail := func(err error) int { fmt.Fprintln(stderr, err); return 1 }
@@ -31,11 +36,35 @@ func bootstrap(args []string, out, stderr io.Writer) int {
 		return fail(err)
 	}
 	c := d.Config()
+	dir := c.Paths.SecretsDir
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(filepath.Dir(*path), dir)
+	}
+	if *ifNeeded {
+		credential := filepath.Join(dir, config.AdminSecretName)
+		if c.Admin.SecretGeneration != "" {
+			credential = filepath.Join(dir, "generations", c.Admin.SecretGeneration, config.AdminSecretName)
+		}
+		if _, err := admin.LoadPasswordHash(credential); err == nil {
+			if err := json.NewEncoder(out).Encode(map[string]bool{"created": false}); err != nil {
+				return fail(err)
+			}
+			return 0
+		} else if !os.IsNotExist(err) || c.Admin.SecretGeneration != "" {
+			return fail(err)
+		}
+	}
 	if c.Admin.SecretGeneration != "" {
 		return fail(fmt.Errorf("bootstrap cannot replace an active credential generation"))
 	}
 	var reader io.Reader = os.Stdin
-	if *password != "-" {
+	if *generate {
+		var random [32]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return fail(err)
+		}
+		reader = strings.NewReader(base64.RawURLEncoding.EncodeToString(random[:]))
+	} else if *password != "-" {
 		info, err := os.Lstat(*password)
 		if err != nil {
 			return fail(err)
@@ -55,10 +84,6 @@ func bootstrap(args []string, out, stderr io.Writer) int {
 		return fail(err)
 	}
 	secret := strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
-	dir := c.Paths.SecretsDir
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(filepath.Dir(*path), dir)
-	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return fail(err)
 	}
@@ -72,6 +97,12 @@ func bootstrap(args []string, out, stderr io.Writer) int {
 	if err = admin.BootstrapPassword(filepath.Join(dir, config.AdminSecretName), secret); err != nil {
 		return fail(err)
 	}
-	fmt.Fprintln(out, `{"created":true}`)
+	result := map[string]any{"created": true}
+	if *generate {
+		result["password"] = secret
+	}
+	if err = json.NewEncoder(out).Encode(result); err != nil {
+		return fail(err)
+	}
 	return 0
 }
