@@ -198,6 +198,31 @@ test("inline failures can be retried and pending rules are not labelled active",
   expect(attempts).toBe(2);
 });
 
+test("inline blocking works when randomUUID is unavailable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { value: undefined });
+  });
+  await page.route("**/api/v1/queries?**", (route) =>
+    route.fulfill({
+      json: { items: [{ ...query, outcome: "forwarded" }], complete: true },
+    }),
+  );
+  let item: { id?: string } | undefined;
+  await page.route("**/api/v1/rules", async (route) => {
+    item = JSON.parse(route.request().postData() ?? "{}").item;
+    await route.fulfill({ json: { status: activation } });
+  });
+  await page.goto("/queries");
+  await page.getByRole("button", { name: "Block " + query.name }).click();
+  await expect(page.getByRole("alert")).not.toBeVisible();
+  await expect(
+    page.getByText("Block rule active", { exact: true }),
+  ).toBeVisible();
+  expect(item?.id).toMatch(/^query-[0-9a-f]{24}$/);
+});
+
 test("long query details can be scrolled to and operate their final action", async ({
   page,
 }, testInfo) => {

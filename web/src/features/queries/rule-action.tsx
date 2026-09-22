@@ -22,6 +22,13 @@ function isActive(settings: Settings) {
   );
 }
 
+function queryRuleID() {
+  return `query-${Array.from(
+    crypto.getRandomValues(new Uint8Array(12)),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 function useRuleSave(name: string) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
@@ -39,7 +46,7 @@ function useRuleSave(name: string) {
       const saved = await api.send<unknown>("rules", "POST", {
         revision: settings.revision,
         item: {
-          id: "query-" + crypto.randomUUID(),
+          id: queryRuleID(),
           kind,
           action,
           pattern: name,
