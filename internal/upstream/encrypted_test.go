@@ -168,7 +168,7 @@ func TestDoHReuseConcurrentRequestsAndNoProxy(t *testing.T) {
 }
 
 func TestDoHBootstrapPreservesTLSAndHTTPIdentity(t *testing.T) {
-	bootstrap, calls := bootstrapFixture(t, 60, "local")
+	bootstrap, calls := bootstrapFixture(t, 60, "local-drop-aaaa")
 	observed := make(chan [2]string, 2)
 	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		observed <- [2]string{r.Host, r.TLS.ServerName}

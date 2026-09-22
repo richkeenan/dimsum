@@ -117,6 +117,15 @@ type wireExchange func(context.Context, []byte, []byte) (int, error)
 
 // lookupAddresses owns both family requests and waits for all workers before returning.
 func lookupAddresses(ctx context.Context, host string, exchange wireExchange) ([]netip.Addr, time.Duration, error) {
+	// Discovery may spend at most half the remaining budget, leaving time for
+	// dialing, TLS and the DNS exchange. A successful family waits briefly for
+	// its sibling, then cancels and joins it rather than losing usable answers.
+	budget := 500 * time.Millisecond
+	if deadline, ok := ctx.Deadline(); ok {
+		budget = time.Until(deadline) / 2
+	}
+	discovery, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
 	type result struct {
 		addresses []netip.Addr
 		ttl       time.Duration
@@ -134,7 +143,7 @@ func lookupAddresses(ctx context.Context, host string, exchange wireExchange) ([
 			}
 			wire = append(wire, 0, byte(typ>>8), byte(typ), 0, 1)
 			out := make([]byte, 65535)
-			n, err := exchange(ctx, wire, out)
+			n, err := exchange(discovery, wire, out)
 			if err != nil {
 				results <- result{err: err}
 				return
@@ -146,6 +155,12 @@ func lookupAddresses(ctx context.Context, host string, exchange wireExchange) ([
 	var addresses []netip.Addr
 	ttl := time.Hour
 	var last error = errors.New("upstream: bootstrap returned no addresses")
+	var grace *time.Timer
+	defer func() {
+		if grace != nil {
+			grace.Stop()
+		}
+	}()
 	for range 2 {
 		r := <-results
 		if r.err != nil {
@@ -155,6 +170,9 @@ func lookupAddresses(ctx context.Context, host string, exchange wireExchange) ([
 		if len(r.addresses) > 0 {
 			addresses = append(addresses, r.addresses...)
 			ttl = min(ttl, r.ttl)
+			if grace == nil {
+				grace = time.AfterFunc(50*time.Millisecond, cancel)
+			}
 		}
 	}
 	if ctx.Err() != nil {

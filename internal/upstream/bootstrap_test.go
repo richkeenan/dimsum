@@ -27,6 +27,9 @@ func bootstrapFixture(t *testing.T, ttl uint32, mode string) (netip.AddrPort, *a
 		if mode == "drop" {
 			return
 		}
+		if mode == "local-drop-aaaa" && q.Question[0].Qtype == dns.TypeAAAA {
+			return
+		}
 		r := new(dns.Msg)
 		r.SetReply(q)
 		name := q.Question[0].Name
@@ -39,7 +42,7 @@ func bootstrapFixture(t *testing.T, ttl uint32, mode string) (netip.AddrPort, *a
 		} else {
 			r.Answer = []dns.RR{&dns.AAAA{Hdr: h, AAAA: net.ParseIP("2001:db8::10")}}
 		}
-		if mode == "local" {
+		if mode == "local" || mode == "local-drop-aaaa" {
 			if h.Rrtype == dns.TypeA {
 				r.Answer = []dns.RR{&dns.A{Hdr: h, A: net.ParseIP("127.0.0.1")}}
 			} else {
@@ -61,6 +64,45 @@ func bootstrapFixture(t *testing.T, ttl uint32, mode string) (netip.AddrPort, *a
 	<-started
 	t.Cleanup(func() { _ = server.Shutdown() })
 	return netip.MustParseAddrPort(conn.LocalAddr().String()), calls
+}
+
+func TestDiscoveryJoinsStalledFamilyAfterSuccess(t *testing.T) {
+	for _, successful := range []uint16{dns.TypeA, dns.TypeAAAA} {
+		t.Run(dns.TypeToString[successful], func(t *testing.T) {
+			stopped := make(chan struct{})
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+			addresses, _, err := lookupAddresses(ctx, "example.com", func(ctx context.Context, wire, out []byte) (int, error) {
+				q := new(dns.Msg)
+				if err := q.Unpack(wire); err != nil {
+					return 0, err
+				}
+				if q.Question[0].Qtype != successful {
+					<-ctx.Done()
+					close(stopped)
+					return 0, ctx.Err()
+				}
+				response := new(dns.Msg)
+				response.SetReply(q)
+				h := dns.RR_Header{Name: "example.com.", Rrtype: successful, Class: dns.ClassINET, Ttl: 60}
+				if successful == dns.TypeA {
+					response.Answer = []dns.RR{&dns.A{Hdr: h, A: net.ParseIP("192.0.2.1")}}
+				} else {
+					response.Answer = []dns.RR{&dns.AAAA{Hdr: h, AAAA: net.ParseIP("2001:db8::1")}}
+				}
+				packed, err := response.Pack()
+				return copy(out, packed), err
+			})
+			require.NoError(t, err)
+			assert.Len(t, addresses, 1)
+			assert.NoError(t, ctx.Err())
+			select {
+			case <-stopped:
+			default:
+				assert.Fail(t, "stalled worker was not joined")
+			}
+		})
+	}
 }
 
 func TestBootstrapZeroAndAliasTTLDoNotCache(t *testing.T) {
