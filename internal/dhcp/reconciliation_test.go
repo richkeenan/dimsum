@@ -126,19 +126,27 @@ func TestRetiredAddressesCannotBeOfferedOrExtended(t *testing.T) {
 				s.Reservations = nil
 			}
 			require.NoError(t, e.Apply(s, 2))
-			assert.Equal(t, Outcome{}, e.Handle(r))
+			out := e.Handle(r)
+			require.NotNil(t, out.Mutation)
+			assert.Nil(t, out.Reply, "retired address cannot be offered")
+			assert.Equal(t, []Lease{l}, e.DurableLeases())
+			out = e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
+			require.NotNil(t, out.Probe)
+			assert.NotEqual(t, l.Address, out.Probe.Address)
 			r.Type = RequestMessage
 			r.XID++
 			r.CIAddr = l.Address
-			assert.Equal(t, Outcome{}, e.Handle(r))
-			assert.Equal(t, []Lease{l}, e.DurableLeases())
+			nak := e.Handle(r)
+			require.NotNil(t, nak.Reply)
+			assert.Equal(t, NAK, nak.Reply.Type)
+			assert.Equal(t, l.HoldUntil, e.DurableLeases()[0].HoldUntil)
 			*now = l.HoldUntil.Add(time.Second)
 			ms := e.Tick()
 			require.Len(t, ms, 1)
 			e.CompleteCommit(CommitResult{Token: ms[0].Token})
 			r.Type = Discover
 			r.CIAddr = netip.Addr{}
-			out := e.Handle(r)
+			out = e.Handle(r)
 			require.NotNil(t, out.Probe)
 			assert.NotEqual(t, l.Address, out.Probe.Address)
 			if kind == "reservation moved" {

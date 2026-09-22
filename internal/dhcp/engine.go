@@ -31,7 +31,9 @@ const (
 	Probing       LeaseState = "probing"
 	CommitPending LeaseState = "commit-pending"
 	Bound         LeaseState = "bound"
-	Quarantined   LeaseState = "quarantined"
+	// Quarantined retains address ownership without an active client binding:
+	// either a conflict hold or an old grant retired during address migration.
+	Quarantined LeaseState = "quarantined"
 )
 
 // Request owns bounded data; ClientID is the opaque bytes, not hexadecimal.
@@ -429,7 +431,18 @@ func (e *Engine) Handle(r Request) Outcome {
 			switch v.lease.State {
 			case Bound, Offered:
 				if !e.eligible(r, v.lease.Address) {
-					return Outcome{}
+					if !v.durable {
+						e.remove(v)
+						return e.discover(r, now, 1)
+					}
+					// Retire the active identity durably before granting another
+					// address. Quarantine retains the exact old promise, even if
+					// the client misses a NAK or the process crashes mid-migration.
+					// Unlike a conflict quarantine this needs no extra hold, and
+					// a definite write failure can roll back for a packet retry.
+					target := v.lease
+					target.State = Quarantined
+					return e.mutate(v, PutLease, target, v.timing, r)
 				}
 				v.request = r
 				return Outcome{Reply: e.reply(Offer, v.lease.Address, r)}
@@ -455,6 +468,12 @@ func (e *Engine) Handle(r Request) Outcome {
 		if !netip.MustParsePrefix(e.settings.Subnet).Contains(addr) {
 			return Outcome{Reply: e.reply(NAK, netip.Addr{}, r)}
 		}
+		// Look up ownership by address too: a retired hold can outlive the
+		// identity's move to its new address. It must not silently trap a client
+		// in INIT-REBOOT or renewal on an address we can no longer grant.
+		if held := e.byIP[addr]; held != nil && held.lease.Identity == id && !e.eligible(r, addr) {
+			return Outcome{Reply: e.reply(NAK, netip.Addr{}, r)}
+		}
 		if v == nil || v.lease.Address != addr || v.lease.State != Bound && v.lease.State != Offered {
 			// Unknown on-link INIT-REBOOT is ignored; known conflicting ownership and
 			// off-subnet addresses are authoritative NAK cases.
@@ -468,7 +487,7 @@ func (e *Engine) Handle(r Request) Outcome {
 			return Outcome{}
 		}
 		if !e.eligible(r, addr) {
-			return Outcome{}
+			return Outcome{Reply: e.reply(NAK, netip.Addr{}, r)}
 		}
 		if v.lease.State == Offered && !nonzero(r.ServerID) {
 			return Outcome{}
@@ -582,6 +601,9 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 	if v.lease.State == Quarantined {
 		if e.byID[v.lease.Identity] == v {
 			delete(e.byID, v.lease.Identity)
+		}
+		if clockOK && e.settings.Enabled && v.request.Type == Discover {
+			return e.discover(v.request, now, 1)
 		}
 		return Outcome{}
 	}
