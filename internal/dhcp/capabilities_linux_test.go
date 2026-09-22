@@ -44,7 +44,7 @@ func TestLinuxMinimalServiceCapabilities(t *testing.T) {
 		}
 		require.NoError(t, err)
 		defer link.Close()
-		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 		defer cancel()
 		conflict, err := probe(ctx, netip.MustParseAddr("192.0.2.101"))
 		require.NoError(t, err)

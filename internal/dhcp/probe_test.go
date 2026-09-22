@@ -88,6 +88,25 @@ func TestProbeSchedulerBackpressureKeepsBoundedHandoffsAndStops(t *testing.T) {
 	})
 }
 
+func TestProbeSchedulerAllowsRepeatedObservation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := NewProbeScheduler(func(ctx context.Context, _ netip.Addr) (bool, error) {
+			select {
+			case <-time.After(1500 * time.Millisecond):
+				return false, nil
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+		})
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go s.Run(ctx)
+		require.True(t, s.Submit(Probe{Deadline: time.Now().Add(2 * time.Second)}))
+		result := <-s.Results()
+		assert.NoError(t, result.Err, "scheduler must allow the full repeated-probe window")
+	})
+}
+
 func TestProbeSchedulerBoundsDeadlineAndShutdown(t *testing.T) {
 	var active, peak atomic.Int32
 	started := make(chan struct{}, 2)
@@ -114,8 +133,8 @@ func TestProbeSchedulerBoundsDeadlineAndShutdown(t *testing.T) {
 	select {
 	case result := <-s.Results():
 		assert.Error(t, result.Err)
-	case <-time.After(2 * time.Second):
-		t.Fatal("500ms probe deadline not enforced")
+	case <-time.After(3 * time.Second):
+		t.Fatal("bounded probe deadline not enforced")
 	}
 	cancel()
 	select {

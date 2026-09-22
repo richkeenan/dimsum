@@ -12,6 +12,10 @@ import (
 // It MUST honor cancellation/deadlines. Error or timeout is never a silent probe.
 type ProbeFunc func(context.Context, netip.Addr) (conflict bool, err error)
 
+// Three observations span 1.5s; allow scheduling/I/O headroom while keeping
+// both worker occupancy and the engine's candidate hold bounded.
+const probeTimeout = 2 * time.Second
+
 // ProbeScheduler has two fixed workers, one reserved handoff slot per worker,
 // no additional waiting backlog, and two result slots. Submit never blocks or
 // depends on a worker already being scheduled. Construction is inert; Run is
@@ -60,7 +64,7 @@ func (s *ProbeScheduler) Run(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				case p := <-worker:
-					deadline := time.Now().Add(500 * time.Millisecond)
+					deadline := time.Now().Add(probeTimeout)
 					if p.Deadline.Before(deadline) {
 						deadline = p.Deadline
 					}

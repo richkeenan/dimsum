@@ -105,6 +105,18 @@ func TestLinuxDiagnosticBroadcast(t *testing.T) {
 	// Both veth ends live in this disposable namespace. Permit a local source
 	// arriving over the peer; a real two-host link does not need this fixture knob.
 	// Run with --sysctl net.ipv4.conf.default.accept_local=1 and rp_filter=0.
+	for _, setting := range []struct{ path, want string }{
+		{"all/rp_filter", "0"},
+		{"dhcp-server/rp_filter", "0"},
+		{"dhcp-client/rp_filter", "0"},
+		{"dhcp-server/accept_local", "1"},
+		{"dhcp-client/accept_local", "1"},
+	} {
+		value, err := os.ReadFile("/proc/sys/net/ipv4/conf/" + setting.path)
+		require.NoError(t, err)
+		require.Equal(t, setting.want, strings.TrimSpace(string(value)),
+			"isolated diagnostic fixture needs %s=%s; run scripts/dhcp-qualification.py or set the documented container sysctls", setting.path, setting.want)
+	}
 	s := fixtureSettings()
 	s.Interface = "dhcp-server"
 	link, probe, err := OpenSystemLink(s)
@@ -117,7 +129,7 @@ func TestLinuxDiagnosticBroadcast(t *testing.T) {
 	client := s
 	client.Interface = "dhcp-client"
 	client.ServerIP = "192.0.2.3"
-	result, err := ProbeServers(context.Background(), client, time.Second)
+	result, err := ProbeServers(context.Background(), client, 3*time.Second)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"192.0.2.2"}, result.Servers)
 	assert.False(t, result.Truncated)

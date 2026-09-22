@@ -22,6 +22,7 @@ OPT_INS = ("ISOLATED_TEST", "UDHCPC_TEST", "NETNS_TEST", "CAPABILITY_TEST")
 # explicit inventory when adding or renaming a selected Linux qualification.
 LINUX_TESTS = {
     "dhcp": {
+        "TestLinuxARPProbeResilience",
         "TestLinuxMinimalServiceCapabilities", "TestLinuxIndependentClientAvoidsARPConflict",
         "TestLinuxDiagnosticBroadcast", "TestLinuxRuntimeProcessRestart",
         "TestLinuxIndependentClientRenewRestart", "TestLinuxIsolatedDelivery",
@@ -266,7 +267,7 @@ def main():
                  ("Stress selected: state plateau plus reconnect128, renewal, random1024, random4096, slow, failed."
                   if args.stress else
                   "SKIP / DEFERRED: `TestQualificationStatePlateau` and `TestDHCPQualificationCoexistence` (enable --stress)."),
-                 ("Stress uses 5-second samples, mixed DNS queries at target 1000 QPS; reconnect may take 60 seconds. "
+                  ("Stress uses 5-second samples, mixed DNS queries at target 1000 QPS; reconnect may take 180 seconds. "
                   "DHCP wire/probe fixtures are injected; DNS uses real UDP and the real store. "
                   "These are fixture stress results, not physical-wire or Raspberry Pi benchmarks."
                   if args.stress else "Resource qualification is not enabled."),

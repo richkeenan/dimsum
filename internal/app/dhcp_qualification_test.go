@@ -318,7 +318,7 @@ rules:
 	sup.openLink = func(dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
 		return link, func(ctx context.Context, _ netip.Addr) (bool, error) {
 			select {
-			case <-time.After(200 * time.Millisecond):
+			case <-time.After(1500 * time.Millisecond):
 				return false, nil
 			case <-ctx.Done():
 				return false, ctx.Err()
@@ -508,12 +508,12 @@ rules:
 			t.Fatal("slow writer not entered")
 		}
 	}
-	for i := 0; i < 3 || mode == "reconnect128" && (sup.View() == nil || sup.View().Len() < 128) && time.Since(startWork) < 60*time.Second; i++ {
+	for i := 0; i < 3 || mode == "reconnect128" && (sup.View() == nil || sup.View().Len() < 128) && time.Since(startWork) < 180*time.Second; i++ {
 		current := measure(fmt.Sprintf("%s-%d", mode, i))
 		t.Logf("delta heap=%d rss=%d vs disabled-before", int64(current.Heap)-int64(before.Heap), int64(current.RSS)-int64(before.RSS))
 	}
 	if mode == "reconnect128" {
-		require.Eventually(t, func() bool { return len(sup.Leases()) == 128 && sup.View() != nil && sup.View().Len() == 128 }, 60*time.Second-time.Since(startWork), 20*time.Millisecond)
+		require.Eventually(t, func() bool { return len(sup.Leases()) == 128 && sup.View() != nil && sup.View().Len() == 128 }, max(time.Millisecond, 180*time.Second-time.Since(startWork)), 20*time.Millisecond)
 	}
 	stopWork()
 	if slow != nil {

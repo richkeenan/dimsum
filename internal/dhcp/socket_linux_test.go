@@ -164,7 +164,7 @@ func TestLinuxProductionAdapter(t *testing.T) {
 		assert.Equal(t, w.Payload, buf[42:n])
 	}
 	t.Run("quiet-probe", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		conflict, err := probe(ctx, netip.MustParseAddr("192.0.2.101"))
 		require.NoError(t, err)

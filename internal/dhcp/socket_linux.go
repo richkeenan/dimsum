@@ -236,27 +236,39 @@ func probeARP(ctx context.Context, iface *net.Interface, target netip.Addr) (boo
 		return false, err
 	}
 	defer c.Close()
-	// RFC5227 probe: sender protocol address zero, target is the candidate.
+	// RFC5227 packet format, with a bounded server-side retry policy: three
+	// probes spaced 500ms apart, listening throughout and for 500ms after the
+	// last probe. Reuse the socket so delayed replies are never lost between
+	// attempts. This is not the host-side address-adoption timing sequence.
 	b := [28]byte{0, 1, 8, 0, 6, 4, 0, 1}
 	copy(b[8:14], iface.HardwareAddr)
 	copy(b[24:28], target.AsSlice())
-	if err = c.SetWriteDeadline(time.Now().Add(50 * time.Millisecond)); err != nil {
-		return false, err
-	}
-	if _, err = c.WriteTo(b[:], &packet.Addr{HardwareAddr: net.HardwareAddr{255, 255, 255, 255, 255, 255}}); err != nil {
-		return false, err
-	}
-	quietUntil := time.Now().Add(200 * time.Millisecond)
+	nextProbe := time.Now()
+	sent := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		if !time.Now().Before(quietUntil) {
-			return false, nil
+		if !time.Now().Before(nextProbe) {
+			if sent == 3 {
+				return false, nil
+			}
+			deadline := time.Now().Add(50 * time.Millisecond)
+			if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+				deadline = d
+			}
+			if err = c.SetWriteDeadline(deadline); err != nil {
+				return false, err
+			}
+			if _, err = c.WriteTo(b[:], &packet.Addr{HardwareAddr: net.HardwareAddr{255, 255, 255, 255, 255, 255}}); err != nil {
+				return false, err
+			}
+			sent++
+			nextProbe = time.Now().Add(500 * time.Millisecond)
 		}
 		deadline := time.Now().Add(20 * time.Millisecond)
-		if quietUntil.Before(deadline) {
-			deadline = quietUntil
+		if nextProbe.Before(deadline) {
+			deadline = nextProbe
 		}
 		if err = c.SetReadDeadline(deadline); err != nil {
 			return false, err

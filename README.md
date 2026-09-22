@@ -88,6 +88,11 @@ The gateway is your router, not dimsum. Use a domain such as `home.arpa`, not
 `.local`. Account for static devices and existing DHCP leases when choosing a
 pool; quiet ARP or DHCP discovery cannot prove an address is unused.
 
+dimsum checks new candidate addresses with three ARP probes over 1.5 seconds
+before offering them, and quarantines detected conflicts. Existing unexpired
+leases retain ownership without requiring a probe response. Keep manually
+assigned addresses outside the dynamic pool, or reserve them for their devices.
+
 The DNS-only systemd unit retains only `CAP_NET_BIND_SERVICE`. To opt into DHCP,
 install [deploy/dhcp-capabilities.conf](deploy/dhcp-capabilities.conf) as
 `/etc/systemd/system/dimsum.service.d/20-dhcp.conf`. It adds **CAP_NET_RAW** and

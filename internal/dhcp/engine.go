@@ -379,7 +379,7 @@ func (e *Engine) discover(r Request, now time.Time, attempt int) Outcome {
 	if !validLabel(name) {
 		name = ""
 	}
-	v := &entry{lease: Lease{Identity: identity(r), MAC: r.MAC, Address: ip, Hostname: name, State: Probing}, request: r, token: e.token(), deadline: now.Add(500 * time.Millisecond), attempts: attempt}
+	v := &entry{lease: Lease{Identity: identity(r), MAC: r.MAC, Address: ip, Hostname: name, State: Probing}, request: r, token: e.token(), deadline: now.Add(probeTimeout), attempts: attempt}
 	e.byIP[ip] = v
 	e.byID[v.lease.Identity] = v
 	e.mark(ip, true)

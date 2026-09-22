@@ -284,6 +284,17 @@ func TestEngineReleaseDeclineExpiryAndCapacity(t *testing.T) {
 	require.NotNil(t, e.Handle(client(2, Discover)).Probe)
 }
 
+func TestEngineRetainsCandidateDuringRepeatedProbes(t *testing.T) {
+	e, now := engineFixture(t, fixtureSettings())
+	out := e.Handle(client(1, Discover))
+	require.NotNil(t, out.Probe)
+	*now = now.Add(1500 * time.Millisecond)
+	e.Tick()
+	result := e.CompleteProbe(ProbeResult{Token: out.Probe.Token})
+	require.NotNil(t, result.Reply, "candidate must remain held through repeated probes")
+	assert.Equal(t, Offer, result.Reply.Type)
+}
+
 func TestEngineProbeBoundsAndGeneration(t *testing.T) {
 	e, now := engineFixture(t, fixtureSettings())
 	a := e.Handle(client(1, Discover))
@@ -305,7 +316,7 @@ func TestEngineProbeBoundsAndGeneration(t *testing.T) {
 	e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
 	assert.Nil(t, out.Probe)
 	assert.Nil(t, out.Reply)
-	*now = now.Add(time.Second)
+	*now = now.Add(3 * time.Second)
 	e.Tick()
 	assert.Nil(t, e.CompleteProbe(ProbeResult{Token: b.Probe.Token}).Reply)
 	a = e.Handle(client(4, Discover))
