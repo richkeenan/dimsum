@@ -1,12 +1,15 @@
 package dhcp
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
 	"strings"
 	"time"
 )
+
+var ErrMutationPending = errors.New("dhcp: durable mutation pending or quarantine unsaved; drain before applying")
 
 type MessageType uint8
 
@@ -621,7 +624,7 @@ func (e *Engine) Apply(s Settings, generation uint64) error {
 	}
 	for _, v := range e.byIP {
 		if v.lease.State == CommitPending || v.dirtyQuarantine {
-			return fmt.Errorf("dhcp: durable mutation pending or quarantine unsaved; drain before applying")
+			return ErrMutationPending
 		}
 	}
 	keep := map[netip.Addr]*entry{}

@@ -12,22 +12,34 @@ import (
 // It MUST honor cancellation/deadlines. Error or timeout is never a silent probe.
 type ProbeFunc func(context.Context, netip.Addr) (conflict bool, err error)
 
-// ProbeScheduler has two fixed workers, no waiting job queue, and two result
-// slots. Submit never blocks. An unconsumed result holds its worker; overload
-// cannot create additional work. Construction is inert; Run is single-use.
+// ProbeScheduler has two fixed workers, one reserved handoff slot per worker,
+// no additional waiting backlog, and two result slots. Submit never blocks or
+// depends on a worker already being scheduled. Construction is inert; Run is
+// single-use. A blocked result delivery holds its worker slot.
 type ProbeScheduler struct {
 	probe   ProbeFunc
-	jobs    chan Probe
+	workers [2]chan Probe
+	idle    chan chan Probe
 	results chan ProbeResult
 	started atomic.Bool
+	stopped atomic.Bool
 }
 
 func NewProbeScheduler(probe ProbeFunc) *ProbeScheduler {
-	return &ProbeScheduler{probe: probe, jobs: make(chan Probe), results: make(chan ProbeResult, 2)}
+	s := &ProbeScheduler{probe: probe, idle: make(chan chan Probe, 2), results: make(chan ProbeResult, 2)}
+	for i := range s.workers {
+		s.workers[i] = make(chan Probe, 1)
+		s.idle <- s.workers[i]
+	}
+	return s
 }
 func (s *ProbeScheduler) Submit(p Probe) bool {
+	if s.stopped.Load() {
+		return false
+	}
 	select {
-	case s.jobs <- p:
+	case worker := <-s.idle:
+		worker <- p
 		return true
 	default:
 		return false
@@ -39,13 +51,13 @@ func (s *ProbeScheduler) Run(ctx context.Context) {
 		return
 	}
 	var wg sync.WaitGroup
-	for range 2 {
+	for _, worker := range s.workers {
 		wg.Go(func() {
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				case p := <-s.jobs:
+				case p := <-worker:
 					deadline := time.Now().Add(500 * time.Millisecond)
 					if p.Deadline.Before(deadline) {
 						deadline = p.Deadline
@@ -61,10 +73,12 @@ func (s *ProbeScheduler) Run(ctx context.Context) {
 					case <-ctx.Done():
 						return
 					}
+					s.idle <- worker
 				}
 			}
 		})
 	}
 	wg.Wait()
+	s.stopped.Store(true)
 	close(s.results)
 }

@@ -47,3 +47,27 @@ func TestProbeSchedulerBoundsDeadlineAndShutdown(t *testing.T) {
 	}
 	assert.Zero(t, active.Load())
 }
+
+func TestProbeSchedulerReservesOnlyTwoStartupHandoffs(t *testing.T) {
+	s := NewProbeScheduler(func(context.Context, netip.Addr) (bool, error) { return false, nil })
+	job := Probe{Token: Token{1, 1}, Address: netip.MustParseAddr("192.0.2.100"), Deadline: time.Now().Add(time.Second)}
+	require.True(t, s.Submit(job), "first worker slot must not depend on goroutine scheduling")
+	job.Token.Sequence = 2
+	require.True(t, s.Submit(job))
+	assert.False(t, s.Submit(job), "no waiting backlog beyond two worker handoffs")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	for range 2 {
+		select {
+		case result := <-s.Results():
+			assert.NoError(t, result.Err)
+		case <-time.After(time.Second):
+			t.Fatal("reserved handoff lost")
+		}
+	}
+	cancel()
+	<-done
+	assert.False(t, s.Submit(job))
+}
