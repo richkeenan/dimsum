@@ -107,6 +107,8 @@ func TestTransportRejectsOversizeTruncationAndMalformed(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("valid request not handled")
 	}
+	// Handler delivery can precede the receive loop's independent counter update.
+	require.Eventually(t, func() bool { return r.Stats().Admitted == 2 }, time.Second, time.Millisecond)
 	s := r.Stats()
 	assert.EqualValues(t, 2, s.Oversized)
 	assert.EqualValues(t, 1, s.Malformed)
