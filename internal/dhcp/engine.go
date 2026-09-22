@@ -564,8 +564,9 @@ func (e *Engine) Tick() []Mutation {
 		return nil
 	}
 	var out []Mutation
-	for _, l := range e.Leases() {
-		v := e.byIP[l.Address]
+	// Deleting the current entry during map iteration is safe. Inspection order
+	// is irrelevant to expiry; avoid sorting/copying all ownership every tick.
+	for _, v := range e.byIP {
 		if v.dirtyQuarantine && v.lease.State != CommitPending {
 			out = append(out, *e.mutate(v, PutLease, v.lease, Request{}).Mutation)
 			continue

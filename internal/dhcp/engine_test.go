@@ -145,6 +145,15 @@ func TestEngineRenewalReusesTransactionID(t *testing.T) {
 	require.NotNil(t, e.CompleteCommit(CommitResult{Token: m.Token}).Reply)
 }
 
+func TestEngineIdleTickAllocationBudget(t *testing.T) {
+	e, _ := engineFixture(t, fixtureSettings())
+	bind(t, e, client(1, Discover))
+	var mutations []Mutation
+	allocs := testing.AllocsPerRun(100, func() { mutations = e.Tick() })
+	assert.Empty(t, mutations)
+	assert.Zero(t, allocs, "idle expiry scans must not allocate sorted inspection copies")
+}
+
 func TestEngineReleaseDeclineExpiryAndCapacity(t *testing.T) {
 	s := fixtureSettings()
 	s.RangeEnd = s.RangeStart

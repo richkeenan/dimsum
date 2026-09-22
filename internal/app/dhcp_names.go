@@ -65,6 +65,12 @@ func (d *dhcpNames) capture(snapshot *config.Snapshot) *localdns.Leases {
 			rows = append(rows, localdns.Lease{Address: l.Address, Hostname: l.Hostname, Expiry: l.Expiry})
 		}
 	}
+	if cached := d.current.Load(); cached != nil && cached.snapshot == snapshot && cached.source.Generation() == source.Generation() {
+		if leases := cached.leases.RefreshExpiries(rows); leases != nil {
+			d.current.Store(&dhcpNamePublication{source: source, snapshot: snapshot, leases: leases})
+			return leases
+		}
+	}
 	reservations := make(map[netip.Addr]string, len(settings.Reservations))
 	for _, r := range settings.Reservations {
 		if r.Hostname != "" {

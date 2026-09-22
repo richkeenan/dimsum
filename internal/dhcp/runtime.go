@@ -306,10 +306,21 @@ func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link
 				pending = &q
 			}
 		case request := <-packets:
+			var outcome Outcome
 			if pending == nil {
-				dispatch(e.Handle(request))
+				outcome = e.Handle(request)
+				dispatch(outcome)
 			}
-			r.publish(e, s, g, false)
+			if outcome.Mutation != nil || outcome.Probe != nil {
+				r.publish(e, s, g, false)
+			} else {
+				// Ignored packets and retransmitted replies do not change visible
+				// lease rows. Preserve the inspection snapshot instead of copying
+				// and sorting thousands of rows for each excess identity.
+				r.mu.Lock()
+				r.status.ClockSuspended = e.ClockSuspended()
+				r.mu.Unlock()
+			}
 		case result := <-scheduler.Results():
 			dispatch(e.CompleteProbe(result))
 			r.publish(e, s, g, false)
@@ -339,10 +350,18 @@ func (r *Runtime) run(ctx context.Context, e *Engine, s Settings, g uint64, link
 			}
 			r.publish(e, s, g, true)
 		case <-ticker.C:
-			for _, m := range e.Tick() {
+			held := len(e.byIP)
+			mutations := e.Tick()
+			for _, m := range mutations {
 				dispatch(Outcome{Mutation: &m})
 			}
-			r.publish(e, s, g, false)
+			if len(mutations) != 0 || len(e.byIP) != held {
+				r.publish(e, s, g, false)
+			} else {
+				r.mu.Lock()
+				r.status.ClockSuspended = e.ClockSuspended()
+				r.mu.Unlock()
+			}
 		}
 	}
 }

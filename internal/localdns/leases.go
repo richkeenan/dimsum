@@ -33,6 +33,8 @@ type Leases struct {
 	domainWire     []byte
 	records        map[string]leaseRecord
 	names          map[netip.Addr]Lease
+	labels         map[netip.Addr]string
+	expiries       map[netip.Addr]time.Time
 	explicitExists map[string]bool
 	negative       [31]dnswire.SyntheticRecord
 }
@@ -68,7 +70,7 @@ func addressLabel(s string) bool {
 // Duplicate labels all fall back, so names do not depend on iteration order.
 func BuildLeases(generation uint64, domain string, rows []Lease, reservations map[netip.Addr]string, explicit *Zones) *Leases {
 	domain = strings.TrimSuffix(strings.ToLower(domain), ".")
-	v := &Leases{generation: generation, domain: domain, domainWire: wire(domain), records: make(map[string]leaseRecord), names: make(map[netip.Addr]Lease)}
+	v := &Leases{generation: generation, domain: domain, domainWire: wire(domain), records: make(map[string]leaseRecord), names: make(map[netip.Addr]Lease), labels: make(map[netip.Addr]string, len(rows))}
 	for ttl := range v.negative {
 		v.negative[ttl] = dnswire.NegativeSOA(v.domainWire, uint32(ttl))
 	}
@@ -106,6 +108,7 @@ func BuildLeases(generation uint64, domain string, rows []Lease, reservations ma
 		if !l.Address.Is4() {
 			continue
 		}
+		v.labels[l.Address] = l.Hostname
 		label := strings.ToLower(l.Hostname)
 		if n := reservations[l.Address]; n != "" {
 			label = strings.ToLower(n)
@@ -147,9 +150,35 @@ func BuildLeases(generation uint64, domain string, rows []Lease, reservations ma
 	return v
 }
 
+// RefreshExpiries shares immutable name/wire indexes when only lease lifetimes
+// changed. A caller must rebuild on configuration changes. A changed row set or
+// source hostname returns nil so conflict/fallback resolution cannot be skipped.
+// Previously captured views retain their own expiry map and remain unchanged.
+func (v *Leases) RefreshExpiries(rows []Lease) *Leases {
+	if v == nil || len(rows) != len(v.labels) {
+		return nil
+	}
+	expiries := make(map[netip.Addr]time.Time, len(rows))
+	for _, l := range rows {
+		if label, ok := v.labels[l.Address]; !ok || label != l.Hostname {
+			return nil
+		}
+		expiries[l.Address] = l.Expiry
+	}
+	if len(expiries) != len(rows) {
+		return nil
+	}
+	next := *v
+	next.expiries = expiries
+	return &next
+}
+
 func (v *Leases) Name(a netip.Addr, now time.Time) Lease {
 	if v != nil {
 		l := v.names[a.Unmap()]
+		if expiry, ok := v.expiries[a.Unmap()]; ok {
+			l.Expiry = expiry
+		}
 		if l.Reservation && !now.Before(l.Expiry) {
 			l.Expiry = time.Time{}
 			return l
@@ -176,10 +205,14 @@ func (v *Leases) lookup(name []byte, typ uint16, now time.Time) (dnswire.Synthet
 		return dnswire.SyntheticRecord{}, false
 	}
 	r, ok := v.records[string(name)]
-	if !ok || !now.Before(r.lease.Expiry) {
+	expiry := r.lease.Expiry
+	if v.expiries != nil {
+		expiry = v.expiries[r.lease.Address]
+	}
+	if !ok || !now.Before(expiry) {
 		return dnswire.SyntheticRecord{}, false
 	}
-	ttl := uint32(min(30, r.lease.Expiry.Sub(now)/time.Second))
+	ttl := uint32(min(30, expiry.Sub(now)/time.Second))
 	if typ != r.typ {
 		return v.negative[ttl], true
 	}

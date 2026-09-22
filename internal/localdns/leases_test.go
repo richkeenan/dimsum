@@ -12,6 +12,46 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLeaseExpiryRefreshPreservesCapturedAnswers(t *testing.T) {
+	now := time.Now()
+	a := netip.MustParseAddr("192.0.2.100")
+	b := netip.MustParseAddr("192.0.2.101")
+	rows := []localdns.Lease{{Address: a, Hostname: "desk", Expiry: now.Add(time.Second)}, {Address: b, Hostname: "desk", Expiry: now.Add(time.Second)}}
+	old := localdns.BuildLeases(7, "home.arpa", rows, map[netip.Addr]string{b: "printer"}, nil)
+	rows[0].Expiry = now.Add(time.Hour)
+	rows[1].Expiry = now.Add(time.Hour)
+	fresh := old.RefreshExpiries(rows)
+	require.NotNil(t, fresh)
+	assert.EqualValues(t, 7, fresh.Generation())
+	assert.Empty(t, old.Name(a, now.Add(2*time.Second)).Hostname)
+	assert.NotEmpty(t, fresh.Name(a, now.Add(2*time.Second)).Hostname)
+	expected := localdns.BuildLeases(7, "home.arpa", rows, map[netip.Addr]string{b: "printer"}, nil)
+	for _, name := range []string{fresh.Name(a, now).Hostname + ".", "printer.home.arpa.", "100.2.0.192.in-addr.arpa."} {
+		for _, typ := range []uint16{dns.TypeA, dns.TypeAAAA, dns.TypePTR} {
+			q := new(dns.Msg)
+			q.SetQuestion(name, typ)
+			wire, err := q.Pack()
+			require.NoError(t, err)
+			var m dnswire.Message
+			require.NoError(t, dnswire.ParseRequest(wire, &m))
+			left, right := make([]byte, 1232), make([]byte, 1232)
+			n, ok, err := fresh.Answer(left, &m, now.Add(2*time.Second))
+			require.NoError(t, err)
+			want, wok, err := expected.Answer(right, &m, now.Add(2*time.Second))
+			require.NoError(t, err)
+			assert.Equal(t, wok, ok)
+			assert.Equal(t, right[:want], left[:n])
+		}
+	}
+	rows[0].Hostname = "changed"
+	assert.Nil(t, fresh.RefreshExpiries(rows), "name changes require full conflict resolution")
+	rows[0].Hostname = "desk"
+	rows[0].Address = netip.MustParseAddr("192.0.2.102")
+	assert.Nil(t, fresh.RefreshExpiries(rows), "address changes require rebuilding records")
+	assert.Nil(t, fresh.RefreshExpiries(rows[:1]), "removals must not retain stale records")
+	assert.Nil(t, fresh.RefreshExpiries([]localdns.Lease{rows[1], rows[1]}), "duplicate addresses are not a complete refresh")
+}
+
 func TestDHCPDomainExplicitEmptyNonterminalsAndAliases(t *testing.T) {
 	now := time.Now()
 	z, err := localdns.Build(nil, []localdns.Record{
