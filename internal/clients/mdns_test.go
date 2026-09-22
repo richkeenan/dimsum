@@ -269,7 +269,8 @@ func TestMDNSServiceChainSurvivesReverseBacklog(t *testing.T) {
 				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example._airplay._tcp.local. 120 IN SRV 0 0 7000 Example-TV.local."))}
 			case question.Name == "example-tv.local." && question.Qtype == 1:
 				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example-TV.local. 120 IN A 192.0.2.20"))}
-				require.Eventually(t, func() bool { return m.Get(netip.MustParseAddr("192.0.2.20")).Name == "example-tv.local" }, 2*time.Second, 10*time.Millisecond)
+				require.Eventually(t, func() bool { return m.Get(netip.MustParseAddr("192.0.2.20")).Name == "Example" }, 2*time.Second, 10*time.Millisecond)
+				assert.Equal(t, "example-tv.local", m.Get(netip.MustParseAddr("192.0.2.20")).Device.Hostname)
 				return
 			}
 		case <-timeout.C:

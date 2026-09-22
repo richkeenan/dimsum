@@ -125,3 +125,65 @@ func TestServiceIdentifiersDoNotOutrankUsefulDeviceLabels(t *testing.T) {
 		assert.Equal(t, "android.local", enrichDiscovered(n, now).Name, label)
 	}
 }
+
+func TestDeviceFriendlyLabelsOutrankSpecificDiscoveredHostnames(t *testing.T) {
+	now := time.Now()
+	for _, tt := range []struct{ service, label string }{
+		{"_airplay._tcp", "Example’s MacBook Air"},
+		{"_companion-link._tcp", "Example’s MacBook Air"},
+		{"_googlecast._tcp", "Example’s MacBook Air"},
+		{"_raop._tcp", "020000000001@Example’s MacBook Air"},
+	} {
+		t.Run(tt.service, func(t *testing.T) {
+			n := Name{Name: "examples-macbook-air.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "examples-macbook-air.local", Evidence: []Evidence{
+				{Source: "mdns", Hostname: "examples-macbook-air.local", Expires: now.Add(time.Minute)},
+				{Source: "dns-sd", Hostname: "examples-macbook-air.local", Label: tt.label, ServiceType: tt.service, Updated: now, Expires: now.Add(10 * time.Second)},
+			}}}
+			got := enrichDiscovered(n, now)
+			assert.Equal(t, "Example’s MacBook Air", got.Name)
+			assert.Equal(t, "dns-sd", got.Source)
+			assert.Equal(t, "examples-macbook-air.local", got.Device.Hostname)
+			assert.Equal(t, "laptop", got.Device.Category)
+			assert.Equal(t, tt.label, got.Device.Evidence[1].Label, "retain raw service evidence")
+			assert.Equal(t, tt.label, n.Device.Evidence[1].Label, "do not mutate cached input")
+			after := mergeDiscovered(Name{Source: "unknown"}, got, now.Add(11*time.Second))
+			assert.Equal(t, "examples-macbook-air.local", after.Name)
+			assert.Equal(t, "mdns", after.Source)
+			for _, source := range []string{"override", "local", "hosts", "router-ptr"} {
+				primary := Name{Name: "Owner's choice", Source: source, Fresh: true}
+				assert.Equal(t, "Owner's choice", mergeDiscovered(primary, got, now).Name, source)
+			}
+		})
+	}
+}
+
+func TestDeviceFriendlySelectionRejectsGenericServicesAndMalformedRAOP(t *testing.T) {
+	now := time.Now()
+	for _, tt := range []struct{ service, label string }{
+		{"_http._tcp", "A web service"},
+		{"_spotify-connect._tcp", "Music player"},
+		{"_airplay._tcp", "Home"},
+		{"_airplay._tcp", "Display-0123456789abcdef0123456789abcdef"},
+		{"_airplay._tcp", "Bad\nname"},
+		{"_raop._tcp", "not-a-device-id@Example laptop"},
+		{"_raop._tcp", "020000000001@"},
+		{"_raop._tcp", "020000000001@Home"},
+	} {
+		n := Name{Name: "example-laptop.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "example-laptop.local", Evidence: []Evidence{
+			{Source: "mdns", Hostname: "example-laptop.local", Expires: now.Add(time.Minute)},
+			{Source: "dns-sd", Hostname: "example-laptop.local", Label: tt.label, ServiceType: tt.service, Expires: now.Add(time.Minute)},
+		}}}
+		assert.Equal(t, "example-laptop.local", enrichDiscovered(n, now).Name, "%s %q", tt.service, tt.label)
+	}
+}
+
+func TestDeviceFriendlySelectionIsIndependentOfAdvertisementOrder(t *testing.T) {
+	now := time.Now()
+	first := Evidence{Source: "dns-sd", Hostname: "example-laptop.local", Label: "Zed’s Laptop", ServiceType: "_airplay._tcp", Expires: now.Add(time.Minute)}
+	second := Evidence{Source: "dns-sd", Hostname: "example-laptop.local", Label: "020000000001@An audio service", ServiceType: "_raop._tcp", Expires: now.Add(time.Minute)}
+	third := Evidence{Source: "dns-sd", Hostname: "example-laptop.local", Label: "Zed’s Laptop", ServiceType: "_companion-link._tcp", Expires: now.Add(time.Minute)}
+	for _, evidence := range [][]Evidence{{first, second, third}, {third, second, first}, {second, first, third}} {
+		n := Name{Name: "example-laptop.local", Source: "mdns", Expires: now.Add(time.Minute), Device: &Enrichment{Hostname: "example-laptop.local", Evidence: evidence}}
+		assert.Equal(t, "Zed’s Laptop", enrichDiscovered(n, now).Name)
+	}
+}

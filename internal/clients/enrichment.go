@@ -92,6 +92,31 @@ func genericName(name string) bool {
 	return false
 }
 
+// Device-naming services outrank hostnames; arbitrary application labels only
+// replace generic hostnames. Evidence has already been address-verified by the
+// discovery graph. Preserve its raw label for inspection, including RAOP IDs.
+func discoveredLabel(e Evidence) (string, int) {
+	if e.Source != "dns-sd" {
+		return "", 0
+	}
+	label := safeLabel(e.Label)
+	priority := 1
+	switch strings.TrimSuffix(e.ServiceType, ".") {
+	case "_airplay._tcp", "_companion-link._tcp", "_googlecast._tcp":
+		priority = 4
+	case "_raop._tcp":
+		id, friendly, ok := strings.Cut(label, "@")
+		if !ok || len(id) != 12 || strings.Trim(strings.ToLower(id), "0123456789abcdef") != "" {
+			return "", 0
+		}
+		label, priority = safeLabel(friendly), 3
+	}
+	if label == "" || genericName(label) {
+		return "", 0
+	}
+	return label, priority
+}
+
 func enrichDiscovered(n Name, now time.Time) Name {
 	if !now.Before(n.Expires) {
 		return Name{Address: n.Address, Source: "unknown"}
@@ -127,9 +152,14 @@ func enrichDiscovered(n Name, now time.Time) Name {
 		d.Model, d.Manufacturer = "", ""
 	}
 	d.Fresh = true
+	priority := 2 // A useful hostname beats an arbitrary application's label.
+	if genericName(n.Name) {
+		priority = 0
+	}
 	for _, e := range d.Evidence {
-		if genericName(n.Name) && e.Label != "" && !genericName(e.Label) {
-			n.Name = e.Label
+		label, rank := discoveredLabel(e)
+		if rank > 0 && (rank > priority || (rank == priority && label < n.Name)) {
+			n.Name, priority = label, rank
 			n.Source = "dns-sd"
 		}
 		if d.Model == "" {
