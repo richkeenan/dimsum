@@ -42,7 +42,16 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
       expect((await call("get_dhcp")).status.saved_revision).toBe(inspected.status.saved_revision);
       return;
     }
+    if (!(await page.getByLabel("Subnet").isVisible())) {
+      await page.getByText("Edit settings", { exact: true }).click();
+    }
     await page.getByLabel("Subnet").fill("192.0.2.0/24");
+    // Replace host-derived suggestions as a coherent synthetic network.
+    await page.getByLabel("Network interface").fill("fixture0");
+    await page.getByLabel("Server IP address", { exact: true }).fill("192.0.2.2");
+    await page.getByLabel("Router IP address", { exact: true }).fill("192.0.2.1");
+    await page.getByLabel("First IP address").fill("192.0.2.100");
+    await page.getByLabel("Last IP address").fill("192.0.2.199");
     await page.getByLabel("Local domain", { exact: true }).fill("home.arpa");
     await page.getByRole("button", { name: "Save settings" }).click();
     await expect(page.getByText(/Settings saved/)).toBeVisible();

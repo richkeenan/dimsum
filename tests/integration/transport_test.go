@@ -206,7 +206,9 @@ func TestTransportExhaustionAndOversizedDatagram(t *testing.T) {
 	}
 	require.Eventually(t, func() bool { return s.Stats().SlotDrops > 0 }, time.Second, time.Millisecond)
 	// A valid short query followed by undeclared bytes must not be accepted as a short prefix.
-	big := make([]byte, 60000)
+	// Exceed the 2048-byte small slot while staying below macOS's default
+	// UDP send limit. This checks large-slot routing, not the host's maximum.
+	big := make([]byte, 4096)
 	copy(big, p)
 	_, e = u.Write(big)
 	require.NoError(t, e)
