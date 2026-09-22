@@ -24,8 +24,35 @@ not alter your router settings.
 Inspect service failures with `journalctl -u dimsum -n 50`. Check readiness with:
 
 ```sh
-sudo -u dimsum dimsum control diagnostics
+dimsum login
+dimsum control diagnostics
 ```
+
+## Command-line login
+
+The system service runs as the unprivileged `dimsum` account. Installation needs
+sudo to create the service and install system files; systemd grants the service
+`CAP_NET_BIND_SERVICE` so it can listen on DNS port 53.
+
+Run `dimsum login` from your normal account. Enter the dashboard password at the
+hidden prompt. The default server is `http://127.0.0.1:8080`; for a different
+address, use `dimsum login --server https://dns.example.net`. Subsequent
+`dimsum control` commands use this saved server without sudo.
+
+The CLI stores the server address and a revocable API token, not your password,
+in `dimsum/credentials.json` under your user configuration directory. On Linux
+this is `$XDG_CONFIG_HOME` or `~/.config`; on macOS the default is
+`~/Library/Application Support`. The directory has mode 0700 and the file 0600.
+For scripted login, use `--password-file PATH` or `--password-file -` for stdin.
+
+Run `dimsum logout` to revoke the token and delete the saved connection before
+logging in to another server. If the server is unavailable, logout keeps the
+credentials so you can retry. You can also revoke the token named `dimsum CLI`
+in **Settings → Agent access**. After revocation, run logout and log in again.
+
+For local recovery or service scripts, use `dimsum control --socket PATH ...`
+or set `DIMSUM_CONTROL_SOCKET`. An explicit socket takes precedence over the
+saved HTTP connection and requires access to that socket.
 
 ## Optional initial password
 
@@ -56,7 +83,7 @@ or the CLI. It does not reset them to the default.
 On a running native installation, use the local CLI to set a new password:
 
 ```sh
-sudo -u dimsum dimsum control password @-
+sudo -u dimsum dimsum control --socket /run/dimsum/control.sock password @-
 ```
 
 Enter a JSON object such as `{"password":"YOUR_NEW_PASSWORD"}`, then end standard

@@ -76,16 +76,22 @@ downloaded `.deb` instead.
 
 ## Command-line control
 
-On a native installation:
+Log in once as your normal user with the dashboard password (`admin` on a fresh
+installation), then run commands without sudo:
 
 ```sh
-sudo -u dimsum dimsum control help
-sudo -u dimsum dimsum control diagnostics
-sudo -u dimsum dimsum control settings
+dimsum login
+dimsum control help
+dimsum control diagnostics
+dimsum control settings
 ```
 
-The CLI uses a permission-protected Unix socket. Authenticated HTTP clients can
-retrieve the OpenAPI specification at `/api/v1/openapi.json`.
+For a remote server, use `dimsum login --server https://dns.example.net`.
+The CLI saves a revocable token in your user configuration directory. Run
+`dimsum logout` to revoke it and remove the saved connection. See the
+[deployment guide](guides/deployment.md#command-line-login) for storage and
+local recovery details. Authenticated HTTP clients can retrieve the OpenAPI
+specification at `/api/v1/openapi.json`.
 
 ## Guides
 

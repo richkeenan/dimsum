@@ -46,7 +46,9 @@ Performance accepts resolution_seconds=60|3600|86400 (at most 1500 buckets).
 It reports server-side average/p50/p95/p99, outcome timings and distribution.
 Percentiles are histogram estimates (up to 3.125% error), null for legacy data
 without fine timing coverage. Admission rejections are excluded.
-Socket defaults to DIMSUM_CONTROL_SOCKET or /run/dimsum/control.sock.
+Run dimsum login first to save an authenticated HTTP connection for your user.
+Run dimsum logout to revoke the saved token and remove the connection.
+For local recovery, --socket PATH or DIMSUM_CONTROL_SOCKET overrides HTTP login.
 Upstream presets (cloudflare, google, quad9):
   add upstreams '{"revision":"...","item":{"preset":"cloudflare","transport":"https"}}'
 Adds provider endpoints atomically, skipping existing servers.
@@ -65,10 +67,13 @@ Exit: 0 success, 2 usage, 3 connection/I/O, 4 rejected request, 5 conflict, 6 un
 `
 
 func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
-	socket := os.Getenv("DIMSUM_CONTROL_SOCKET")
-	if socket == "" {
-		socket = "/run/dimsum/control.sock"
+	if len(args) > 0 && args[0] == "login" {
+		return login(ctx, args[1:], out, stderr)
 	}
+	if len(args) > 0 && args[0] == "logout" {
+		return logout(ctx, args[1:], out, stderr)
+	}
+	socket := os.Getenv("DIMSUM_CONTROL_SOCKET")
 	if len(args) > 0 && args[0] == "control" {
 		args = args[1:]
 	}
@@ -182,20 +187,34 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		}
 		body = string(data)
 	}
-	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)
-	}}
-	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
+	client := httpClient()
+	base, token := "http://local", ""
+	if socket != "" {
+		transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, "unix", socket)
+		}}
+		defer transport.CloseIdleConnections()
+		client.Transport = transport
+	} else {
+		c, err := readCredentials()
+		if err != nil {
+			fmt.Fprintln(stderr, "run dimsum login first:", err)
+			return 3
+		}
+		base, token = c.Server, c.Token
+	}
 	if strings.HasPrefix(path, "/api/v1/events") {
 		client.Timeout = 0
 	}
-	req, e := http.NewRequestWithContext(ctx, method, "http://local"+path, strings.NewReader(body))
+	req, e := http.NewRequestWithContext(ctx, method, base+path, strings.NewReader(body))
 	if e != nil {
 		fmt.Fprintln(stderr, e)
 		return 2
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, e := client.Do(req)
 	if e != nil {
 		fmt.Fprintln(stderr, e)
@@ -203,7 +222,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	}
 	defer resp.Body.Close()
 	dst := out
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode >= 300 {
 		dst = stderr
 	}
 	if _, e = io.Copy(dst, resp.Body); e != nil {
@@ -216,7 +235,10 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	case 503:
 		return 6
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode == 401 {
+		fmt.Fprintln(stderr, "CLI login is no longer valid; run dimsum logout, then dimsum login")
+	}
+	if resp.StatusCode >= 300 {
 		return 4
 	}
 	return 0
