@@ -4,18 +4,50 @@
 
 # dimsum
 
-dimsum is a DNS ad blocker for your home or private network. Run it on a Linux
-server or Raspberry Pi, point your devices at it for DNS, and manage filtering
-through a web dashboard, CLI, or your AI agent.
+dimsum is a DNS ad blocker for your home or private network that you can manage
+through your AI agent. Run it on a Linux server or Raspberry Pi, point your
+devices at it for DNS, and ask your agent to configure filtering, investigate
+blocked domains, or manage local DNS. You can also use the web dashboard or CLI.
 
 - Block ads and trackers with filter lists, custom rules, and allow rules.
 - Configure local DNS records and inspect query history, clients, and upstream health.
 - Back up and restore configuration.
-- Manage the server through the browser, CLI, JSON API, or HTTP MCP.
+- Control the running server from your agent through built-in HTTP MCP.
 - Optionally provide DHCPv4 leases on Linux.
 
 A single executable includes the dashboard. Configuration lives in a
 comment-preserving YAML file; statistics, leases, and downloaded lists live separately.
+
+## Run your DNS through your agent
+
+Your agent can inspect and change dimsum's configuration through its built-in
+[Model Context Protocol (MCP)](guides/agent-control.md) server. Manage filter
+lists, block and allow rules, device names, local records, upstreams, settings,
+and DHCP from the same conversation you use to troubleshoot your network.
+Your agent uses the same control API as the dashboard and CLI.
+
+Try asking:
+
+> “Pause blocking for five minutes.”
+>
+> “Why is ads.example.com blocked? Show me the matching rule.”
+>
+> “Rename the device at 192.0.2.25 to Office laptop.”
+>
+> “Back up my configuration, then refresh my filter lists and check the result.”
+
+### Connect your agent
+
+1. Open **Settings → Agent access** and create a named token.
+2. Add an **HTTP / Streamable HTTP MCP server** in your agent client using the
+   displayed URL, such as `http://dns-server:8080/mcp`.
+3. Set the header to `Authorization: Bearer YOUR_TOKEN`.
+
+Tokens grant administrator access; revoke them in Settings. Protect their
+transport just as you would a dashboard password.
+
+See the [agent control guide](guides/agent-control.md) for setup, more example
+requests, and how your agent checks that changes have taken effect.
 
 ## Install
 
@@ -42,17 +74,6 @@ downloaded `.deb` instead.
 
 [Download releases](https://github.com/richkeenan/dimsum/releases).
 
-## Connect your agent
-
-1. Open **Settings → Agent access** and create a named token.
-2. Add an **HTTP / Streamable HTTP MCP server** in your agent client using the
-   displayed URL, such as `http://dns-server:8080/mcp`.
-3. Set the header to `Authorization: Bearer YOUR_TOKEN`.
-
-Ask “Which devices made the most DNS requests in the last hour?” or “Why is this
-domain blocked?” Tokens grant administrator access; revoke them in Settings.
-Protect their transport just as you would a dashboard password.
-
 ## Command-line control
 
 On a native installation:
@@ -68,6 +89,7 @@ retrieve the OpenAPI specification at `/api/v1/openapi.json`.
 
 ## Guides
 
+- [Agent control: setup and example requests](guides/agent-control.md)
 - [Deployment and password setup](guides/deployment.md)
 - [Configuration and supported settings](guides/configuration.md)
 - [Encrypted upstream DNS](guides/encrypted-upstreams.md)
