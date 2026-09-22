@@ -162,13 +162,20 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 	}()
 	lc := net.ListenConfig{}
 	for _, a := range c.DNS.Listen {
-		tcp, err := lc.Listen(ctx, "tcp", a)
+		// Preserve explicit IPv4 capability in both the socket and its reported
+		// address. Generic tcp may report [::] for an IPv4 wildcard; treating
+		// arbitrary IPv6 listeners as IPv4-capable would be incorrect.
+		tcpNetwork, udpNetwork := "tcp", "udp"
+		if address, err := netip.ParseAddrPort(a); err == nil && address.Addr().Is4() {
+			tcpNetwork, udpNetwork = "tcp4", "udp4"
+		}
+		tcp, err := lc.Listen(ctx, tcpNetwork, a)
 		if err != nil {
 			return fmt.Errorf("dns TCP %s: %w", a, err)
 		}
 		sockets.TCP = append(sockets.TCP, tcp)
 		bound := tcp.Addr().String()
-		udp, err := lc.ListenPacket(ctx, "udp", bound)
+		udp, err := lc.ListenPacket(ctx, udpNetwork, bound)
 		if err != nil {
 			return fmt.Errorf("dns UDP %s: %w", bound, err)
 		}
