@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import {
+  ListSubscriptions,
+  RefreshListsButton,
+  type ListToggle,
+} from "./lists";
 import {
   ClientDeviceButton,
   ClientIdentity,
@@ -98,7 +102,6 @@ const fields: Record<string, Field[]> = {
   ],
 };
 const columns: Record<string, string[]> = {
-  lists: ["label", "enabled", "rules"],
   rules: ["pattern", "action", "kind", "enabled"],
   records: ["name", "type", "value", "ttl"],
   upstreams: ["address"],
@@ -106,7 +109,7 @@ const columns: Record<string, string[]> = {
 };
 const descriptions: Record<string, string> = {
   lists:
-    "Block unwanted domains with a trusted list or add your own subscription.",
+    "Check a list to download and activate it immediately. Uncheck to disable it, or add your own URL.",
   rules:
     "Always block or allow a domain. Choose whether the rule also covers subdomains.",
   records:
@@ -146,54 +149,6 @@ export function editorDefaults(kind: string): Row {
     Object.assign(defaults, { ttl: 300, auto_ptr: false });
   return defaults;
 }
-function CatalogPicker({ choose }: { choose: (item: Row) => void }) {
-  const catalog = useResource<Row>("catalog");
-  const [selected, setSelected] = useState<Row>();
-  return (
-    <Resource state={catalog}>
-      <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal sm:col-span-2">
-        Start with a list
-        <select
-          className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          defaultValue=""
-          onChange={(e) => {
-            const item = rows(catalog.data).find(
-              (r) => r.id === e.target.value,
-            );
-            setSelected(item);
-            if (item) choose(item);
-          }}
-        >
-          <option value="">Custom URL</option>
-          {rows(catalog.data)
-            .filter((item) => item.available === true)
-            .map((item) => (
-              <option key={text(item.id)} value={text(item.id)}>
-                {text(item.label)}
-              </option>
-            ))}
-        </select>
-        <small className="text-xs font-normal text-muted-foreground">
-          {selected?.description
-            ? text(selected.description)
-            : "Choose a preset or enter a custom URL below."}
-        </small>
-      </label>
-    </Resource>
-  );
-}
-function ListName({ row }: { row: Row }) {
-  const catalog = useResource<Row>("catalog");
-  const preset = rows(catalog.data).find((item) => item.url === row.url);
-  let label = text(row.url);
-  try {
-    const url = new URL(String(row.url));
-    label = `${url.hostname}${url.pathname === "/" ? "" : url.pathname}`;
-  } catch {
-    /* Keep the returned URL readable even if it cannot be parsed. */
-  }
-  return <span>{preset ? text(preset.label) : label}</span>;
-}
 export default function Configuration({
   kind,
   range,
@@ -214,6 +169,7 @@ export default function Configuration({
   const [editRevision, setEditRevision] = useState("");
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
+  const [listToggle, setListToggle] = useState<ListToggle>();
   const [notice, setNotice] = useState<Row>();
   const [dashboardHost, setDashboardHost] = useState<{
     name: string;
@@ -223,7 +179,12 @@ export default function Configuration({
   const [dashboardURL, setDashboardURL] = useState("");
   const [hostError, setHostError] = useState<Error>();
   const revision = normalizeSettings(state.data).revision;
-  const ready = !!revision && !state.loading && !state.error;
+  const ready =
+    !!revision &&
+    !state.loading &&
+    !state.error &&
+    !busy &&
+    !(kind === "lists" && state.isFetching);
   const configuredClients = collectionRows(state.data);
   const observedClients = rows(state.data?.observed);
   const devices = [
@@ -322,6 +283,7 @@ export default function Configuration({
     } catch (e) {
       setError(e as Error);
     } finally {
+      if (kind === "lists") await state.reload();
       setBusy(false);
     }
   }
@@ -344,15 +306,40 @@ export default function Configuration({
       setBusy(false);
     }
   }
-  async function operation(path: string, body: Row) {
+  async function toggleList(row: Row, enabled: boolean) {
+    if (!ready) return;
     setError(undefined);
     setBusy(true);
+    setListToggle({ id: row.id, enabled });
     try {
-      setNotice(await api.send<Row>(path, "POST", body));
-      setTick((t) => t + 1);
+      await api.send<Row>(
+        "lists",
+        row.__index === undefined ? "POST" : "PATCH",
+        {
+          revision,
+          ...(row.__index === undefined
+            ? {
+                item: {
+                  ...editorDefaults("lists"),
+                  url: row.url,
+                  dialect: row.dialect,
+                  domain_kind: row.domain_kind,
+                  enabled,
+                },
+              }
+            : {
+                edits: [
+                  { path: [String(row.__index), "enabled"], value: enabled },
+                ],
+              }),
+        },
+      );
     } catch (e) {
       setError(e as Error);
     } finally {
+      // Join the refetch triggered by configuration-changed, or start one on failure.
+      await state.reload({ cancelRefetch: false });
+      setListToggle(undefined);
       setBusy(false);
     }
   }
@@ -469,136 +456,102 @@ export default function Configuration({
         <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
             <h2 className="text-sm font-medium">
-              {kind === "clients"
-                ? "Configured friendly names"
-                : "Configured " + kind}
+              {kind === "lists"
+                ? "Blocklist subscriptions"
+                : kind === "clients"
+                  ? "Configured friendly names"
+                  : "Configured " + kind}
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               {kind === "lists" && (
-                <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => operation("jobs", { kind: "refresh" })}
-                >
-                  Update blocklists
-                </Button>
+                <RefreshListsButton
+                  disabled={!ready}
+                  completed={() => setTick((t) => t + 1)}
+                />
               )}
               <Button disabled={!ready} onClick={() => open()}>
-                {kind === "clients"
-                  ? "Name an address"
-                  : "Add " +
-                    (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
+                {kind === "lists"
+                  ? "Add custom URL"
+                  : kind === "clients"
+                    ? "Name an address"
+                    : "Add " +
+                      (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
               </Button>
             </div>
           </div>
           <Resource state={state} retry={() => setTick((t) => t + 1)}>
-            <DataTable
-              items={collectionRows(state.data).map((r) => {
-                if (kind !== "lists") return r;
-                const source = rows(state.data?.status, "sources").find(
-                  (s) => s.id === r.id,
-                );
-                return {
-                  ...r,
-                  active_enabled: source?.enabled,
-                  usable: source?.usable,
-                  rules: source?.rules,
-                  sha256: source?.sha256,
-                  error: source?.error,
-                };
-              })}
-              columns={[
-                ...columns[kind].map((key) => ({
-                  key,
-                  label:
-                    (
-                      {
-                        label: "List",
-                        enabled: "Status",
-                        rules: "Domains",
-                        pattern: "Domain or pattern",
-                        kind: "Matches",
-                        action: "Action",
-                        ttl: "Lifetime (s)",
-                        name: "Name",
-                        address: "Address",
-                        type: "Type",
-                        value: "Target",
-                      } as Record<string, string>
-                    )[key] ?? key,
-                  render: (r: Row) =>
-                    kind === "upstreams" && key === "address" ? (
-                      <UpstreamName address={text(r.address)} />
-                    ) : key === "label" ? (
-                      <ListName row={r} />
-                    ) : key === "enabled" ? (
-                      r.enabled === true ? (
-                        r.error ? (
-                          "Refresh failed"
-                        ) : kind === "lists" && r.usable === false ? (
-                          "Waiting for refresh"
-                        ) : (
+            {kind === "lists" ? (
+              <ListSubscriptions
+                data={state.data}
+                disabled={!ready}
+                pending={listToggle}
+                toggle={(row, enabled) => void toggleList(row, enabled)}
+                edit={open}
+              />
+            ) : (
+              <DataTable
+                items={collectionRows(state.data)}
+                columns={[
+                  ...columns[kind].map((key) => ({
+                    key,
+                    label:
+                      (
+                        {
+                          enabled: "Status",
+                          pattern: "Domain or pattern",
+                          kind: "Matches",
+                          action: "Action",
+                          ttl: "Lifetime (s)",
+                          name: "Name",
+                          address: "Address",
+                          type: "Type",
+                          value: "Target",
+                        } as Record<string, string>
+                      )[key] ?? key,
+                    render: (r: Row) =>
+                      kind === "upstreams" && key === "address" ? (
+                        <UpstreamName address={text(r.address)} />
+                      ) : key === "enabled" ? (
+                        r.enabled === true ? (
                           "Enabled"
+                        ) : r.enabled === false ? (
+                          "Disabled"
+                        ) : (
+                          "Unknown"
                         )
-                      ) : r.enabled === false ? (
-                        "Disabled"
+                      ) : key === "ttl" ? (
+                        count(r[key])
                       ) : (
-                        "Unknown"
-                      )
-                    ) : key === "rules" || key === "ttl" ? (
-                      count(r[key])
-                    ) : (
-                      (optionLabels[String(r[key])] ?? text(r[key]))
-                    ),
-                })),
-                {
-                  key: "actions",
-                  label: "Actions",
-                  align: "right",
-                  render: (r) => (
-                    <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={!ready}
-                        onClick={() => open(r)}
-                      >
-                        Edit
-                      </Button>
-                      {kind === "upstreams" && (
-                        <UpstreamConnectionTest
-                          key={text(r.address)}
-                          address={text(r.address)}
-                        />
-                      )}
-                      {kind === "lists" && (
-                        <details className="group min-w-0 text-left">
-                          <Button asChild size="sm" variant="outline">
-                            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                              <ChevronRight
-                                aria-hidden="true"
-                                className="group-open:rotate-90"
-                              />
-                              Details
-                            </summary>
-                          </Button>
-                          <Details
-                            value={{
-                              URL: r.url,
-                              format: r.dialect,
-                              error: r.error,
-                              ID: r.id,
-                              checksum: r.sha256,
-                            }}
+                        (optionLabels[String(r[key])] ?? text(r[key]))
+                      ),
+                  })),
+                  {
+                    key: "actions",
+                    label: "Actions",
+                    align: "right",
+                    render: (r) => (
+                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!ready}
+                          onClick={() => open(r)}
+                        >
+                          Edit
+                        </Button>
+                        {kind === "upstreams" && (
+                          <UpstreamConnectionTest
+                            key={text(r.address)}
+                            address={text(r.address)}
                           />
-                        </details>
-                      )}
-                    </div>
-                  ),
-                },
-              ]}
-              empty={"No " + kind + " returned by the service."}
-            />
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+                empty={"No " + kind + " returned by the service."}
+              />
+            )}
             {kind === "lists" &&
               rows(state.data).some((r) => r.homepage || r.license) && (
                 <div className="p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground">
@@ -700,19 +653,6 @@ export default function Configuration({
               <div
                 className={`mt-3.5 mb-6 grid min-w-0 grid-cols-1 gap-x-6 gap-y-5 [&>*]:min-w-0 ${kind === "lists" ? "sm:grid-cols-2" : "min-[701px]:grid-cols-2"}`}
               >
-                {kind === "lists" && !original && (
-                  <CatalogPicker
-                    choose={(item) =>
-                      setEditing({
-                        ...editing,
-                        url: item.url,
-                        dialect: item.dialect,
-                        domain_kind: item.domain_kind,
-                        enabled: item.default_enabled ?? true,
-                      })
-                    }
-                  />
-                )}
                 {fields[kind].map((f) => (
                   <label
                     className={`flex min-w-0 flex-col gap-1.5 text-xs font-normal ${kind === "lists" && f.key === "url" ? "sm:col-span-2" : ""}`}
@@ -811,7 +751,9 @@ export default function Configuration({
                 )}
                 <Button disabled={busy || !editRevision}>
                   {busy
-                    ? "Saving…"
+                    ? kind === "lists" && editing.enabled === true
+                      ? "Downloading…"
+                      : "Saving…"
                     : kind === "lists" && !original
                       ? "Add list"
                       : "Save changes"}

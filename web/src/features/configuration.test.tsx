@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import Configuration from "./configuration";
+import { RefreshListsButton } from "./lists";
 import SettingsView, { PasswordForm, Revision } from "./settings";
 import Jobs from "./settings/jobs";
 import Diagnostics from "./diagnostics";
@@ -19,7 +20,11 @@ const resources = vi.hoisted(() => ({
   >,
 }));
 vi.mock("@/lib/hooks", () => ({
-  useResource: (path: string) => resources.values[path] ?? { loading: false },
+  useResource: (path: string) => ({
+    ...resources.values[path],
+    loading: resources.values[path]?.loading ?? false,
+    reload: async () => {},
+  }),
 }));
 
 beforeEach(() => {
@@ -129,19 +134,12 @@ it("validates custom upstreams locally and formats IPv6 with the default port", 
   );
 });
 
-it("uses catalog values and generates an ID without requiring a manual one", async () => {
+it("subscribes directly from the catalog with its parser settings", async () => {
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   render(<Configuration kind="lists" range="" />);
-  fireEvent.click(screen.getByRole("button", { name: "Add list" }));
-  const dialog = screen.getByRole("dialog");
-  expect(within(dialog).queryByText("Source ID")).not.toBeInTheDocument();
-  fireEvent.change(within(dialog).getByLabelText(/Start with a list/), {
-    target: { value: "recommended" },
-  });
-  expect(within(dialog).getByRole("combobox", { name: "Format" })).toHaveValue(
-    "dns-adblock",
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Recommended domains" }),
   );
-  fireEvent.click(within(dialog).getByRole("button", { name: "Add list" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("lists", "POST", {
       revision: "original-revision",
@@ -154,7 +152,250 @@ it("uses catalog values and generates an ID without requiring a manual one", asy
       },
     }),
   );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(send).toHaveBeenCalledTimes(1);
 });
+
+it.each([true, false])(
+  "toggles an existing subscription without duplicating it (enabled=%s)",
+  async (enabled) => {
+    resources.values.lists.data = {
+      revision: "original-revision",
+      items: [
+        {
+          id: "existing",
+          url: "https://example.com/domains",
+          dialect: "dns-adblock",
+          domain_kind: "suffix",
+          enabled,
+        },
+      ],
+    };
+    const send = vi.spyOn(api, "send").mockResolvedValue({});
+    render(<Configuration kind="lists" range="" />);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Recommended domains" }),
+    );
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("lists", "PATCH", {
+        revision: "original-revision",
+        edits: [{ path: ["0", "enabled"], value: !enabled }],
+      }),
+    );
+  },
+);
+
+it("shows download progress then the source failure without claiming it is active", async () => {
+  let finish!: (value: unknown) => void;
+  vi.spyOn(api, "send").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }) as never,
+  );
+  const view = render(<Configuration kind="lists" range="" />);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Recommended domains" }),
+  );
+  expect(screen.getByText("Downloading…")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox")).toBeDisabled();
+  resources.values.lists.data = {
+    revision: "saved",
+    items: [
+      { id: "existing", url: "https://example.com/domains", enabled: true },
+    ],
+    status: {
+      sources: [
+        {
+          id: "existing",
+          enabled: true,
+          usable: false,
+          error: "Publisher returned HTTP 503",
+        },
+      ],
+    },
+  };
+  finish({ saved_revision: "saved" });
+  await waitFor(() =>
+    expect(screen.queryByText("Downloading…")).not.toBeInTheDocument(),
+  );
+  view.rerender(<Configuration kind="lists" range="" />);
+  expect(screen.getByRole("checkbox")).toBeChecked();
+  expect(screen.getByText("Download failed")).toBeInTheDocument();
+  expect(screen.getByText("Publisher returned HTTP 503")).toBeInTheDocument();
+  expect(screen.queryByText("Active", { exact: true })).not.toBeInTheDocument();
+});
+
+it("keeps a failed checkbox mutation unchecked and surfaces the conflict", async () => {
+  vi.spyOn(api, "send").mockRejectedValue(
+    new APIError(409, "revision_conflict", "Changed on disk"),
+  );
+  render(<Configuration kind="lists" range="" />);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Recommended domains" }),
+  );
+  expect(await screen.findByRole("alert")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+});
+
+it("adds a custom URL with the chosen format", async () => {
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Add custom URL" }));
+  const dialog = screen.getByRole("dialog");
+  fireEvent.change(within(dialog).getByRole("textbox", { name: /List URL/ }), {
+    target: { value: "https://example.org/hosts" },
+  });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Format" }), {
+    target: { value: "hosts" },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Add list" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("lists", "POST", {
+      revision: "original-revision",
+      item: {
+        id: expect.stringMatching(/^list-/),
+        url: "https://example.org/hosts",
+        dialect: "hosts",
+        domain_kind: "exact",
+        enabled: true,
+      },
+    }),
+  );
+});
+
+it("keeps a retained source visibly active when its update fails", () => {
+  resources.values.lists.data = {
+    revision: "original-revision",
+    items: [{ id: "custom", url: "https://example.org/hosts", enabled: true }],
+    status: {
+      sources: [
+        {
+          id: "custom",
+          enabled: true,
+          usable: true,
+          rules: 42,
+          error: "Retained previous source after HTTP 503",
+        },
+      ],
+    },
+  };
+  render(<Configuration kind="lists" range="" />);
+  expect(
+    screen.getByRole("checkbox", { name: "example.org/hosts" }),
+  ).toBeChecked();
+  expect(screen.getByText("Active · update failed")).toBeInTheDocument();
+  expect(
+    screen.getByText("Retained previous source after HTTP 503"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("cell", { name: "42" })).toBeInTheDocument();
+});
+
+it("keeps a catalog choice distinct from a source with the same ID and an edited URL", async () => {
+  resources.values.lists.data = {
+    revision: "original-revision",
+    items: [
+      { id: "recommended", url: "https://example.org/edited", enabled: true },
+    ],
+    status: {
+      sources: [{ id: "recommended", enabled: true, usable: true, rules: 42 }],
+    },
+  };
+  let finish!: (value: unknown) => void;
+  vi.spyOn(api, "send").mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }) as never,
+  );
+  render(<Configuration kind="lists" range="" />);
+  const choice = screen.getByRole("checkbox", { name: "Recommended domains" });
+  const configured = screen.getByRole("checkbox", {
+    name: "example.org/edited",
+  });
+  expect(choice).not.toBeChecked();
+  expect(configured).toBeChecked();
+  expect(
+    within(choice.closest("tr")!).queryByRole("cell", { name: "42" }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(configured.closest("tr")!).getByRole("cell", { name: "42" }),
+  ).toBeInTheDocument();
+  fireEvent.click(choice);
+  expect(screen.getAllByText("Downloading…")).toHaveLength(1);
+  expect(
+    within(configured.closest("tr")!).getByText("Active", { exact: true }),
+  ).toBeInTheDocument();
+  finish({});
+  await waitFor(() =>
+    expect(screen.queryByText("Downloading…")).not.toBeInTheDocument(),
+  );
+});
+
+it("refreshes source status after mounting during a running refresh", async () => {
+  resources.values.jobs = {
+    loading: false,
+    data: { items: [{ id: "prior-job", kind: "refresh", state: "running" }] },
+  };
+  const completed = vi.fn();
+  const view = render(
+    <RefreshListsButton disabled={false} completed={completed} />,
+  );
+  expect(
+    screen.getByRole("button", { name: "Updating blocklists…" }),
+  ).toBeDisabled();
+  resources.values.jobs.data = {
+    items: [{ id: "prior-job", kind: "refresh", state: "succeeded" }],
+  };
+  view.rerender(<RefreshListsButton disabled={false} completed={completed} />);
+  await waitFor(() => expect(completed).toHaveBeenCalledOnce());
+  expect(
+    screen.getByRole("button", { name: "Update blocklists" }),
+  ).toBeEnabled();
+});
+
+it.each(["succeeded", "failed"])(
+  "reads back list status when a manual refresh job has %s",
+  async (state) => {
+    resources.values.jobs = { loading: false, data: { items: [] } };
+    vi.spyOn(api, "send").mockResolvedValue({
+      id: "job-1",
+      kind: "refresh",
+      state: "running",
+    });
+    const completed = vi.fn();
+    const view = render(
+      <RefreshListsButton disabled={false} completed={completed} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Update blocklists" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Updating blocklists…" }),
+      ).toBeDisabled(),
+    );
+    expect(completed).not.toHaveBeenCalled();
+    resources.values.jobs.data = {
+      items: [
+        {
+          id: "job-1",
+          kind: "refresh",
+          state,
+          error: state === "failed" ? "Refresh timed out" : undefined,
+        },
+      ],
+    };
+    view.rerender(
+      <RefreshListsButton disabled={false} completed={completed} />,
+    );
+    await waitFor(() => expect(completed).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole("button", { name: "Update blocklists" }),
+    ).toBeEnabled();
+    if (state === "failed")
+      expect(screen.getByRole("alert")).toHaveTextContent("Refresh timed out");
+  },
+);
 
 it("offers only supported local records with a five-minute lifetime and reverse lookups off", () => {
   render(<Configuration kind="records" range="" />);

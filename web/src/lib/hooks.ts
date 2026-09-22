@@ -44,6 +44,7 @@ export function useResource<T>(path: string, refresh = 0) {
     loading: query.isPending,
     isFetching: query.isFetching,
     updatedAt: query.dataUpdatedAt,
+    reload: query.refetch,
   };
 }
 
