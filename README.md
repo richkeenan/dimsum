@@ -70,6 +70,7 @@ retrieve the OpenAPI specification at `/api/v1/openapi.json`.
 
 - [Deployment and password setup](guides/deployment.md)
 - [Configuration and supported settings](guides/configuration.md)
+- [Encrypted upstream DNS](guides/encrypted-upstreams.md)
 - [Optional DHCPv4](guides/dhcp.md)
 - [Building and contributing](CONTRIBUTING.md)
 - [Frontend development](web/README.md)
