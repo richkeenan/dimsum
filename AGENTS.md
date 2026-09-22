@@ -1,5 +1,8 @@
 # dimsum development
 
+- For administration of a running dimsum instance (device names, blocking, rules, records, settings, and diagnostics), discover and use the dimsum MCP tools first. Routine actions through existing tools are operational tasks, not software-development tasks; do not start a brainstorming or implementation workflow. Read the current revision before mutations and read back the result. Use SSH, CLI, or direct configuration access only when MCP cannot perform the requested task, explaining the limitation first, or when the owner explicitly requests that method.
+- After updating a running dimsum server, reconnect its MCP connection to refresh advertised tool schemas. If structured-result validation fails, compare the newly advertised schema with the returned data before changing configuration or bypassing validation.
+
 - Read `AGENTS.local.md` when present for private, checkout-specific deployment instructions. It is Git-ignored; never commit its contents or copy private deployment details into tracked files.
 
 - Work directly on `main` in this checkout. Do not create worktrees or feature branches unless the owner asks.

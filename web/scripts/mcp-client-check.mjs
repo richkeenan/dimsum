@@ -17,12 +17,13 @@ export async function checkMCP(url, token) {
       assert.equal(tool.inputSchema.type, "object", `${tool.name} input`);
       if (tool.outputSchema) assert.equal(tool.outputSchema.type, "object", `${tool.name} output`);
     }
-    for (const name of ["get_settings", "get_catalog"]) {
+    const validatedCalls = ["get_settings", "get_catalog", "list_clients"];
+    for (const name of validatedCalls) {
       const result = await client.callTool({ name, arguments: {} });
       assert.notEqual(result.isError, true, `${name} failed`);
       assert(result.structuredContent && typeof result.structuredContent === "object");
     }
-    return { tools: tools.length, validatedCalls: ["get_settings", "get_catalog"] };
+    return { tools: tools.length, validatedCalls };
   } finally {
     await client.close();
   }

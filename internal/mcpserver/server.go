@@ -41,7 +41,12 @@ func New(handler http.Handler) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	server := mcp.NewServer(&mcp.Implementation{Name: "dimsum", Version: "1.0.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "dimsum", Version: "1.0.0"}, &mcp.ServerOptions{
+		Instructions: `Use dimsum MCP tools first for administration of this running DNS service: device names, blocking, rules, records, settings, and diagnostics. These are routine operational actions, not software-development tasks.
+For a device rename, use list_clients to inspect configured overrides and observations. Use add_client with an address and name for a new override, or update_clients for an existing override. Read the current saved_revision before a mutation, use it as revision, and read back the result to verify the saved name and activation status. On a revision conflict, reread current configuration before retrying.
+Use get_settings to inspect authoritative configuration and activation status. Use SSH, CLI, or direct file edits only when MCP cannot perform the requested task, explaining the limitation first, or when explicitly requested.
+After a server update, reconnect and refresh tool definitions. If structured-result validation fails, compare the freshly advertised schema with the response rather than bypassing validation.`,
+	})
 	for _, op := range operations {
 		server.AddTool(op.tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return op.call(ctx, handler, req.Params.Arguments), nil

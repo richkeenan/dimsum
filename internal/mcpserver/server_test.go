@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/richkeenan/dimsum/internal/mcpserver"
 	"github.com/stretchr/testify/assert"
@@ -78,6 +79,48 @@ func TestToolsDerivedFromSpec(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(settingsSchema), `naming.mdns.interfaces`)
 	assert.Contains(t, string(settingsSchema), `"maxItems":8`)
+}
+
+func TestAdministrationInstructions(t *testing.T) {
+	session := connect(t, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("initialization invoked API")
+	}))
+	instructions := session.InitializeResult().Instructions
+	assert.Contains(t, instructions, "MCP tools first")
+	assert.Contains(t, instructions, "add_client")
+	assert.Contains(t, instructions, "revision")
+	assert.Contains(t, instructions, "read back")
+}
+
+func TestClientDeviceCategoriesMatchAdvertisedSchema(t *testing.T) {
+	for _, category := range []string{"unknown", "phone", "tablet", "laptop", "desktop", "tv", "speaker", "printer", "camera", "lighting", "appliance", "server", "console"} {
+		t.Run(category, func(t *testing.T) {
+			// Console observations must remain valid after the catalog is refreshed.
+			body := `{"items":[],"observed_available":true,"status":{"active_generation":"1","active_revision":"test","saved_revision":"test","pending":false,"recovered":false,"restart_required":false,"sources":[]},"observed":{"complete":true,"truncated":false,"updated_at":"2026-01-01T00:01:00Z","range":{"from":"2026-01-01T00:00:00Z","to":"2026-01-01T00:01:00Z"},"items":[{"address":"192.0.2.1","name":"Test device","name_source":"dns-sd","name_fresh":true,"count":"1","blocked":"0","last_seen":"2026-01-01T00:00:30Z","device":{"category":"` + category + `","reason":"Test discovery","inferred":false,"fresh":true,"evidence":[]}}]}}`
+			session := connect(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, body)
+			}))
+			list, err := session.ListTools(t.Context(), nil)
+			require.NoError(t, err)
+			var output any
+			for _, tool := range list.Tools {
+				if tool.Name == "list_clients" {
+					output = tool.OutputSchema
+				}
+			}
+			require.NotNil(t, output)
+			encoded, err := json.Marshal(output)
+			require.NoError(t, err)
+			var schema jsonschema.Schema
+			require.NoError(t, json.Unmarshal(encoded, &schema))
+			resolved, err := schema.Resolve(nil)
+			require.NoError(t, err)
+			result := call(t, session, "list_clients", map[string]any{"limit": 200})
+			require.False(t, result.IsError)
+			assert.NoError(t, resolved.Validate(result.StructuredContent))
+		})
+	}
 }
 
 func TestPathQueryAndDecimalResults(t *testing.T) {
