@@ -3,9 +3,22 @@ import type { components, paths } from "./openapi";
 export type Activation = components["schemas"]["Activation"];
 export type Mutation = components["schemas"]["Mutation"];
 export type Job = components["schemas"]["Job"];
+export type DHCPSettings = components["schemas"]["DHCPSettings"];
+export type DHCPReservation = components["schemas"]["DHCPReservation"];
+export type DHCPStatusResponse =
+  paths["/api/v1/dhcp/status"]["get"]["responses"][200]["content"]["application/json"];
+export type DHCPConfigResponse =
+  paths["/api/v1/dhcp"]["get"]["responses"][200]["content"]["application/json"];
+export type DHCPLeasesResponse =
+  paths["/api/v1/dhcp/leases"]["get"]["responses"][200]["content"]["application/json"];
+export type DHCPReservationsResponse =
+  paths["/api/v1/dhcp/reservations"]["get"]["responses"][200]["content"]["application/json"];
 type LoginResult =
   paths["/session"]["post"]["responses"][200]["content"]["application/json"];
-let csrfToken = typeof sessionStorage === "undefined" ? "" : sessionStorage.getItem("dimsum-csrf") ?? "";
+let csrfToken =
+  typeof sessionStorage === "undefined"
+    ? ""
+    : (sessionStorage.getItem("dimsum-csrf") ?? "");
 export type Row = Record<string, unknown>;
 export interface Meta {
   range?: { from: string; to: string };
@@ -128,7 +141,20 @@ export const api = {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (["settings", "lists", "rules", "records", "clients", "upstreams", "blocking"].includes(path)) window.dispatchEvent(new Event("configuration-changed"));
+    if (
+      path === "dhcp" ||
+      path.startsWith("dhcp/reservations") ||
+      [
+        "settings",
+        "lists",
+        "rules",
+        "records",
+        "clients",
+        "upstreams",
+        "blocking",
+      ].includes(path)
+    )
+      window.dispatchEvent(new Event("configuration-changed"));
     return result;
   },
   login: async (password: string) => {

@@ -16,9 +16,15 @@ export function useResource<T>(path: string, refresh = 0) {
     staleTime: 1000,
     gcTime: 60_000,
     placeholderData: keepPreviousData,
-    refetchInterval: ["jobs", "diagnostics", "settings", "blocking"].includes(
-      resource,
-    )
+    refetchInterval: [
+      "jobs",
+      "diagnostics",
+      "settings",
+      "blocking",
+      "dhcp",
+      "dhcp/status",
+      "dhcp/reservations",
+    ].includes(resource)
       ? 5000
       : false,
     refetchIntervalInBackground: false,
@@ -43,6 +49,7 @@ export function useResource<T>(path: string, refresh = 0) {
     error: query.error ?? undefined,
     loading: query.isPending,
     isFetching: query.isFetching,
+    isPlaceholderData: query.isPlaceholderData,
     updatedAt: query.dataUpdatedAt,
     reload: query.refetch,
   };

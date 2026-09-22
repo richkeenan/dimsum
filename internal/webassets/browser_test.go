@@ -65,7 +65,7 @@ func TestBrowserAgainstGoAPI(t *testing.T) {
 	server.Config.Handler = mux
 	server.Start()
 	defer server.Close()
-	command := exec.CommandContext(ctx, "npm", "run", "test:e2e", "--", "real-api.spec.ts", "--workers=1")
+	command := exec.CommandContext(ctx, "npm", "run", "test:e2e", "--", "real-api.spec.ts", "dhcp-api.spec.ts", "--workers=1")
 	command.Dir = "../../web"
 	command.Env = append(os.Environ(), "DIMSUM_E2E_URL="+server.URL, "DIMSUM_E2E_PASSWORD="+password, "DIMSUM_E2E_CONFIG="+configPath)
 	output, err := command.CombinedOutput()

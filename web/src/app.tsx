@@ -25,6 +25,7 @@ import {
   LogOut,
   Menu,
   Moon,
+  Network,
   RefreshCw,
   Settings2,
   ShieldCheck,
@@ -53,6 +54,7 @@ import Configuration from "./features/configuration";
 import SettingsView from "./features/settings";
 const Diagnostics = lazy(() => import("./features/diagnostics"));
 const Jobs = lazy(() => import("./features/settings/jobs"));
+const DHCP = lazy(() => import("./features/dhcp"));
 const navigation = [
   ["overview", "Overview", LayoutDashboard],
   ["performance", "Performance", Gauge],
@@ -62,6 +64,7 @@ const navigation = [
   ["rules", "Custom rules", FileText],
   ["records", "Local DNS", Globe2],
   ["upstreams", "Upstreams", ArrowDownUp],
+  ["dhcp", "DHCP", Network],
   ["settings", "Settings", Settings2],
   ["jobs", "Backups", Database],
   ["diagnostics", "Diagnostics", Activity],
@@ -435,6 +438,8 @@ export default function App() {
                 }
                 liveAllowed={range !== "custom"}
               />
+            ) : page === "dhcp" ? (
+              <DHCP />
             ) : page === "settings" ? (
               <SettingsView />
             ) : page === "diagnostics" ? (

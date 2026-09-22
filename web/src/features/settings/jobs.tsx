@@ -85,8 +85,10 @@ export default function Jobs() {
         <h2 className="mb-3 text-sm font-medium">Back up your configuration</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
           Archives contain authoritative configuration and required secrets.
-          Query history and downloaded lists are excluded. Downloads remain
-          available until the next backup or service restart.
+          Query history, downloaded lists and DHCP lease ownership are excluded.
+          Preserve the DHCP state directory separately while the service is
+          stopped. Downloads remain available until the next backup or service
+          restart.
         </p>
         <Button disabled={busy} onClick={() => start("backup")}>
           {busy ? "Working…" : "Create backup"}

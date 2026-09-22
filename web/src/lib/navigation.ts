@@ -7,6 +7,7 @@ export const pages = [
   "rules",
   "records",
   "upstreams",
+  "dhcp",
   "settings",
   "jobs",
   "diagnostics",
