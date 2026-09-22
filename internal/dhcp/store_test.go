@@ -44,7 +44,97 @@ func storedLease(now time.Time, n int) Lease {
 func storePut(t *testing.T, s *LeaseStore, sequence uint64, l Lease) {
 	t.Helper()
 	require.NoError(t, s.Submit(context.Background(), Mutation{Token: Token{1, sequence}, Kind: PutLease, Lease: l}))
-	require.NoError(t, storeResult(t, s).Err)
+	result := storeResult(t, s)
+	require.Equal(t, Token{1, sequence}, result.Token)
+	require.NoError(t, result.Err)
+}
+
+func TestStoreRenewalProcessCrash(t *testing.T) {
+	base := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	now := base.Add(time.Minute)
+	if point := os.Getenv("DIMSUM_RENEW_CRASH"); point != "" {
+		s, recovery, err := OpenLeaseStore(os.Getenv("DIMSUM_STORE_DIR"), 1024, func() time.Time { return now })
+		require.NoError(t, err)
+		e, err := NewEngine(fixtureSettings(), 2, func() time.Time { return now })
+		require.NoError(t, err)
+		require.NoError(t, e.Restore(recovery.Leases, recovery.LastKnown))
+		request := client(1, RequestMessage)
+		request.XID = 42
+		request.CIAddr = netip.MustParseAddr("192.0.2.100")
+		out := e.Handle(request)
+		require.NotNil(t, out.Mutation)
+		require.Nil(t, out.Reply)
+		begin := s.begin
+		s.begin = func() (leaseTransaction, error) { tx, err := begin(); return crashTransaction{tx, point}, err }
+		require.NoError(t, s.Submit(context.Background(), *out.Mutation))
+		result := storeResult(t, s)
+		require.Equal(t, out.Mutation.Token, result.Token)
+		require.NoError(t, result.Err)
+		ack := e.CompleteCommit(result)
+		require.NotNil(t, ack.Reply)
+		require.Equal(t, ACK, ack.Reply.Type)
+		_, err = BuildReply(fixtureSettings(), *ack.Reply, 1500)
+		require.NoError(t, err)
+		os.Exit(23)
+	}
+	for _, point := range []string{"before", "after", "acked"} {
+		t.Run(point, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "dhcp")
+			s, _, err := OpenLeaseStore(dir, 1024, func() time.Time { return base })
+			require.NoError(t, err)
+			e, err := NewEngine(fixtureSettings(), 1, func() time.Time { return base })
+			require.NoError(t, err)
+			old := bind(t, e, client(1, Discover))
+			storePut(t, s, 1, old)
+			require.NoError(t, s.Close(context.Background()))
+			cmd := exec.Command(os.Args[0], "-test.run=^TestStoreRenewalProcessCrash$")
+			cmd.Env = append(os.Environ(), "DIMSUM_RENEW_CRASH="+point, "DIMSUM_STORE_DIR="+dir)
+			output, err := cmd.CombinedOutput()
+			var exit *exec.ExitError
+			require.ErrorAs(t, err, &exit, string(output))
+			require.Equal(t, 23, exit.ExitCode(), string(output))
+			reopened, recovery, err := OpenLeaseStore(dir, 1024, func() time.Time { return now })
+			require.NoError(t, err)
+			defer reopened.Close(context.Background())
+			require.Len(t, recovery.Leases, 1)
+			got := recovery.Leases[0]
+			assert.Equal(t, old.Identity, got.Identity)
+			assert.Equal(t, old.Address, got.Address)
+			if point == "before" {
+				assert.Equal(t, old, got)
+			} else {
+				assert.Equal(t, old.Expiry.Add(time.Minute), got.Expiry)
+				assert.Equal(t, old.HoldUntil.Add(time.Minute), got.HoldUntil)
+			}
+		})
+	}
+}
+
+func TestStoreFailedRenewalRetainsOldGrantWithoutACK(t *testing.T) {
+	s, dir, now := storeFixture(t)
+	e, err := NewEngine(fixtureSettings(), 1, func() time.Time { return now })
+	require.NoError(t, err)
+	old := bind(t, e, client(1, Discover))
+	storePut(t, s, 1, old)
+	now = now.Add(time.Minute)
+	request := client(1, RequestMessage)
+	request.XID = 42
+	request.CIAddr = old.Address
+	out := e.Handle(request)
+	require.NotNil(t, out.Mutation)
+	require.Nil(t, out.Reply)
+	s.begin = func() (leaseTransaction, error) { return nil, errors.New("definite begin failure") }
+	require.NoError(t, s.Submit(context.Background(), *out.Mutation))
+	result := storeResult(t, s)
+	require.Equal(t, out.Mutation.Token, result.Token)
+	require.Error(t, result.Err)
+	assert.Nil(t, e.CompleteCommit(result).Reply)
+	assert.Equal(t, []Lease{old}, e.DurableLeases())
+	require.NoError(t, s.Close(context.Background()))
+	reopened, recovery, err := OpenLeaseStore(dir, 1024, func() time.Time { return now })
+	require.NoError(t, err)
+	defer reopened.Close(context.Background())
+	assert.Equal(t, []Lease{old}, recovery.Leases)
 }
 
 func TestStoreRejectsCorruptSchemaAndRows(t *testing.T) {
@@ -477,7 +567,10 @@ func TestStoreExpiredHoldRequiresDurableDelete(t *testing.T) {
 func storeResult(t *testing.T, s *LeaseStore) CommitResult {
 	t.Helper()
 	select {
-	case r := <-s.Results():
+	case r, ok := <-s.Results():
+		require.True(t, ok, "writer results closed before completion")
+		require.NotZero(t, r.Token.Generation)
+		require.NotZero(t, r.Token.Sequence)
 		return r
 	case <-time.After(3 * time.Second):
 		t.Fatal("writer did not complete")
