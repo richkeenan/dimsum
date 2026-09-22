@@ -46,6 +46,7 @@ import {
 } from "./components/ui/dialog";
 import { ErrorNotice } from "./components/data";
 import { DNSAddresses, ServiceNotices } from "./components/network-status";
+import { SidebarLogo } from "./components/sidebar-logo";
 import Overview from "./features/overview";
 import Performance from "./features/performance";
 import logo from "./assets/dimsum.svg";
@@ -221,9 +222,9 @@ export default function App() {
         <Link
           to="/"
           search={rangeSearch}
-          className="flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-medium tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
+          className="sidebar-brand flex items-center gap-2.5 px-2.5 pb-7 text-[25px] font-medium tracking-tight [&_small]:block [&_small]:whitespace-nowrap [&_small]:text-[12px] [&_small]:font-normal [&_small]:tracking-normal [&_small]:text-[#aebfda]"
         >
-          <img src={logo} alt="" width={54} height={44} className="shrink-0" />
+          <SidebarLogo />
           <span>
             dimsum<small>DNS administration</small>
           </span>
