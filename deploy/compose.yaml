@@ -4,6 +4,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unrecorded}
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
     # Linux host networking avoids Docker's bridge DNS source NAT. Verify on
     # the intended host; Docker Desktop is not native Linux host networking.
     network_mode: host
@@ -23,5 +26,5 @@ services:
       - type: bind
         source: ${DIMSUM_STATE_DIR:?set DIMSUM_STATE_DIR}
         target: /var/lib/dimsum
-    restart: "no"
+    restart: unless-stopped
     stop_grace_period: 30s

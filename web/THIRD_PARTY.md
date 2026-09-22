@@ -1,4 +1,13 @@
-# Component source provenance
+# Artwork and component licenses
+
+## dimsum artwork
+
+The project owner created/generated the dimsum mascot for this project and
+licenses it under the project's [MIT License](../LICENSE). This covers
+`src/assets/dimsum.svg`, `src/assets/favicon.svg`, and the mascot rendered by
+`src/components/dimsum-logo.tsx`.
+
+## Copied UI components
 
 `src/components/ui/{button,dialog,input,table,badge}.tsx` was copied with the pinned
 `shadcn@4.21.0` CLI from the `new-york` Radix registry on 2026-09-21. Local changes

@@ -21,11 +21,10 @@ COPY --from=web /src/web/node_modules ./web/node_modules
 ARG TARGETOS
 ARG TARGETARCH
 ARG SOURCE_COMMIT=unrecorded
-ARG SOURCE_DATE_EPOCH=unrecorded
-RUN test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" && \
-    test "$(git show -s --format=%ct HEAD)" = "$SOURCE_DATE_EPOCH" && \
-    mkdir -p /out && \
-    GOOS=$TARGETOS GOARCH=$TARGETARCH goreleaser build --snapshot --clean --single-target --skip=before --output /out/dimsum
+ARG SOURCE_DATE_EPOCH
+RUN mkdir -p /out && \
+    SOURCE_DATE="$(if [ -n "$SOURCE_DATE_EPOCH" ]; then date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ; else echo unrecorded; fi)" \
+    SOURCE_COMMIT=$SOURCE_COMMIT GOOS=$TARGETOS GOARCH=$TARGETARCH goreleaser build --snapshot --clean --single-target --skip=before --output /out/dimsum
 RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH node scripts/artifact-metadata.mjs /out/metadata
 
 FROM debian:bookworm-slim

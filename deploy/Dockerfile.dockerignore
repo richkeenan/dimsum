@@ -1,12 +1,26 @@
-# The build verifies its commit and generates provenance from Git metadata.
-.worktrees
-.superpowers
-docs
-.idea
-web/node_modules
-web/playwright-report
-web/test-results
-dist
-artifacts
-qualification-evidence
-internal/webassets/dist
+# Admit build inputs only. Git history and private checkout files stay outside
+# the context, including intermediate stages and remote build caches.
+**
+!go.mod
+!go.sum
+!.goreleaser.yaml
+!LICENSE
+!README.md
+!api/*.go
+!api/*.yaml
+!cmd/**/*.go
+!internal/**/*.go
+!internal/storage/migrations/*.sql
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
+!web/vite.config.ts
+!web/THIRD_PARTY.md
+!web/src/**
+!web/scripts/embed.mjs
+!scripts/artifact-metadata.mjs
+!scripts/source-inputs.mjs
+web/src/**/.*
+**/AGENTS.local.md
+**/superpowers/**
+**/.superpowers/**

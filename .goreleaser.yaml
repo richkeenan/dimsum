@@ -13,12 +13,15 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath, -buildvcs=false]
     ldflags:
-      - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }}
+      - -s -w -buildid= -X main.version={{ .Version }} -X main.commit={{ if .Env.SOURCE_COMMIT }}{{ .Env.SOURCE_COMMIT }}{{ else }}{{ .FullCommit }}{{ end }} -X main.date={{ if .Env.SOURCE_DATE }}{{ .Env.SOURCE_DATE }}{{ else }}{{ .CommitDate }}{{ end }}
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
+      - LICENSE
       - README.md
+      - guides/**
+      - web/THIRD_PARTY.md
       - deploy/dimsum.service
       - deploy/dhcp-capabilities.conf
       - deploy/dimsum.sysusers
@@ -33,6 +36,7 @@ nfpms:
     homepage: https://github.com/richkeenan/dimsum
     description: Private-network DNS filtering service
     maintainer: dimsum maintainers
+    license: MIT
     formats: [deb]
     bindir: /usr/bin
     file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Arch }}"
@@ -41,6 +45,8 @@ nfpms:
       postinstall: deploy/postinstall.sh
       preremove: deploy/preremove.sh
     contents:
+      - src: LICENSE
+        dst: /usr/share/doc/dimsum/copyright
       - src: deploy/dimsum.service
         dst: /usr/lib/systemd/system/dimsum.service
       - src: deploy/dhcp-capabilities.conf
@@ -67,8 +73,7 @@ changelog:
   sort: asc
 dockers_v2:
   - images: [dimsum-local]
-    # v2 builds local per-architecture images in snapshot mode. Non-snapshot
-    # image publishing is deliberately disabled until owner authorization.
+    # Container images are built locally; releases publish archives and packages.
     disable: "{{ not .IsSnapshot }}"
     tags: ["{{ .Version }}"]
     dockerfile: deploy/Dockerfile.goreleaser

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Build provenance and verbatim dependency notices; no project license grant.
+// Build provenance and project/dependency license notices.
+import { sourceInputs } from './source-inputs.mjs';
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
@@ -38,21 +39,14 @@ const digest = (file) =>
   createHash("sha256").update(readFileSync(file)).digest("hex");
 const writeJSON = (name, value) =>
   writeFileSync(path.join(out, name), JSON.stringify(value, null, 2) + "\n");
-const ignored = new Set([
-  "node_modules",
-  "dist",
-  "test-results",
-  "playwright-report",
-  "__pycache__",
-]);
-function hashes(directory, relativeTo, skip = new Set()) {
+function hashes(directory, relativeTo) {
   const result = {};
   function walk(folder) {
     for (const entry of readdirSync(folder, { withFileTypes: true }).sort(
       (a, b) => a.name.localeCompare(b.name, "en"),
     )) {
       const file = path.join(folder, entry.name);
-      if (entry.isDirectory() && !skip.has(entry.name)) walk(file);
+      if (entry.isDirectory()) walk(file);
       else if (entry.isFile())
         result[path.relative(relativeTo, file).split(path.sep).join("/")] =
           digest(file);
@@ -61,23 +55,19 @@ function hashes(directory, relativeTo, skip = new Set()) {
   walk(directory);
   return result;
 }
-const checkout = existsSync(path.join(root, ".git"));
+// Fetch the full module graph before hashing inputs: this can add missing
+// checksums to go.sum and must be reflected in both hashes and dirty state.
+command("go", "mod", "download", "all");
+const source = sourceInputs(root);
 const metadata = {
   schema: 1,
-  commit: checkout
-    ? command("git", "rev-parse", "HEAD")
-    : process.env.SOURCE_COMMIT || "unrecorded",
-  commit_timestamp: checkout
-    ? command("git", "show", "-s", "--format=%ct", "HEAD")
-    : process.env.SOURCE_DATE_EPOCH || "unrecorded",
-  dirty: checkout
-    ? Boolean(command("git", "status", "--porcelain", "--untracked-files=no"))
-    : "unknown (source archive)",
+  commit: source.commit,
+  commit_timestamp: source.commit_timestamp,
+  dirty: source.dirty,
   go: command("go", "version"),
   node: process.version,
   npm: command("npm", "--version"),
-  build_flags:
-    "CGO_ENABLED=0 -trimpath -buildvcs=false -ldflags='-s -w -buildid='",
+  build_configuration: ".goreleaser.yaml",
   binary_metadata:
     "main.version/commit/date injected by GoReleaser; date is source commit time, not wall clock",
   inputs: Object.fromEntries(
@@ -85,17 +75,14 @@ const metadata = {
       (name) => [name, digest(path.join(root, name))],
     ),
   ),
-  project_license:
-    "UNSELECTED: no distribution license granted by this metadata",
+  project_license: "MIT",
   assets: hashes(assets, assets),
-  source_files: Object.assign(
-    {},
-    ...["cmd", "internal", "web", "deploy", "scripts", "api"].map((folder) =>
-      hashes(path.join(root, folder), root, ignored),
-    ),
-  ),
+  source_files: source.files,
 };
 writeJSON("build.json", metadata);
+for (const [sourceFile, destination] of [["LICENSE", "LICENSE"], ["web/THIRD_PARTY.md", "THIRD_PARTY.md"]]) {
+  copyFileSync(path.join(root, sourceFile), path.join(out, destination));
+}
 writeFileSync(
   path.join(out, "go-modules.txt"),
   command("go", "list", "-m", "all") + "\n",
@@ -105,6 +92,9 @@ copyFileSync(
   path.join(out, "web-package-lock.json"),
 );
 const notices = path.join(out, "licenses");
+// Discard stale notices from prior dependency graphs, including old .go notice
+// filenames that would otherwise be discovered by `go test ./...`.
+rmSync(notices, { recursive: true, force: true });
 mkdirSync(notices, { recursive: true });
 const inventory = [],
   missing = [];
@@ -120,7 +110,7 @@ function collect(name, directory, licenseHint = null) {
   inventory.push({
     dependency: name,
     license_metadata: licenseHint,
-    notice_files: candidates,
+    notice_files: candidates.map((file) => file + ".txt"),
   });
   if (!candidates.length) missing.push(name);
   const target = path.join(
@@ -129,19 +119,19 @@ function collect(name, directory, licenseHint = null) {
   );
   mkdirSync(target, { recursive: true });
   for (const file of candidates) {
-    const destination = path.join(target, file);
+    const destination = path.join(target, file + ".txt");
     // Go's module cache contains read-only files; replace the previous copy
     // rather than trying to overwrite its preserved read-only permissions.
     rmSync(destination, { force: true });
     copyFileSync(path.join(directory, file), destination);
   }
 }
-// Select linked modules, including replacement module paths, rather than every
-// graph-only tool/test dependency (which may not be downloaded).
+// Include the entire module graph conservatively so cross-platform builds also
+// carry notices for dependencies hidden by host-specific build constraints.
 const template =
-  "{{with .Module}}{{if not .Main}}{{if .Replace}}{{with .Replace}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{else}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}{{end}}";
+  "{{if not .Main}}{{if .Replace}}{{with .Replace}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{else}}{{.Path}}\t{{.Version}}\t{{.Dir}}{{end}}{{end}}";
 const modules = new Set(
-  command("go", "list", "-deps", "-f", template, "./cmd/dimsum")
+  command("go", "list", "-m", "-f", template, "all")
     .split("\n")
     .filter(Boolean),
 );
@@ -164,6 +154,6 @@ for (const [name, value] of Object.entries(lock.packages)) {
 writeJSON("license-inventory.json", inventory);
 writeFileSync(
   path.join(out, "NOTICES.txt"),
-  "dimsum project license: not selected. Local qualification artifacts only.\nDependency license texts are copied verbatim; metadata is not legal clearance.\nAll installed frontend build dependencies are included conservatively.\nMissing standalone notice files (review before distribution):\n" +
+  "dimsum is licensed under the MIT License; see LICENSE.\nCopied component notices are in THIRD_PARTY.md.\nDependency license texts are copied verbatim. All Go modules and installed frontend build dependencies are included conservatively.\nPackages without standalone notice files (consult license-inventory.json):\n" +
     missing.map((name) => `- ${name}\n`).join(""),
 );
