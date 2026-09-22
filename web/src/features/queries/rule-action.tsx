@@ -154,7 +154,10 @@ export function InlineRuleAction({
           <ErrorNotice error={state.error} />
         </div>
       )}
-      {state.result && <RuleSaved result={state.result} />}
+      {state.result &&
+        (!isActive(state.result.settings) || state.result.notice) && (
+          <RuleSaved result={state.result} />
+        )}
     </div>
   );
 }
