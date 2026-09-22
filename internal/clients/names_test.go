@@ -16,6 +16,19 @@ import (
 	"time"
 )
 
+func TestHistoryReadDiscoversConfiguredHostsWithoutDNSQueries(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "hosts")
+	require.NoError(t, os.WriteFile(file, []byte("fd00::20 example-laptop\n"), 0600))
+	v, err := clients.NewView(clients.Settings{HostsFile: file}, nil, nil)
+	require.NoError(t, err)
+	m := clients.New(func() *clients.View { return v })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	require.Eventually(t, func() bool { return m.Get(netip.MustParseAddr("fd00::20")).Name == "example-laptop" }, time.Second, time.Millisecond)
+}
+
 func TestAsyncNamesPrecedenceFreshnessAndIdentity(t *testing.T) {
 	ip := netip.MustParseAddr("192.168.1.2")
 	v6 := netip.MustParseAddr("fd00::2")

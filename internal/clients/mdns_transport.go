@@ -7,6 +7,7 @@ import (
 	"golang.org/x/net/ipv6"
 	"net"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,7 +47,7 @@ func openMDNSTransport(parent context.Context, s MDNSSettings) (mdnsTransport, [
 		if len(s.Interfaces) > 0 && !slices.Contains(s.Interfaces, i.Name) {
 			continue
 		}
-		if i.Flags&net.FlagUp == 0 || i.Flags&net.FlagMulticast == 0 || i.Flags&net.FlagLoopback != 0 {
+		if !eligibleMDNSInterface(i, len(s.Interfaces) > 0) {
 			continue
 		}
 		if len(selected) < 8 {
@@ -130,6 +131,27 @@ func openMDNSTransport(parent context.Context, s MDNSSettings) (mdnsTransport, [
 	}
 	return t, problems
 }
+
+func eligibleMDNSInterface(i net.Interface, explicit bool) bool {
+	const required = net.FlagUp | net.FlagRunning | net.FlagMulticast
+	if i.Flags&required != required || i.Flags&net.FlagLoopback != 0 {
+		return false
+	}
+	if explicit {
+		return true
+	}
+	if i.Flags&net.FlagPointToPoint != 0 {
+		return false
+	}
+	// Match the dashboard's LAN preference. Explicit interface configuration
+	// still supports bridges and container networks when that is intentional.
+	for _, prefix := range []string{"docker", "br-", "veth", "virbr", "cni", "flannel", "podman", "tun", "tap", "utun", "tailscale", "wg"} {
+		if strings.HasPrefix(i.Name, prefix) {
+			return false
+		}
+	}
+	return true
+}
 func (t *multicastTransport) Packets() <-chan mdnsDatagram { return t.packets }
 func (t *multicastTransport) Interfaces() []int            { return t.ids }
 func (t *multicastTransport) Close() {
@@ -165,7 +187,7 @@ func (t *multicastTransport) read(ctx context.Context, v6 bool) {
 			if ctx.Err() == nil {
 				select {
 				case t.packets <- mdnsDatagram{err: err}:
-				default:
+				case <-ctx.Done():
 				}
 			}
 			return

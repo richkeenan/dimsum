@@ -98,6 +98,9 @@ func New(current func() *View) *Manager {
 }
 func (m *Manager) Get(address netip.Addr) Name {
 	a, v := address.Unmap(), m.current()
+	// Retained history is also an active interest in discovery. After restart,
+	// rediscover displayed clients without waiting for their next DNS request.
+	m.Observe(a)
 	n := m.get(a, v)
 	m.mu.Lock()
 	found := m.mdnsNames[a]
@@ -138,12 +141,7 @@ func (m *Manager) Observe(address netip.Addr) {
 	if !localAddress(a) {
 		return
 	}
-	if v := m.current(); v != nil && v.settings.MDNS.Enabled {
-		select {
-		case m.mdnsObserve <- a:
-		default:
-		}
-	}
+	m.observeMDNS(a, m.current())
 	v := m.current()
 	if v == nil || m.get(a, v).Fresh {
 		return
@@ -158,6 +156,15 @@ func (m *Manager) Observe(address netip.Addr) {
 	case m.queue <- j:
 		m.pending[j] = true
 	default:
+	}
+}
+
+func (m *Manager) observeMDNS(a netip.Addr, v *View) {
+	if v != nil && v.settings.MDNS.Enabled && localAddress(a) && !a.IsLoopback() && !a.IsLinkLocalUnicast() {
+		select {
+		case m.mdnsObserve <- a:
+		default:
+		}
 	}
 }
 func (m *Manager) Run(ctx context.Context) {

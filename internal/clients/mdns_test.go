@@ -2,6 +2,7 @@ package clients
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
@@ -159,6 +160,189 @@ func TestMDNSEnumerationSurvivesQueuedReverseQueries(t *testing.T) {
 			}
 		case <-timeout.C:
 			t.Fatal("service enumeration was lost behind client queries")
+		}
+	}
+}
+
+func TestMDNSDiagnosticsDistinguishQueriesFromMalformedResponses(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 4), sent: make(chan []byte, 16)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	f.packets <- mdnsDatagram{iface: 1, wire: encodeMDNSQuery("_services._dns-sd._udp.local", 12)}
+	f.packets <- mdnsDatagram{iface: 1, wire: []byte{0, 0, 0x84}}
+	f.packets <- mdnsDatagram{iface: 1, wire: bonjourPacket()}
+	require.Eventually(t, func() bool { return m.Diagnostics().Responses == 1 }, 3*time.Second, 10*time.Millisecond)
+	d := m.Diagnostics()
+	assert.Equal(t, uint64(1), d.Dropped, "ordinary multicast queries are not errors")
+	wire, err := json.Marshal(d)
+	require.NoError(t, err)
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(wire, &fields))
+	assert.Equal(t, float64(1), fields["ignored_queries"])
+	assert.Equal(t, float64(1), fields["malformed_responses"])
+	assert.Equal(t, float64(0), fields["send_errors"])
+}
+
+func TestMDNSHistoryReadRediscoversWithoutNewDNSQuery(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 1), sent: make(chan []byte, 16)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	ip := netip.MustParseAddr("fd00::20")
+	reverse, err := dns.ReverseAddr(ip.String())
+	require.NoError(t, err)
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t,
+		rr(t, reverse+" 120 IN PTR Example-laptop.local."),
+		rr(t, "Example-laptop.local. 120 IN AAAA fd00::20"))}
+	// The history provider calls Get; no DNS traffic/Observe is needed after boot.
+	require.Eventually(t, func() bool { return m.Get(ip).Name == "example-laptop.local" }, 3*time.Second, 10*time.Millisecond)
+}
+
+func TestMDNSRefreshesLiveAddressesBeforeExpiryWithoutPolling(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 1), sent: make(chan []byte, 64)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	start := time.Now()
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t,
+		rr(t, "20.2.0.192.in-addr.arpa. 120 IN PTR Example.local."),
+		rr(t, "Example.local. 8 IN A 192.0.2.20"))}
+	timeout := time.NewTimer(8 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case wire := <-f.sent:
+			var q dns.Msg
+			require.NoError(t, q.Unpack(wire))
+			if q.Question[0].Name == "example.local." && q.Question[0].Qtype == dns.TypeA {
+				assert.GreaterOrEqual(t, time.Since(start), 6*time.Second, "fresh answers should suppress redundant queries")
+				return // The timer also proves renewal happened before the 8s TTL.
+			}
+		case <-timeout.C:
+			t.Fatal("address was not refreshed before its TTL expired")
+		}
+	}
+}
+
+func TestMDNSServiceChainSurvivesReverseBacklog(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 4), sent: make(chan []byte, 64)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	for i := 1; i <= 200; i++ {
+		m.mdnsObserve <- netip.AddrFrom4([4]byte{192, 0, 2, byte(i)})
+	}
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "_services._dns-sd._udp.local. 120 IN PTR _airplay._tcp.local."))}
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case packet := <-f.sent:
+			var q dns.Msg
+			require.NoError(t, q.Unpack(packet))
+			question := q.Question[0]
+			switch {
+			case question.Name == "_airplay._tcp.local." && question.Qtype == 12:
+				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "_airplay._tcp.local. 120 IN PTR Example._airplay._tcp.local."))}
+			case question.Name == "example._airplay._tcp.local." && question.Qtype == 33:
+				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example._airplay._tcp.local. 120 IN SRV 0 0 7000 Example-TV.local."))}
+			case question.Name == "example-tv.local." && question.Qtype == 1:
+				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example-TV.local. 120 IN A 192.0.2.20"))}
+				require.Eventually(t, func() bool { return m.Get(netip.MustParseAddr("192.0.2.20")).Name == "example-tv.local" }, 2*time.Second, 10*time.Millisecond)
+				return
+			}
+		case <-timeout.C:
+			t.Fatal("reverse backlog starved the service-to-address discovery chain")
+		}
+	}
+}
+
+func TestMDNSShortenedTTLAdvancesPendingRefresh(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 4), sent: make(chan []byte, 64)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t,
+		rr(t, "20.2.0.192.in-addr.arpa. 120 IN PTR Example.local."),
+		rr(t, "Example.local. 120 IN A 192.0.2.20"))}
+	// Allow the initial enumeration, A and AAAA scheduling decisions to finish.
+	setup := time.NewTimer(2 * time.Second)
+	defer setup.Stop()
+	<-setup.C
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example.local. 6 IN A 192.0.2.20"))}
+	timeout := time.NewTimer(6 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case packet := <-f.sent:
+			var q dns.Msg
+			require.NoError(t, q.Unpack(packet))
+			if q.Question[0].Name == "example.local." && q.Question[0].Qtype == 1 {
+				return
+			}
+		case <-timeout.C:
+			t.Fatal("shortened TTL did not advance the previously scheduled renewal")
+		}
+	}
+}
+
+func TestMDNSLateAnswerRenewsDuringRetryCooldown(t *testing.T) {
+	v, err := NewView(Settings{MDNS: MDNSSettings{Enabled: true}}, nil, nil)
+	require.NoError(t, err)
+	m := New(func() *View { return v })
+	f := &fakeMDNS{packets: make(chan mdnsDatagram, 4), sent: make(chan []byte, 64)}
+	m.openMDNS = func(context.Context, MDNSSettings) (mdnsTransport, []string) { return f, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { m.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "20.2.0.192.in-addr.arpa. 120 IN PTR Example.local."))}
+	timeout := time.NewTimer(12 * time.Second)
+	defer timeout.Stop()
+	attempts := 0
+	for {
+		select {
+		case packet := <-f.sent:
+			var q dns.Msg
+			require.NoError(t, q.Unpack(packet))
+			if q.Question[0].Name != "example.local." || q.Question[0].Qtype != 1 {
+				continue
+			}
+			attempts++
+			if attempts == 3 {
+				f.packets <- mdnsDatagram{iface: 1, wire: mdnsPacket(t, rr(t, "Example.local. 4 IN A 192.0.2.20"))}
+				timeout.Reset(4 * time.Second)
+			} else if attempts == 4 {
+				return
+			}
+		case <-timeout.C:
+			t.Fatalf("late answer did not renew before expiry; attempts=%d", attempts)
 		}
 	}
 }

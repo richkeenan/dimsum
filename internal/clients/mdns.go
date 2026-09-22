@@ -3,7 +3,9 @@ package clients
 import (
 	"context"
 	"fmt"
+	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/localdns"
+	"math/rand/v2"
 	"net"
 	"net/netip"
 	"slices"
@@ -31,14 +33,21 @@ func (s MDNSSettings) validate() error {
 }
 
 type DiscoveryDiagnostics struct {
-	Enabled    bool     `json:"enabled"`
-	Running    bool     `json:"running"`
-	Interfaces []string `json:"interfaces"`
-	Errors     []string `json:"errors"`
-	Queries    uint64   `json:"queries"`
-	Responses  uint64   `json:"responses"`
-	Dropped    uint64   `json:"dropped"`
-	Records    int      `json:"records"`
+	Enabled            bool     `json:"enabled"`
+	Running            bool     `json:"running"`
+	Interfaces         []string `json:"interfaces"`
+	Errors             []string `json:"errors"`
+	Queries            uint64   `json:"queries"`
+	Responses          uint64   `json:"responses"`
+	Dropped            uint64   `json:"dropped"`
+	Records            int      `json:"records"`
+	IgnoredQueries     uint64   `json:"ignored_queries"`
+	MalformedResponses uint64   `json:"malformed_responses"`
+	SendErrors         uint64   `json:"send_errors"`
+	ReceiveErrors      uint64   `json:"receive_errors"`
+	CapacityDrops      uint64   `json:"capacity_drops"`
+	QuestionDeferrals  uint64   `json:"question_deferrals"`
+	LastMalformed      string   `json:"last_malformed,omitempty"`
 }
 
 func (m *Manager) Diagnostics() DiscoveryDiagnostics {
@@ -59,6 +68,15 @@ type questionState struct {
 	attempt int
 }
 
+func (q mdnsQuestion) reverse() bool {
+	return q.kind == 12 && (strings.HasSuffix(q.name, ".in-addr.arpa") || strings.HasSuffix(q.name, ".ip6.arpa"))
+}
+
+func (r mdnsRecord) refreshAt() time.Time {
+	// RFC 6762 section 5.2: jitter renewal between 80% and 82% of lifetime.
+	return r.learned.Add(time.Duration(float64(r.expires.Sub(r.learned)) * (0.80 + rand.Float64()*0.02)))
+}
+
 func (m *Manager) runMDNS(ctx context.Context) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -73,6 +91,8 @@ func (m *Manager) runMDNS(ctx context.Context) {
 	cache := newMDNSCache()
 	observed := map[netip.Addr]time.Time{}
 	questions := map[mdnsQuestion]questionState{}
+	reverseCount := 0
+	preferServices := true
 	types, instances := map[string]bool{}, map[string]bool{}
 	diag := DiscoveryDiagnostics{Interfaces: []string{}, Errors: []string{}}
 	lastPublish := time.Time{}
@@ -80,8 +100,18 @@ func (m *Manager) runMDNS(ctx context.Context) {
 	retryOpen := time.Time{}
 	report := func() { m.mu.Lock(); m.diagnostics = diag; m.mu.Unlock() }
 	add := func(q mdnsQuestion, now time.Time) {
-		if _, ok := questions[q]; !ok && len(questions) < 128 {
-			questions[q] = questionState{next: now}
+		if _, ok := questions[q]; ok {
+			return
+		}
+		// Independent capacity and alternating dispatch prevent address churn
+		// from starving the PTR → SRV/TXT → A/AAAA service resolution chain.
+		if (q.reverse() && reverseCount >= 32) || (!q.reverse() && len(questions)-reverseCount >= 96) {
+			diag.QuestionDeferrals++
+			return
+		}
+		questions[q] = questionState{next: now}
+		if q.reverse() {
+			reverseCount++
 		}
 	}
 	for {
@@ -96,6 +126,8 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			view = current
 			cache = newMDNSCache()
 			questions = map[mdnsQuestion]questionState{}
+			reverseCount = 0
+			preferServices = true
 			types, instances = map[string]bool{}, map[string]bool{}
 			retryOpen = time.Time{}
 			nextEnumeration = time.Time{}
@@ -128,12 +160,15 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			}
 			if len(observed) < 4096 || !observed[a].IsZero() {
 				observed[a] = now
-				add(mdnsQuestion{localdns.Reverse(a), 12}, now)
 			} else {
 				diag.Dropped++
+				diag.CapacityDrops++
 			}
 		case p := <-packets:
+			now = time.Now()
 			if p.err != nil {
+				diag.ReceiveErrors++
+				diag.Dropped++
 				transport.Close()
 				transport = nil
 				packets = nil
@@ -147,12 +182,38 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				report()
 				continue
 			}
+			if h, err := dnswire.ParseHeader(p.wire); err == nil && h.Flags&0x8000 == 0 {
+				// Multicast sockets also receive peers' queries and our loopback
+				// traffic. Neither is a malformed response or a discovery failure.
+				diag.IgnoredQueries++
+				continue
+			}
 			if err := cache.ingest(p.iface, p.wire, now); err != nil {
 				diag.Dropped++
+				diag.MalformedResponses++
+				diag.LastMalformed = err.Error()
 			} else {
 				diag.Responses++
+				// A new answer may shorten a TTL or arrive during retry cooldown.
+				// Bring its existing deadline forward immediately; do not wait for
+				// the old deadline to discover that the new record already expired.
+				cache.index()
+				for q, state := range questions {
+					for _, id := range transport.Interfaces() {
+						for _, r := range cache.owners[recordGroup{id, q.name, q.kind}] {
+							if !r.learned.Equal(now) {
+								continue
+							}
+							if at := r.refreshAt(); at.Before(state.next) {
+								state.next = at
+							}
+							state.attempt = 0
+						}
+					}
+					questions[q] = state
+				}
 			}
-		case <-ticker.C:
+		case now = <-ticker.C:
 			if transport == nil {
 				continue
 			}
@@ -160,8 +221,14 @@ func (m *Manager) runMDNS(ctx context.Context) {
 			for q, s := range questions {
 				if s.attempt >= 3 && !now.Before(s.next) {
 					delete(questions, q)
+					if q.reverse() {
+						reverseCount--
+					}
 				}
 			}
+			// Enumeration remains an active question, including its TTL renewal.
+			// Reserve its place before the bounded per-address work queue fills.
+			add(mdnsQuestion{"_services._dns-sd._udp.local", 12}, now)
 			for a, last := range observed {
 				if now.Sub(last) > time.Hour {
 					delete(observed, a)
@@ -170,7 +237,6 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				}
 			}
 			if !now.Before(nextEnumeration) {
-				add(mdnsQuestion{"_services._dns-sd._udp.local", 12}, now)
 				types, instances = map[string]bool{}, map[string]bool{}
 				nextEnumeration = now.Add(5 * time.Minute)
 			}
@@ -202,42 +268,64 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				}
 			}
 			// One question per 500ms tick, sent on each selected interface. IPv4 and
-			// IPv6 share a question, with two datagrams per tick at most.
+			// IPv6 share a question, with two datagrams per interface per tick.
 			var chosen mdnsQuestion
 			var earliest time.Time
 			for q, s := range questions {
-				if !now.Before(s.next) && (earliest.IsZero() || s.next.Before(earliest)) {
+				preferred := q.reverse() != preferServices
+				chosenPreferred := chosen.reverse() != preferServices
+				if !now.Before(s.next) && (earliest.IsZero() || (preferred && !chosenPreferred) || (preferred == chosenPreferred && s.next.Before(earliest))) {
 					chosen, earliest = q, s.next
 				}
 			}
 			if !earliest.IsZero() {
+				preferServices = !preferServices
 				state := questions[chosen]
 				answered := true
+				var refresh time.Time
 				wire := encodeMDNSQuery(chosen.name, chosen.kind)
+				cache.index()
 				for _, id := range transport.Interfaces() {
-					hasAnswer := false
-					for _, r := range cache.records {
-						if r.key.iface == id && r.key.owner == chosen.name && r.key.kind == chosen.kind && r.expires.Sub(now) > 30*time.Second {
-							hasAnswer = true
-							break
+					var due time.Time
+					for _, r := range cache.owners[recordGroup{id, chosen.name, chosen.kind}] {
+						at := r.refreshAt()
+						if due.IsZero() || at.Before(due) {
+							due = at
 						}
 					}
-					if hasAnswer {
+					if now.Before(due) {
+						if refresh.IsZero() || due.Before(refresh) {
+							refresh = due
+						}
 						continue
 					}
 					answered = false
 					if err := transport.Send(id, wire); err != nil {
 						diag.Dropped++
+						diag.SendErrors++
+						message := fmt.Sprintf("Interface %d: %v", id, err)
+						if !slices.Contains(diag.Errors, message) {
+							diag.Errors = append(diag.Errors, message)
+							if len(diag.Errors) > 16 {
+								diag.Errors = diag.Errors[len(diag.Errors)-16:]
+							}
+						}
 					} else {
 						diag.Queries++
 					}
 				}
 				state.attempt++
-				if state.attempt >= 3 || answered {
+				if answered {
+					state.next = refresh
+					state.attempt = 3
+				} else if state.attempt >= 3 {
 					state.next = now.Add(time.Minute)
 					state.attempt = 3
 				} else {
 					state.next = now.Add(time.Duration(1<<state.attempt) * time.Second)
+				}
+				if !refresh.IsZero() && refresh.Before(state.next) {
+					state.next = refresh
 				}
 				questions[chosen] = state
 			}
