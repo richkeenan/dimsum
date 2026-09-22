@@ -19,6 +19,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/control"
+	"github.com/richkeenan/dimsum/internal/queryresult"
 	"github.com/richkeenan/dimsum/internal/stats"
 	"github.com/richkeenan/dimsum/internal/storage"
 	"github.com/stretchr/testify/assert"
@@ -49,6 +50,25 @@ func historyEvent(seq uint64, outcome stats.Outcome) stats.QueryEvent {
 }
 func historyCoverage(n uint64) *stats.Snapshot {
 	return &stats.Snapshot{ObservedStart: historyStart.UnixMicro(), ObservedEnd: historyEnd.UnixMicro(), Version: n, Sequence: n, Admitted: n}
+}
+
+func TestHistoryResponseIsAvailableInListAndDetail(t *testing.T) {
+	h, _ := historyFixture(t)
+	response := &queryresult.Summary{Records: []queryresult.Record{{Name: "ads.example", Type: "A", Value: "192.0.2.7", TTL: 7, Section: "answer"}}}
+	require.NoError(t, h.db.WriteBatch(t.Context(), "boot", []stats.QueryEvent{historyEvent(1, stats.FreshCache)}, storage.BatchOptions{Responses: map[uint64]*queryresult.Summary{1: response}}))
+	v, err := h.Queries(t.Context(), url.Values{})
+	require.NoError(t, err)
+	page := v.(historyQueries)
+	require.Len(t, page.Items, 1)
+	assert.Equal(t, response, page.Items[0].Response)
+	v, err = h.Query(t.Context(), url.Values{"id": {page.Items[0].ID}})
+	require.NoError(t, err)
+	blob, err := json.Marshal(v)
+	require.NoError(t, err)
+	var detail map[string]any
+	require.NoError(t, json.Unmarshal(blob, &detail))
+	require.Contains(t, detail, "response")
+	assert.Contains(t, string(blob), `"ttl":7`)
 }
 
 func TestHistoryProviderRealSQLitePresentationAndConsistentDefaults(t *testing.T) {

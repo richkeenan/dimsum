@@ -1770,6 +1770,23 @@ export interface components {
       /** Format: date-time */
       updated_at: string;
     };
+    /** @description Bounded summary of the reply sent to the client. Omitted on a query when response data was not recorded; no new DNS lookup is performed. */
+    QueryResponse: {
+      /** @description Some records or values were omitted by capture/summary limits; independent of the DNS TC flag */
+      truncated: boolean;
+      records: {
+        /** @description Byte-safe record owner; dot denotes root */
+        name: string;
+        /** @description DNS type mnemonic or TYPE<number> */
+        type: string;
+        /** @description Record presentation; unsupported types use RFC 3597-style hexadecimal data */
+        value: string;
+        /** @description TTL in seconds as returned to this client at query time */
+        ttl: number;
+        /** @enum {string} */
+        section: "answer" | "authority" | "additional";
+      }[];
+    };
     HistoryQuery: {
       id: components["schemas"]["Decimal"];
       /** @description Boot scope for generation and rule identifiers */
@@ -1800,6 +1817,7 @@ export interface components {
       upstream_id: components["schemas"]["Decimal"];
       /** @description Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block */
       flags: number;
+      response?: components["schemas"]["QueryResponse"];
     };
     HistoryQueries: {
       items: components["schemas"]["HistoryQuery"][];

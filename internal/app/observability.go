@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/richkeenan/dimsum/internal/config"
+	"github.com/richkeenan/dimsum/internal/queryresult"
 	"github.com/richkeenan/dimsum/internal/stats"
 	"github.com/richkeenan/dimsum/internal/storage"
 	"github.com/richkeenan/dimsum/internal/transport"
@@ -31,6 +32,13 @@ type aliasNote struct {
 	wire     [255]byte
 }
 
+type responseNote struct {
+	sequence uint64
+	size     int
+	limited  bool
+	wire     [queryresult.MaxWireBytes]byte
+}
+
 // SQL and formatting run only in the consumer. The DNS-side auxiliary history
 // cache is fixed at 256 descriptions (about 1 MiB); collisions mean unavailable
 // explanation metadata, never another rule's explanation.
@@ -44,6 +52,8 @@ type observability struct {
 	mu        sync.Mutex
 	rules     [256]ruleNote
 	aliases   [4096]aliasNote
+	// Fixed ~4 MiB, separate from compact events. Overwritten slots are unavailable.
+	responses [1024]responseNote
 }
 
 func newObservability(store *config.Store) (*observability, error) {
@@ -146,7 +156,7 @@ func (o *observability) observe(r *transport.Request, result transport.Result) {
 	if e.RuleID != 0 {
 		o.noteRule(e.Generation, e.RuleID, result)
 	}
-	if result.AliasLength > 0 {
+	if result.AliasLength > 0 || len(result.Response) > 0 {
 		o.collector.RecordWith(e, func(sequence uint64) {
 			if !o.mu.TryLock() {
 				return
@@ -156,6 +166,12 @@ func (o *observability) observe(r *transport.Request, result transport.Result) {
 			n.sequence = sequence
 			n.size = result.AliasLength
 			copy(n.wire[:], result.Alias[:result.AliasLength])
+			if len(result.Response) > 0 {
+				r := &o.responses[sequence%uint64(len(o.responses))]
+				r.sequence = sequence
+				r.size = copy(r.wire[:], result.Response)
+				r.limited = len(result.Response) > len(r.wire)
+			}
 		})
 	} else {
 		o.collector.Record(e)
@@ -197,10 +213,14 @@ func (o *observability) noteRule(generation, id uint32, result transport.Result)
 
 func (o *observability) enrich(events []stats.QueryEvent) (storage.BatchOptions, error) {
 	var out storage.BatchOptions
+	responses := make([]responseNote, 0, len(events))
 	seen := make(map[[2]uint32]bool)
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	for _, e := range events {
+		r := &o.responses[e.Sequence%uint64(len(o.responses))]
+		if r.sequence == e.Sequence && r.size > 0 {
+			responses = append(responses, *r)
+		}
 		a := &o.aliases[e.Sequence%uint64(len(o.aliases))]
 		if a.sequence == e.Sequence && a.size > 0 {
 			if out.Aliases == nil {
@@ -216,6 +236,16 @@ func (o *observability) enrich(events []stats.QueryEvent) (storage.BatchOptions,
 		n := &o.rules[ruleSlot(e.Generation, e.RuleID)]
 		if n.generation == e.Generation && n.id == e.RuleID {
 			out.Rules = append(out.Rules, storage.RuleVersion{Generation: e.Generation, RuleID: e.RuleID, Description: string(n.text[:n.size]), SourceID: string(n.source[:n.sourceLen])})
+		}
+	}
+	o.mu.Unlock()
+	// Response parsing and formatting happen on the consumer, outside the lock.
+	for _, r := range responses {
+		if response := queryresult.Summarize(r.wire[:r.size], r.limited); response != nil {
+			if out.Responses == nil {
+				out.Responses = make(map[uint64]*queryresult.Summary)
+			}
+			out.Responses[r.sequence] = response
 		}
 	}
 	return out, nil

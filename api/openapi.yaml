@@ -741,6 +741,24 @@ components:
         range: {$ref: '#/components/schemas/HistoryRange'}
         complete: {type: boolean, description: All chart intervals have complete retained observation coverage}
         updated_at: {type: string, format: date-time}
+    QueryResponse:
+      type: object
+      description: Bounded summary of the reply sent to the client. Omitted on a query when response data was not recorded; no new DNS lookup is performed.
+      required: [records, truncated]
+      properties:
+        truncated: {type: boolean, description: Some records or values were omitted by capture/summary limits; independent of the DNS TC flag}
+        records:
+          type: array
+          maxItems: 16
+          items:
+            type: object
+            required: [name, type, value, ttl, section]
+            properties:
+              name: {type: string, description: Byte-safe record owner; dot denotes root}
+              type: {type: string, description: DNS type mnemonic or TYPE<number>}
+              value: {type: string, maxLength: 1024, description: Record presentation; unsupported types use RFC 3597-style hexadecimal data}
+              ttl: {type: integer, minimum: 0, maximum: 4294967295, description: TTL in seconds as returned to this client at query time, not a live countdown}
+              section: {type: string, enum: [answer, authority, additional]}
     HistoryQuery:
       type: object
       required: [id, boot_id, sequence, time, client, client_name, client_name_source, client_name_fresh, name, qtype, qtype_code, qclass, outcome, rcode, duration_us, generation, rule_id, upstream_id, flags]
@@ -766,6 +784,7 @@ components:
         source_id: {type: string, description: 'Exact archived source identity; empty when unavailable (including legacy history and identities exceeding 512 bytes)'}
         upstream_id: {$ref: '#/components/schemas/Decimal'}
         flags: {type: integer, minimum: 0, maximum: 4294967295, description: 'Bits 0 TCP, 1 coalesced, 2 fallback used, 3 truncated, 4 response-policy block'}
+        response: {$ref: '#/components/schemas/QueryResponse'}
     HistoryQueries:
       type: object
       required: [items, complete, range, updated_at]

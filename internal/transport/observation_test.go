@@ -28,7 +28,11 @@ func TestObserverFinalOutcomes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var results []Result
-			s, err := New(Options{SmallSlots: 1, LargeSlots: 1, Observe: func(r *Request, result Result) { results = append(results, result) }}, HandlerFunc(func(ctx context.Context, r *Request, out []byte) (int, error) {
+			var response []byte
+			s, err := New(Options{SmallSlots: 1, LargeSlots: 1, Observe: func(r *Request, result Result) {
+				response = append([]byte(nil), result.Response...)
+				results = append(results, result)
+			}}, HandlerFunc(func(ctx context.Context, r *Request, out []byte) (int, error) {
 				r.Result.Outcome = FreshAnswer
 				if tc.fail {
 					return 0, errors.New("fixture failure")
@@ -36,7 +40,13 @@ func TestObserverFinalOutcomes(t *testing.T) {
 				return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RecursionAvailable: true}, 1232)
 			}))
 			require.NoError(t, err)
-			s.resolve(context.Background(), tc.wire, make([]byte, 65535), netip.MustParseAddrPort("192.0.2.1:1234"), false, time.Now().Add(2*time.Second))
+			out := make([]byte, 65535)
+			n := s.resolve(context.Background(), tc.wire, out, netip.MustParseAddrPort("192.0.2.1:1234"), false, time.Now().Add(2*time.Second))
+			if n > 0 {
+				assert.Equal(t, out[:n], response)
+			} else {
+				assert.Empty(t, response)
+			}
 			require.Len(t, results, 1)
 			assert.Equal(t, tc.admitted, results[0].Admitted)
 			assert.Equal(t, tc.outcome, results[0].Outcome)

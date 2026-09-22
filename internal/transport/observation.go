@@ -29,6 +29,8 @@ type Result struct {
 	Arrival                                        time.Time
 	Elapsed                                        time.Duration
 	RCode                                          uint16
+	// Response borrows the final fitted reply for the observer callback only.
+	Response []byte
 	// Rule is borrowed from the captured immutable generation for this callback
 	// only. Detailed consumers must copy bounded fields before returning.
 	Rule        policy.Rule

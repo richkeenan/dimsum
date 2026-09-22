@@ -19,6 +19,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/control"
 	"github.com/richkeenan/dimsum/internal/policy"
+	"github.com/richkeenan/dimsum/internal/queryresult"
 	"github.com/richkeenan/dimsum/internal/stats"
 	"github.com/richkeenan/dimsum/internal/storage"
 )
@@ -51,27 +52,28 @@ type historySummary struct {
 	UpdatedAt  time.Time    `json:"updated_at"`
 }
 type historyQuery struct {
-	ClientDevice     *clients.Enrichment `json:"client_device,omitempty"`
-	ID               string              `json:"id"`
-	BootID           string              `json:"boot_id"`
-	Sequence         string              `json:"sequence"`
-	Time             time.Time           `json:"time"`
-	Client           string              `json:"client"`
-	ClientName       string              `json:"client_name"`
-	ClientNameSource string              `json:"client_name_source"`
-	ClientNameFresh  bool                `json:"client_name_fresh"`
-	Name             string              `json:"name"`
-	QType            string              `json:"qtype"`
-	QTypeCode        uint16              `json:"qtype_code"`
-	QClass           uint16              `json:"qclass"`
-	Outcome          string              `json:"outcome"`
-	RCode            uint16              `json:"rcode"`
-	DurationUS       string              `json:"duration_us"`
-	Generation       string              `json:"generation"`
-	RuleID           string              `json:"rule_id"`
-	SourceID         string              `json:"source_id"`
-	UpstreamID       string              `json:"upstream_id"`
-	Flags            uint32              `json:"flags"`
+	Response         *queryresult.Summary `json:"response,omitempty"`
+	ClientDevice     *clients.Enrichment  `json:"client_device,omitempty"`
+	ID               string               `json:"id"`
+	BootID           string               `json:"boot_id"`
+	Sequence         string               `json:"sequence"`
+	Time             time.Time            `json:"time"`
+	Client           string               `json:"client"`
+	ClientName       string               `json:"client_name"`
+	ClientNameSource string               `json:"client_name_source"`
+	ClientNameFresh  bool                 `json:"client_name_fresh"`
+	Name             string               `json:"name"`
+	QType            string               `json:"qtype"`
+	QTypeCode        uint16               `json:"qtype_code"`
+	QClass           uint16               `json:"qclass"`
+	Outcome          string               `json:"outcome"`
+	RCode            uint16               `json:"rcode"`
+	DurationUS       string               `json:"duration_us"`
+	Generation       string               `json:"generation"`
+	RuleID           string               `json:"rule_id"`
+	SourceID         string               `json:"source_id"`
+	UpstreamID       string               `json:"upstream_id"`
+	Flags            uint32               `json:"flags"`
 }
 type historyQueries struct {
 	Items      []historyQuery `json:"items"`
@@ -515,7 +517,7 @@ func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	if qtype == "" {
 		qtype = "TYPE" + strconv.Itoa(int(e.QType))
 	}
-	return historyQuery{ClientDevice: name.Device, ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
+	return historyQuery{Response: row.Response, ClientDevice: name.Device, ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
 }
 func (h *historyProvider) Queries(ctx context.Context, q url.Values) (any, error) {
 	if e := h.available(); e != nil {

@@ -23,7 +23,7 @@ func TestV2SourceMigrationPreservesUnknownIdentity(t *testing.T) {
 	defer db.Close()
 	var version int
 	require.NoError(t, db.read.QueryRow("PRAGMA user_version").Scan(&version))
-	assert.Equal(t, 4, version)
+	assert.Equal(t, 5, version)
 	var source, description string
 	require.NoError(t, db.read.QueryRow("SELECT source_id,description FROM rule_versions").Scan(&source, &description))
 	assert.Empty(t, source)

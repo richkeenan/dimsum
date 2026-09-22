@@ -117,6 +117,7 @@ func (s *Server) resolve(ctx context.Context, wire, out []byte, peer netip.AddrP
 			r.Result.Arrival = deadline.Add(-s.opts.RequestTimeout)
 			r.Result.Elapsed = time.Since(r.Result.Arrival)
 			if n >= 12 && n <= len(out) {
+				r.Result.Response = out[:n:n]
 				r.Result.RCode = r.Result.RCode&^15 | uint16(out[3]&15)
 				r.Result.Truncated = out[2]&2 != 0
 				if r.Message.EDNS.Present {

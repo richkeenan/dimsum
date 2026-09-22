@@ -65,7 +65,7 @@ func TestMigrationV1AmbiguousRulesAndPendingSnapshot(t *testing.T) {
 	}
 	var version, sequence int
 	require.NoError(t, d.read.QueryRow("PRAGMA user_version").Scan(&version))
-	assert.Equal(t, 4, version)
+	assert.Equal(t, 5, version)
 	require.NoError(t, d.read.QueryRow("SELECT snapshot_sequence FROM writer_state WHERE boot_id='a'").Scan(&sequence))
 	assert.Equal(t, 2, sequence)
 	require.NoError(t, d.Close())

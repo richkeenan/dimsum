@@ -9,6 +9,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/richkeenan/dimsum/internal/queryresult"
 	"github.com/richkeenan/dimsum/internal/stats"
 )
 
@@ -27,6 +28,7 @@ type BatchOptions struct {
 	Snapshot    *stats.Snapshot
 	Rules       []RuleVersion
 	Aliases     map[uint64][]byte
+	Responses   map[uint64]*queryresult.Summary
 	LostDetails uint64 // Cumulative consumer losses for this boot, replay-safe.
 }
 
@@ -42,7 +44,7 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 	if len(options) > 0 {
 		o = options[0]
 	}
-	if len(o.Rules) > MaxBatch || len(o.Aliases) > MaxBatch || o.LostDetails > math.MaxInt64 {
+	if len(o.Rules) > MaxBatch || len(o.Aliases) > MaxBatch || len(o.Responses) > MaxBatch || o.LostDetails > math.MaxInt64 {
 		return errors.New("invalid metadata bounds")
 	}
 	for i, e := range events {
@@ -89,7 +91,7 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			return errors.New("immutable rule version conflict")
 		}
 	}
-	insert, err := tx.PrepareContext(ctx, `INSERT INTO query_events(boot_id,sequence,timestamp,duration,domain_id,client_id,qtype,qclass,outcome,rcode,upstream_id,generation,rule_id,flags,alias) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+	insert, err := tx.PrepareContext(ctx, `INSERT INTO query_events(boot_id,sequence,timestamp,duration,domain_id,client_id,qtype,qclass,outcome,rcode,upstream_id,generation,rule_id,flags,alias,response) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
 	if err != nil {
 		return err
 	}
@@ -143,7 +145,20 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 			if er != nil {
 				return er
 			}
-			if _, err = insert.ExecContext(ctx, boot, e.Sequence, e.Timestamp, e.Duration, domain, client, e.QType, e.QClass, e.Outcome, e.RCode, e.UpstreamID, e.Generation, e.RuleID, e.Flags, o.Aliases[e.Sequence]); err != nil {
+			var response []byte
+			if summary := o.Responses[e.Sequence]; summary != nil {
+				if len(summary.Records) > queryresult.MaxRecords {
+					return errors.New("response record bound exceeded")
+				}
+				response, err = json.Marshal(summary)
+				if err != nil {
+					return err
+				}
+				if len(response) > queryresult.MaxJSONBytes {
+					return errors.New("response size bound exceeded")
+				}
+			}
+			if _, err = insert.ExecContext(ctx, boot, e.Sequence, e.Timestamp, e.Duration, domain, client, e.QType, e.QClass, e.Outcome, e.RCode, e.UpstreamID, e.Generation, e.RuleID, e.Flags, o.Aliases[e.Sequence], response); err != nil {
 				return err
 			}
 		}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/richkeenan/dimsum/internal/queryresult"
 	"github.com/richkeenan/dimsum/internal/stats"
 )
 
@@ -32,6 +33,7 @@ type Row struct {
 	Alias           []byte
 	RuleDescription string
 	SourceID        string
+	Response        *queryresult.Summary
 }
 type Page struct {
 	Rows     []Row
@@ -84,7 +86,7 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 			return p, errors.New("invalid cursor")
 		}
 	}
-	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,''),COALESCE(r.source_id,'') FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
+	query := `SELECT e.id,e.boot_id,e.sequence,e.timestamp,e.duration,e.generation,c.address,n.name,e.qtype,e.qclass,e.outcome,e.rcode,e.upstream_id,e.rule_id,e.flags,e.alias,COALESCE(r.description,''),COALESCE(r.source_id,''),e.response FROM query_events e JOIN domains n ON n.id=e.domain_id JOIN clients c ON c.id=e.client_id LEFT JOIN rule_versions r ON r.boot_id=e.boot_id AND r.generation=e.generation AND r.rule_id=e.rule_id WHERE e.timestamp>=? AND e.timestamp<? AND e.id<=?`
 	query += " AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')"
 	args := []any{o.Start.UnixMicro(), o.End.UnixMicro(), ceiling}
 	clause, filterArgs := o.HistoryFilters.sql()
@@ -118,11 +120,17 @@ func (d *DB) Query(ctx context.Context, o QueryOptions) (Page, error) {
 	}
 	for rows.Next() {
 		var r Row
-		var client, name []byte
+		var client, name, response []byte
 		e := &r.Event
-		if err = rows.Scan(&r.ID, &r.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &r.Alias, &r.RuleDescription, &r.SourceID); err != nil {
+		if err = rows.Scan(&r.ID, &r.Boot, &e.Sequence, &e.Timestamp, &e.Duration, &e.Generation, &client, &name, &e.QType, &e.QClass, &e.Outcome, &e.RCode, &e.UpstreamID, &e.RuleID, &e.Flags, &r.Alias, &r.RuleDescription, &r.SourceID, &response); err != nil {
 			rows.Close()
 			return p, err
+		}
+		if len(response) > 0 {
+			if err = json.Unmarshal(response, &r.Response); err != nil {
+				rows.Close()
+				return p, err
+			}
 		}
 		copy(e.Client[:], client)
 		copy(e.QName[:], name)

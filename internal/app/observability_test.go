@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/stats"
 	"github.com/richkeenan/dimsum/internal/storage"
@@ -69,4 +70,30 @@ func TestIdentitylessRejectionPresentation(t *testing.T) {
 	assert.Empty(t, item.Client)
 	assert.Empty(t, item.Name)
 	assert.Equal(t, "unavailable", item.ClientNameSource)
+}
+
+func TestResponseObservationOwnsWireAndNeverMisattributesCollision(t *testing.T) {
+	o := &observability{collector: stats.New(2)}
+	m := new(dns.Msg)
+	m.SetQuestion("example.test.", dns.TypeA)
+	m.Response = true
+	rr, err := dns.NewRR("example.test. 42 IN A 192.0.2.8")
+	require.NoError(t, err)
+	m.Answer = []dns.RR{rr}
+	wire, err := m.Pack()
+	require.NoError(t, err)
+	o.observe(nil, transport.Result{Admitted: true, Outcome: transport.FreshAnswer, Response: wire})
+	clear(wire)
+	e := <-o.collector.Events()
+	metadata, err := o.enrich([]stats.QueryEvent{e})
+	require.NoError(t, err)
+	require.NotNil(t, metadata.Responses[e.Sequence])
+	records := metadata.Responses[e.Sequence].Records
+	require.Len(t, records, 1)
+	assert.Equal(t, "192.0.2.8", records[0].Value)
+	assert.Equal(t, uint32(42), records[0].TTL)
+	e.Sequence += 1024
+	metadata, err = o.enrich([]stats.QueryEvent{e})
+	require.NoError(t, err)
+	assert.Nil(t, metadata.Responses[e.Sequence])
 }
