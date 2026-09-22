@@ -143,7 +143,12 @@ func exerciseEngine(t *testing.T, data []byte) fuzzCoverage {
 	check := func() {
 		rows := e.DurableLeases()
 		expected := make([]Lease, 0, len(store))
+		boundIdentities := make(map[string]bool)
 		for _, l := range store {
+			if l.State == Bound {
+				require.False(t, boundIdentities[l.Identity], "two durable Bound rows would prevent recovery")
+				boundIdentities[l.Identity] = true
+			}
 			expected = append(expected, l)
 		}
 		sort.Slice(expected, func(i, j int) bool { return expected[i].Address.Less(expected[j].Address) })
@@ -167,11 +172,13 @@ func exerciseEngine(t *testing.T, data []byte) fuzzCoverage {
 		for id, v := range e.byID {
 			require.Same(t, v, e.byIP[v.lease.Address])
 			require.Equal(t, id, v.lease.Identity)
-			require.False(t, v.dirtyQuarantine)
-			require.NotEqual(t, Quarantined, v.lease.State)
+			if v.dirtyQuarantine || v.lease.State == Quarantined {
+				require.True(t, v.durable)
+				require.Equal(t, Bound, v.committed.State, "only a durable Bound row needs a quarantine ordering barrier")
+			}
 		}
 		for _, v := range e.byIP {
-			if v.lease.State != Quarantined && !v.dirtyQuarantine && !(v.lease.State == CommitPending && v.previous.State == Quarantined) {
+			if v.durable && v.committed.State == Bound || v.lease.State != Quarantined && !v.dirtyQuarantine && !(v.lease.State == CommitPending && v.previous.State == Quarantined) {
 				require.Same(t, v, e.byID[v.lease.Identity])
 			}
 		}
@@ -250,23 +257,16 @@ func exerciseEngine(t *testing.T, data []byte) fuzzCoverage {
 			}
 		case 11:
 			if len(mutations) == 0 {
-				dirty := false
-				for _, v := range e.byIP {
-					dirty = dirty || v.dirtyQuarantine
+				rows := make([]Lease, 0, len(store))
+				for _, l := range store {
+					rows = append(rows, l)
 				}
-				if !dirty {
-					rows := make([]Lease, 0, len(store))
-					for _, l := range store {
-						rows = append(rows, l)
-					}
-					fresh, err := NewEngine(s, generation+1, func() time.Time { return *now })
-					require.NoError(t, err)
-					if fresh.Restore(rows, *now) == nil {
-						e = fresh
-						generation++
-						coverage.restores++
-					}
-				}
+				fresh, err := NewEngine(s, generation+1, func() time.Time { return *now })
+				require.NoError(t, err)
+				require.NoError(t, fresh.Restore(rows, *now), "every committed snapshot must be recoverable, including dirty quarantine crashes")
+				e = fresh
+				generation++
+				coverage.restores++
 			}
 		case 12:
 			record(e.CompleteCommit(lastCommit))
@@ -303,6 +303,10 @@ func exerciseEngine(t *testing.T, data []byte) fuzzCoverage {
 }
 
 func TestStatefulHarnessExercisesDurableTransitions(t *testing.T) {
+	cCrash := exerciseEngine(t, []byte{7, 131, 0, 11})
+	assert.Positive(t, cCrash.failures)
+	assert.Positive(t, cCrash.restores)
+	exerciseEngine(t, []byte{7, 131, 0, 8, 3, 0, 1, 2, 3})
 	c := exerciseEngine(t, []byte{4, 131, 4, 3, 5, 3, 11, 7, 3, 8, 14, 6, 3, 0, 1, 2, 3})
 	assert.GreaterOrEqual(t, c.acks, 3)
 	assert.Positive(t, c.failures)
@@ -317,7 +321,9 @@ func TestStatefulHarnessExercisesDurableTransitions(t *testing.T) {
 }
 
 func FuzzEngineOwnership(f *testing.F) {
-	f.Add([]byte{0xc7, 0x43, 0xd8}) // Durable quarantine expiry/delete has no identity index.
+	f.Add([]byte{7, 131, 0, 11})               // Crash with failed bound quarantine and repeated discovery.
+	f.Add([]byte{7, 131, 0, 8, 3, 0, 1, 2, 3}) // Retry success unblocks replacement.
+	f.Add([]byte{0xc7, 0x43, 0xd8})            // Durable quarantine expiry/delete has no identity index.
 	f.Add([]byte{4, 131, 4, 3, 5, 3, 11, 7, 3, 8, 14, 6, 3, 0, 1, 2, 3})
 	f.Add([]byte{9, 4, 3, 24, 11, 10, 0, 4, 5})
 	f.Add([]byte{13, 13, 0, 4, 11, 141, 4, 3}) // Move/remove reservation with retained ownership.

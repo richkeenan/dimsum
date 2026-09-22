@@ -214,8 +214,13 @@ func TestQuarantineCompletionDoesNotRemoveNextCandidateIdentity(t *testing.T) {
 	out = e.Handle(r)
 	require.NotNil(t, out.Mutation)
 	binding := *out.Mutation
-	e.CompleteCommit(CommitResult{Token: m.Token})
 	out = e.CompleteCommit(CommitResult{Token: binding.Token})
+	require.NotNil(t, out.Reply)
+	assert.Equal(t, ACK, out.Reply.Type)
+	// Never-bound quarantine persistence need not delay a replacement's ACK.
+	require.Len(t, e.DurableLeases(), 1)
+	e.CompleteCommit(CommitResult{Token: m.Token})
+	out = e.Handle(r)
 	require.NotNil(t, out.Reply)
 	assert.Equal(t, ACK, out.Reply.Type)
 	assert.Len(t, e.DurableLeases(), 2)
@@ -252,4 +257,52 @@ func TestRecoveryRequiresExplicitConservativeHorizon(t *testing.T) {
 		assert.Error(t, fresh.Restore([]Lease{l}, *now))
 		assert.Empty(t, fresh.Leases())
 	}
+}
+
+func TestBoundQuarantineBlocksReplacementUntilDurableAcrossFailureAndCrash(t *testing.T) {
+	s := fixtureSettings()
+	e, now := engineFixture(t, s)
+	r := client(1, Discover)
+	original := bind(t, e, r)
+	r.Type = Decline
+	r.ServerID = netip.MustParseAddr(s.ServerIP)
+	r.RequestedIP = original.Address
+	out := e.Handle(r)
+	require.NotNil(t, out.Mutation)
+	discover := client(1, Discover)
+	discover.XID++
+	assert.Equal(t, Outcome{}, e.Handle(discover), "pending quarantine must block replacement")
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token, Err: errors.New("definite rollback")})
+	for range 3 {
+		assert.Equal(t, Outcome{}, e.Handle(discover), "failed quarantine must retain identity barrier")
+	}
+	rows := e.DurableLeases()
+	require.Equal(t, []Lease{original}, rows)
+	// Crash before retry: only the actual committed Bound row can be recovered.
+	fresh, err := NewEngine(s, 2, func() time.Time { return *now })
+	require.NoError(t, err)
+	require.NoError(t, fresh.Restore(rows, *now))
+	restored := fresh.Handle(discover)
+	require.NotNil(t, restored.Reply)
+	assert.Equal(t, original.Address, restored.Reply.Address)
+	assert.Nil(t, restored.Probe)
+	// On the original owner, failed retries still cannot unblock this identity.
+	ms := e.Tick()
+	require.Len(t, ms, 1)
+	e.CompleteCommit(CommitResult{Token: ms[0].Token, Err: errors.New("queue full")})
+	assert.Equal(t, Outcome{}, e.Handle(discover))
+	ms = e.Tick()
+	require.Len(t, ms, 1)
+	assert.Equal(t, Outcome{}, e.Handle(discover))
+	e.CompleteCommit(CommitResult{Token: ms[0].Token})
+	replacement := bind(t, e, discover)
+	assert.NotEqual(t, original.Address, replacement.Address)
+	rows = e.DurableLeases()
+	require.Len(t, rows, 2)
+	assert.Equal(t, Quarantined, rows[0].State)
+	assert.Equal(t, Bound, rows[1].State)
+	fresh, err = NewEngine(s, 3, func() time.Time { return *now })
+	require.NoError(t, err)
+	require.NoError(t, fresh.Restore(rows, *now))
+	assert.Equal(t, rows, fresh.DurableLeases())
 }

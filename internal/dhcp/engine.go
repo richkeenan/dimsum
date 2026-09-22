@@ -463,7 +463,11 @@ func (e *Engine) Handle(r Request) Outcome {
 	return Outcome{}
 }
 func (e *Engine) quarantine(v *entry, now time.Time) Outcome {
-	if e.byID[v.lease.Identity] == v {
+	// A committed Bound row still owns the active identity until its quarantine
+	// put succeeds. Retain this barrier through rollback/retry so a replacement
+	// cannot create a second durable Bound row that Restore would reject.
+	// Never-bound candidates have no such dependency and may probe concurrently.
+	if (!v.durable || v.committed.State != Bound) && e.byID[v.lease.Identity] == v {
 		delete(e.byID, v.lease.Identity)
 	}
 	target := v.lease
@@ -531,6 +535,9 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 	v.committed = v.pending
 	v.dirtyQuarantine = false
 	if v.lease.State == Quarantined {
+		if e.byID[v.lease.Identity] == v {
+			delete(e.byID, v.lease.Identity)
+		}
 		return Outcome{}
 	}
 	v.lease.State = Bound
