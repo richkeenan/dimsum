@@ -83,4 +83,6 @@ Use `goreleaser release --snapshot --clean --skip=publish,docker` to build local
 packages. The packaging hooks write
 dependency notices and build metadata under `artifacts/packaging-metadata/`.
 
-The project license has not yet been selected.
+## License
+
+dimsum is licensed under the [MIT License](LICENSE).
