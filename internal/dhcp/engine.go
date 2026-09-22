@@ -77,13 +77,20 @@ type Lease struct {
 	MAC      [6]byte
 	Address  netip.Addr
 	Hostname string
-	Expiry   time.Time
-	State    LeaseState
+	// Expiry is the latest advertised grant (or quarantine interval) deadline.
+	// DNS views use this deadline; allocation/reclamation must use HoldUntil.
+	Expiry time.Time
+	// HoldUntil is the conservative ownership horizon, independent of the latest
+	// advertised Expiry. Persist both; replacement puts must never shorten this
+	// horizon. Only explicit RELEASE or expiry of this hold permits address reuse.
+	HoldUntil time.Time
+	State     LeaseState
 }
 
 // Mutation is an immutable value handed to a bounded durable writer. PutLease
-// replaces the row by address; DeleteLease removes it. Return failure even on
-// admission rejection. Never invoke CompleteCommit until the transaction ends.
+// replaces the row by address, persisting both Expiry and HoldUntil; DeleteLease
+// removes it. Return failure even on admission rejection. Never invoke
+// CompleteCommit until the transaction ends.
 type Mutation struct {
 	Token Token
 	Kind  MutationKind
@@ -100,17 +107,19 @@ type Outcome struct {
 }
 
 type entry struct {
-	lease    Lease
-	request  Request
-	token    Token
-	deadline time.Time
-	attempts int
-	durable  bool
-	previous Lease
-	pending  Lease
-	mutation MutationKind
-	lastACK  uint32
-	hasACK   bool
+	lease           Lease
+	request         Request
+	token           Token
+	deadline        time.Time
+	attempts        int
+	durable         bool
+	committed       Lease
+	dirtyQuarantine bool
+	previous        Lease
+	pending         Lease
+	mutation        MutationKind
+	lastACK         uint32
+	hasACK          bool
 }
 
 // Engine is owned by one event loop. All methods, including reads and completion
@@ -227,6 +236,34 @@ func (e *Engine) reservation(r Request) (Reservation, bool) {
 	v, ok := e.reservations["mac:"+string(r.MAC[:])]
 	return v, ok
 }
+
+// Ownership retention is independent of whether current configuration permits
+// another grant. Both DISCOVER and REQUEST use this same eligibility decision.
+func (e *Engine) eligible(r Request, ip netip.Addr) bool {
+	if !usable(ip, netip.MustParsePrefix(e.settings.Subnet)) || ip == netip.MustParseAddr(e.settings.ServerIP) || ip == netip.MustParseAddr(e.settings.Gateway) {
+		return false
+	}
+	if res, ok := e.reservation(r); ok {
+		return ip == netip.MustParseAddr(res.Address)
+	}
+	if _, reserved := e.reserved[ip]; reserved {
+		return false
+	}
+	n := ipv4Number(ip)
+	return n >= e.start && n <= e.end
+}
+
+// Disabled settings may be incomplete; activation/recovery into enabled settings
+// must reject retained ownership incompatible with the proposed network identity.
+func retainedTopology(s Settings, l Lease) error {
+	if !s.Enabled {
+		return nil
+	}
+	if !usable(l.Address, netip.MustParsePrefix(s.Subnet)) || l.Address == netip.MustParseAddr(s.ServerIP) || l.Address == netip.MustParseAddr(s.Gateway) {
+		return fmt.Errorf("dhcp: topology conflicts with held lease %q at %s until %s", l.Identity, l.Address, l.HoldUntil.Format(time.RFC3339))
+	}
+	return nil
+}
 func (e *Engine) reply(kind MessageType, ip netip.Addr, r Request) *Reply {
 	seconds := 0
 	if ip.IsValid() {
@@ -341,7 +378,7 @@ func (e *Engine) Handle(r Request) Outcome {
 	if v != nil && v.lease.State == CommitPending {
 		return Outcome{}
 	}
-	if v != nil && (v.lease.State == Offered || v.lease.State == Bound) && !now.Before(v.lease.Expiry) {
+	if v != nil && (v.lease.State == Offered || v.lease.State == Bound) && !now.Before(v.lease.HoldUntil) {
 		return Outcome{}
 	} // Tick must retire ownership first.
 	switch r.Type {
@@ -349,6 +386,9 @@ func (e *Engine) Handle(r Request) Outcome {
 		if v != nil {
 			switch v.lease.State {
 			case Bound, Offered:
+				if !e.eligible(r, v.lease.Address) {
+					return Outcome{}
+				}
 				v.request = r
 				return Outcome{Reply: e.reply(Offer, v.lease.Address, r)}
 			case Probing:
@@ -385,6 +425,9 @@ func (e *Engine) Handle(r Request) Outcome {
 		if nonzero(r.ServerID) && v.lease.State == Offered && v.request.XID != r.XID {
 			return Outcome{}
 		}
+		if !e.eligible(r, addr) {
+			return Outcome{}
+		}
 		if v.lease.State == Offered && !nonzero(r.ServerID) {
 			return Outcome{}
 		}
@@ -395,6 +438,10 @@ func (e *Engine) Handle(r Request) Outcome {
 		target.MAC = r.MAC
 		target.State = Bound
 		target.Expiry = now.Add(time.Duration(e.settings.LeaseSeconds) * time.Second)
+		target.HoldUntil = target.Expiry
+		if v.durable && v.lease.HoldUntil.After(target.HoldUntil) {
+			target.HoldUntil = v.lease.HoldUntil
+		}
 		out := e.mutate(v, PutLease, target, r)
 		v.deadline = target.Expiry
 		return out
@@ -407,16 +454,7 @@ func (e *Engine) Handle(r Request) Outcome {
 		if r.ServerID != server || v == nil || v.lease.Address != r.RequestedIP || v.lease.State != Bound && v.lease.State != Offered {
 			return Outcome{}
 		}
-		if v.durable {
-			target := v.lease
-			target.State = Quarantined
-			target.Expiry = now.Add(10 * time.Minute)
-			out := e.mutate(v, PutLease, target, r)
-			v.deadline = target.Expiry
-			return out
-		}
-		e.quarantine(v, now)
-		return Outcome{}
+		return e.quarantine(v, now)
 	case Inform:
 		if nonzero(r.CIAddr) {
 			return Outcome{Reply: e.reply(ACK, netip.Addr{}, r)}
@@ -424,12 +462,18 @@ func (e *Engine) Handle(r Request) Outcome {
 	}
 	return Outcome{}
 }
-func (e *Engine) quarantine(v *entry, now time.Time) {
+func (e *Engine) quarantine(v *entry, now time.Time) Outcome {
 	if e.byID[v.lease.Identity] == v {
 		delete(e.byID, v.lease.Identity)
 	}
-	v.lease.State = Quarantined
-	v.lease.Expiry = now.Add(10 * time.Minute)
+	target := v.lease
+	target.State = Quarantined
+	target.Expiry = now.Add(10 * time.Minute)
+	if target.Expiry.After(target.HoldUntil) {
+		target.HoldUntil = target.Expiry
+	}
+	v.dirtyQuarantine = true
+	return e.mutate(v, PutLease, target, Request{})
 }
 func (e *Engine) find(t Token) *entry {
 	if t.Generation != e.generation {
@@ -455,11 +499,13 @@ func (e *Engine) CompleteProbe(result ProbeResult) Outcome {
 	}
 	if result.Conflict {
 		r, attempt := v.request, v.attempts
-		e.quarantine(v, now)
-		return e.discover(r, now, attempt+1)
+		out := e.quarantine(v, now)
+		out.Probe = e.discover(r, now, attempt+1).Probe
+		return out
 	}
 	v.lease.State = Offered
 	v.lease.Expiry = now.Add(30 * time.Second)
+	v.lease.HoldUntil = v.lease.Expiry
 	return Outcome{Reply: e.reply(Offer, v.lease.Address, v.request)}
 }
 func (e *Engine) CompleteCommit(result CommitResult) Outcome {
@@ -469,7 +515,11 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 		return Outcome{}
 	}
 	if result.Err != nil {
-		v.lease = v.previous
+		if v.dirtyQuarantine {
+			v.lease = v.pending
+		} else {
+			v.lease = v.previous
+		}
 		return Outcome{}
 	}
 	if v.mutation == DeleteLease {
@@ -478,9 +528,9 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 	}
 	v.lease = v.pending
 	v.durable = true
-	if v.request.Type == Decline {
-		v.lease.State = Quarantined
-		delete(e.byID, v.lease.Identity)
+	v.committed = v.pending
+	v.dirtyQuarantine = false
+	if v.lease.State == Quarantined {
 		return Outcome{}
 	}
 	v.lease.State = Bound
@@ -494,6 +544,7 @@ func (e *Engine) CompleteCommit(result CommitResult) Outcome {
 
 // Tick uses one bounded scan. Durable expiry is deleted before address reuse;
 // failed or unadmitted deletes retain ownership and are retried on a later Tick.
+// Failed quarantine puts are retried before expiry handling, never forgotten.
 func (e *Engine) Tick() []Mutation {
 	now, ok := e.now()
 	if !ok {
@@ -502,6 +553,10 @@ func (e *Engine) Tick() []Mutation {
 	var out []Mutation
 	for _, l := range e.Leases() {
 		v := e.byIP[l.Address]
+		if v.dirtyQuarantine && v.lease.State != CommitPending {
+			out = append(out, *e.mutate(v, PutLease, v.lease, Request{}).Mutation)
+			continue
+		}
 		switch v.lease.State {
 		case Probing:
 			if !now.Before(v.deadline) {
@@ -509,7 +564,7 @@ func (e *Engine) Tick() []Mutation {
 				e.remove(v)
 			}
 		case Offered, Bound, Quarantined:
-			if !now.Before(v.lease.Expiry) {
+			if !now.Before(v.lease.HoldUntil) {
 				if v.durable {
 					m := e.mutate(v, DeleteLease, v.lease, Request{})
 					out = append(out, *m.Mutation)
@@ -541,11 +596,7 @@ func (e *Engine) DurableLeases() []Lease {
 		if !v.durable {
 			continue
 		}
-		l := v.lease
-		if l.State == CommitPending {
-			l = v.previous
-		}
-		out = append(out, l)
+		out = append(out, v.committed)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Address.Less(out[j].Address) })
 	return out
@@ -562,13 +613,16 @@ func (e *Engine) Apply(s Settings, generation uint64) error {
 		return err
 	}
 	for _, v := range e.byIP {
-		if v.lease.State == CommitPending {
-			return fmt.Errorf("dhcp: durable mutation pending; drain before applying")
+		if v.lease.State == CommitPending || v.dirtyQuarantine {
+			return fmt.Errorf("dhcp: durable mutation pending or quarantine unsaved; drain before applying")
 		}
 	}
 	keep := map[netip.Addr]*entry{}
 	for ip, v := range e.byIP {
 		if v.durable || v.lease.State == Quarantined {
+			if err := retainedTopology(s, v.lease); err != nil {
+				return err
+			}
 			keep[ip] = v
 		}
 	}
@@ -583,7 +637,7 @@ func (e *Engine) Apply(s Settings, generation uint64) error {
 		key, _ := reservationKey(r)
 		matches := key == v.lease.Identity || strings.HasPrefix(key, "mac:") && key == "mac:"+string(v.lease.MAC[:])
 		if !matches {
-			return fmt.Errorf("dhcp: reservation %s conflicts with lease %s at %s until %s", r.ID, v.lease.Identity, ip, v.lease.Expiry.Format(time.RFC3339))
+			return fmt.Errorf("dhcp: reservation %s conflicts with lease %q at %s until %s", r.ID, v.lease.Identity, ip, v.lease.HoldUntil.Format(time.RFC3339))
 		}
 	}
 	if occupied > s.Capacity() {
@@ -605,7 +659,8 @@ func (e *Engine) Apply(s Settings, generation uint64) error {
 // Restore installs an all-or-nothing recovery snapshot before accepting packets.
 // The store must verify initialization/schema/integrity and supply its durable
 // last-known wall time. Expired rows are retained until Tick durably deletes them.
-// Pool/subnet changes do not revoke recovered ownership.
+// Pool changes do not revoke recovered ownership. Enabled topology conflicts
+// reject recovery atomically rather than accepting unusable retained addresses.
 func (e *Engine) Restore(leases []Lease, lastKnown time.Time) error {
 	if len(e.byIP) != 0 || e.sequence != 0 {
 		return fmt.Errorf("dhcp: recovery requires unused engine")
@@ -624,7 +679,13 @@ func (e *Engine) Restore(leases []Lease, lastKnown time.Time) error {
 		if !keyOK || l.MAC == [6]byte{} || l.MAC[0]&1 != 0 || !l.Address.Is4() || l.Address.IsUnspecified() || l.Address.IsMulticast() || l.Address.IsLoopback() || l.Address.As4()[0] >= 240 || l.Expiry.IsZero() || len(l.Hostname) > 63 || l.Hostname != "" && !validLabel(l.Hostname) || l.State != Bound && l.State != Quarantined || ips[l.Address] != nil {
 			return fmt.Errorf("dhcp: invalid recovered lease")
 		}
-		v := &entry{lease: l, durable: true}
+		if l.HoldUntil.IsZero() || l.HoldUntil.Before(l.Expiry) {
+			return fmt.Errorf("dhcp: invalid recovered ownership horizon")
+		}
+		if err := retainedTopology(e.settings, l); err != nil {
+			return err
+		}
+		v := &entry{lease: l, durable: true, committed: l}
 		ips[l.Address] = v
 		if l.State == Bound {
 			if ids[l.Identity] != nil {

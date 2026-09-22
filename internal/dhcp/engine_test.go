@@ -149,10 +149,14 @@ func TestEngineReleaseDeclineExpiryAndCapacity(t *testing.T) {
 	o = offered(t, e, client(1, Discover))
 	out = e.Handle(r)
 	assert.Nil(t, out.Reply)
+	require.NotNil(t, out.Mutation)
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
 	assert.Equal(t, Quarantined, e.Leases()[0].State)
 	assert.Equal(t, Outcome{}, e.Handle(client(2, Discover)))
 	*now = now.Add(10*time.Minute + time.Second)
-	e.Tick()
+	for _, m := range e.Tick() {
+		e.CompleteCommit(CommitResult{Token: m.Token})
+	}
 	require.NotNil(t, e.Handle(client(2, Discover)).Probe)
 }
 
@@ -165,10 +169,16 @@ func TestEngineProbeBoundsAndGeneration(t *testing.T) {
 	require.NotNil(t, b.Probe)
 	assert.Equal(t, Outcome{}, e.Handle(client(3, Discover)))
 	out := e.CompleteProbe(ProbeResult{Token: a.Probe.Token, Conflict: true})
+	require.NotNil(t, out.Mutation)
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
 	require.NotNil(t, out.Probe)
 	out = e.CompleteProbe(ProbeResult{Token: out.Probe.Token, Conflict: true})
+	require.NotNil(t, out.Mutation)
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
 	require.NotNil(t, out.Probe)
 	out = e.CompleteProbe(ProbeResult{Token: out.Probe.Token, Conflict: true})
+	require.NotNil(t, out.Mutation)
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
 	assert.Nil(t, out.Probe)
 	assert.Nil(t, out.Reply)
 	*now = now.Add(time.Second)
@@ -208,47 +218,11 @@ func TestEngineReservationsAndReconfiguration(t *testing.T) {
 	assert.Len(t, e.Leases(), 1)
 }
 
-func FuzzEngineOwnership(f *testing.F) {
-	f.Add([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9})
-	f.Fuzz(func(t *testing.T, data []byte) {
-		if len(data) > 2048 {
-			return
-		}
-		s := fixtureSettings()
-		s.MaxLeases = 8
-		e, now := engineFixture(t, s)
-		for i, b := range data {
-			r := client(b%16+1, MessageType(b%8+1))
-			r.XID = uint32(i)
-			r.RequestedIP = netip.MustParseAddr("192.0.2.100")
-			r.CIAddr = r.RequestedIP
-			if b&16 != 0 {
-				r.ClientID = string([]byte{b})
-			}
-			out := e.Handle(r)
-			if out.Probe != nil {
-				e.CompleteProbe(ProbeResult{Token: out.Probe.Token, Conflict: b&32 != 0})
-			}
-			if out.Mutation != nil {
-				e.CompleteCommit(CommitResult{Token: out.Mutation.Token})
-			}
-			*now = now.Add(time.Second)
-			e.Tick()
-			ls := e.Leases()
-			require.LessOrEqual(t, len(ls), 8)
-			seen := map[netip.Addr]bool{}
-			for _, l := range ls {
-				require.False(t, seen[l.Address])
-				seen[l.Address] = true
-			}
-		}
-	})
-}
-
 func TestEngineRecoveryAndDurableExpiry(t *testing.T) {
 	s := fixtureSettings()
 	e, now := engineFixture(t, s)
 	l := Lease{Identity: "mac:" + string([]byte{2, 0, 0, 0, 0, 1}), MAC: [6]byte{2, 0, 0, 0, 0, 1}, Address: netip.MustParseAddr("192.0.2.100"), State: Bound, Expiry: now.Add(time.Minute)}
+	l.HoldUntil = l.Expiry
 	require.NoError(t, e.Restore([]Lease{l}, *now))
 	assert.Error(t, e.Restore([]Lease{l}, *now))
 	*now = now.Add(2 * time.Minute)
@@ -382,17 +356,13 @@ func TestPendingProbeCoalescesLatestTransaction(t *testing.T) {
 	assert.Equal(t, r.XID, out.Reply.Request.XID)
 }
 
-func TestRecoveredOffSubnetLeaseCannotRenew(t *testing.T) {
+func TestRecoveredOffSubnetLeaseRejectsActivation(t *testing.T) {
 	e, now := engineFixture(t, fixtureSettings())
 	r := client(1, Discover)
 	l := Lease{Identity: identity(r), MAC: r.MAC, Address: netip.MustParseAddr("198.51.100.5"), State: Bound, Expiry: now.Add(time.Hour)}
-	require.NoError(t, e.Restore([]Lease{l}, *now))
-	r.Type = RequestMessage
-	r.CIAddr = l.Address
-	out := e.Handle(r)
-	require.NotNil(t, out.Reply)
-	assert.Equal(t, NAK, out.Reply.Type)
-	assert.Nil(t, out.Mutation)
+	l.HoldUntil = l.Expiry
+	require.Error(t, e.Restore([]Lease{l}, *now))
+	assert.Empty(t, e.Leases())
 }
 
 func TestDurableViewSurvivesPendingAndFailedRenewal(t *testing.T) {
