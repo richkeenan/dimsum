@@ -1799,6 +1799,11 @@ export interface components {
       /** @description Current cached friendly name; empty when unknown */
       client_name: string;
       client_name_source: string;
+      /**
+       * Format: date-time
+       * @description Expiry of the derived client name; omitted for authoritative configured names.
+       */
+      client_name_expires?: string;
       client_name_fresh: boolean;
       client_device?: components["schemas"]["DeviceEnrichment"];
       /** @description Lowercase byte-safe DNS presentation with decimal escapes; root is empty */
@@ -1901,6 +1906,11 @@ export interface components {
         address: string;
         name: string;
         name_source: string;
+        /**
+         * Format: date-time
+         * @description Expiry of the derived client name; omitted for authoritative configured names.
+         */
+        name_expires?: string;
         name_fresh: boolean;
         count: components["schemas"]["Decimal"];
         blocked: components["schemas"]["Decimal"];

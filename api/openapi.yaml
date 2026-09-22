@@ -770,6 +770,7 @@ components:
         client: {type: string, description: Observed address, always present independently of its friendly name}
         client_name: {type: string, description: Current cached friendly name; empty when unknown, not a historical identity claim}
         client_name_source: {type: string}
+        client_name_expires: {type: string, format: date-time, description: Expiry of the derived client name; omitted for authoritative configured names.}
         client_name_fresh: {type: boolean}
         client_device: {$ref: '#/components/schemas/DeviceEnrichment'}
         name: {type: string, description: Lowercase byte-safe DNS presentation with decimal escapes; root is empty}
@@ -892,6 +893,7 @@ components:
               address: {type: string}
               name: {type: string}
               name_source: {type: string}
+              name_expires: {type: string, format: date-time, description: Expiry of the derived client name; omitted for authoritative configured names.}
               name_fresh: {type: boolean}
               count: {$ref: '#/components/schemas/Decimal'}
               blocked: {$ref: '#/components/schemas/Decimal'}

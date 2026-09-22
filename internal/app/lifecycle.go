@@ -89,10 +89,15 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 		}
 	}
 	var names *clients.Manager
+	leaseNames := newDHCPNames(s.DHCPView)
 	if store != nil {
 		names = clients.New(func() *clients.View { return store.Snapshot().Names() })
+		names.SetDHCP(func(view *clients.View, address netip.Addr) (clients.Name, bool) {
+			return leaseNames.name(store.Snapshot(), view, address)
+		})
 	}
 	pipeline := resolve.NewWithNames(u, store, names)
+	pipeline.SetLeases(leaseNames.capture)
 	var observations *observability
 	options := transport.Options{}
 	if store != nil {

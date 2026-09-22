@@ -89,6 +89,7 @@ type Manager struct {
 	openMDNS      func(context.Context, MDNSSettings) (mdnsTransport, []string)
 	lookupSpotify func(context.Context, spotifyEndpoint) (Evidence, error)
 	current       func() *View
+	dhcp          func(*View, netip.Addr) (Name, bool)
 	mu            sync.Mutex
 	cache         map[netip.Addr]entry
 	pending       map[job]bool
@@ -103,12 +104,31 @@ func New(current func() *View) *Manager {
 		},
 	}
 }
+
+// SetDHCP installs a nonblocking, generation-compatible lease lookup before Run
+// or Get begins. The bool marks address-generated fallback labels. Jobs never
+// capture lease publications and background discovery remains independent.
+func (m *Manager) SetDHCP(lookup func(*View, netip.Addr) (Name, bool)) { m.dhcp = lookup }
+
 func (m *Manager) Get(address netip.Addr) Name {
 	a, v := address.Unmap(), m.current()
 	// Retained history is also an active interest in discovery. After restart,
 	// rediscover displayed clients without waiting for their next DNS request.
 	m.Observe(a)
 	n := m.get(a, v)
+	now := time.Now()
+	var fallback Name
+	if m.dhcp != nil && n.Source != "override" && n.Source != "local" {
+		lease, generated := m.dhcp(v, a)
+		if lease.Name != "" && (now.Before(lease.Expires) || lease.Source == "local" && lease.Expires.IsZero()) {
+			label, _, _ := strings.Cut(lease.Name, ".")
+			if generated || lease.Source == "dhcp" && genericName(label) {
+				fallback = lease
+			} else {
+				n = lease
+			}
+		}
+	}
 	m.mu.Lock()
 	found := m.mdnsNames[a]
 	activity := m.dnsActivity[a]
@@ -118,7 +138,12 @@ func (m *Manager) Get(address netip.Addr) Name {
 	} else {
 		n = mergeDiscovered(n, Name{}, time.Now())
 	}
-	return applyDNSGuess(n, a, activity, time.Now())
+	n = applyDNSGuess(n, a, activity, now)
+	if n.Name == "" && fallback.Name != "" {
+		fallback.Device = n.Device
+		n = fallback
+	}
+	return n
 }
 func (m *Manager) get(a netip.Addr, v *View) (n Name) {
 	n = Name{Address: a, Source: "unknown"}

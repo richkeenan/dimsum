@@ -25,6 +25,7 @@ func (s *Snapshot) Names() *clients.View           { return s.names }
 func (s *Snapshot) Filtering() policy.Settings     { return s.document.value.Filtering }
 func (s *Snapshot) CacheSettings() Cache           { return s.document.value.Cache }
 func (s *Snapshot) Generation() uint64             { return s.generation }
+func (s *Snapshot) DHCPEnabled() bool              { return s.document.value.DHCP.Enabled }
 func (s *Snapshot) Revision() string               { return s.document.Revision() }
 
 // UpstreamOptions returns owned endpoint slices from the captured generation.

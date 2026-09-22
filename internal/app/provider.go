@@ -52,28 +52,29 @@ type historySummary struct {
 	UpdatedAt  time.Time    `json:"updated_at"`
 }
 type historyQuery struct {
-	Response         *queryresult.Summary `json:"response,omitempty"`
-	ClientDevice     *clients.Enrichment  `json:"client_device,omitempty"`
-	ID               string               `json:"id"`
-	BootID           string               `json:"boot_id"`
-	Sequence         string               `json:"sequence"`
-	Time             time.Time            `json:"time"`
-	Client           string               `json:"client"`
-	ClientName       string               `json:"client_name"`
-	ClientNameSource string               `json:"client_name_source"`
-	ClientNameFresh  bool                 `json:"client_name_fresh"`
-	Name             string               `json:"name"`
-	QType            string               `json:"qtype"`
-	QTypeCode        uint16               `json:"qtype_code"`
-	QClass           uint16               `json:"qclass"`
-	Outcome          string               `json:"outcome"`
-	RCode            uint16               `json:"rcode"`
-	DurationUS       string               `json:"duration_us"`
-	Generation       string               `json:"generation"`
-	RuleID           string               `json:"rule_id"`
-	SourceID         string               `json:"source_id"`
-	UpstreamID       string               `json:"upstream_id"`
-	Flags            uint32               `json:"flags"`
+	Response          *queryresult.Summary `json:"response,omitempty"`
+	ClientNameExpires *time.Time           `json:"client_name_expires,omitempty"`
+	ClientDevice      *clients.Enrichment  `json:"client_device,omitempty"`
+	ID                string               `json:"id"`
+	BootID            string               `json:"boot_id"`
+	Sequence          string               `json:"sequence"`
+	Time              time.Time            `json:"time"`
+	Client            string               `json:"client"`
+	ClientName        string               `json:"client_name"`
+	ClientNameSource  string               `json:"client_name_source"`
+	ClientNameFresh   bool                 `json:"client_name_fresh"`
+	Name              string               `json:"name"`
+	QType             string               `json:"qtype"`
+	QTypeCode         uint16               `json:"qtype_code"`
+	QClass            uint16               `json:"qclass"`
+	Outcome           string               `json:"outcome"`
+	RCode             uint16               `json:"rcode"`
+	DurationUS        string               `json:"duration_us"`
+	Generation        string               `json:"generation"`
+	RuleID            string               `json:"rule_id"`
+	SourceID          string               `json:"source_id"`
+	UpstreamID        string               `json:"upstream_id"`
+	Flags             uint32               `json:"flags"`
 }
 type historyQueries struct {
 	Items      []historyQuery `json:"items"`
@@ -127,14 +128,15 @@ type historySeries struct {
 	UpdatedAt         time.Time      `json:"updated_at"`
 }
 type observedClient struct {
-	Device     *clients.Enrichment `json:"device,omitempty"`
-	Address    string              `json:"address"`
-	Name       string              `json:"name"`
-	NameSource string              `json:"name_source"`
-	NameFresh  bool                `json:"name_fresh"`
-	Count      string              `json:"count"`
-	Blocked    string              `json:"blocked"`
-	LastSeen   time.Time           `json:"last_seen"`
+	NameExpires *time.Time          `json:"name_expires,omitempty"`
+	Device      *clients.Enrichment `json:"device,omitempty"`
+	Address     string              `json:"address"`
+	Name        string              `json:"name"`
+	NameSource  string              `json:"name_source"`
+	NameFresh   bool                `json:"name_fresh"`
+	Count       string              `json:"count"`
+	Blocked     string              `json:"blocked"`
+	LastSeen    time.Time           `json:"last_seen"`
 }
 type historyClients struct {
 	Items     []observedClient `json:"items"`
@@ -172,6 +174,14 @@ func (h *historyProvider) named(address netip.Addr) clients.Name {
 		v.Source = "unknown"
 	}
 	return v
+}
+
+func nameExpiry(name clients.Name) *time.Time {
+	if name.Expires.IsZero() || name.Source == "override" || name.Source == "local" {
+		return nil
+	}
+	expires := name.Expires
+	return &expires
 }
 
 func checkParams(q url.Values, extra ...string) error {
@@ -517,7 +527,7 @@ func (h *historyProvider) queryRow(row storage.Row) (historyQuery, error) {
 	if qtype == "" {
 		qtype = "TYPE" + strconv.Itoa(int(e.QType))
 	}
-	return historyQuery{Response: row.Response, ClientDevice: name.Device, ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
+	return historyQuery{Response: row.Response, ClientNameExpires: nameExpiry(name), ClientDevice: name.Device, ID: strconv.FormatInt(row.ID, 10), BootID: row.Boot, Sequence: decimal(e.Sequence), Time: time.UnixMicro(e.Timestamp).UTC(), Client: address.String(), ClientName: name.Name, ClientNameSource: name.Source, ClientNameFresh: name.Fresh, Name: n.Display(), QType: qtype, QTypeCode: e.QType, QClass: e.QClass, Outcome: outcomeNames[e.Outcome], RCode: e.RCode, DurationUS: decimal(uint64(e.Duration)), Generation: decimal(uint64(e.Generation)), RuleID: decimal(uint64(e.RuleID)), SourceID: row.SourceID, UpstreamID: decimal(uint64(e.UpstreamID)), Flags: e.Flags}, nil
 }
 func (h *historyProvider) Queries(ctx context.Context, q url.Values) (any, error) {
 	if e := h.available(); e != nil {
@@ -741,7 +751,7 @@ func (h *historyProvider) Clients(ctx context.Context, q url.Values) (any, error
 	for _, row := range page.Items {
 		address := netip.AddrFrom16(row.Address).Unmap()
 		name := h.named(address)
-		result.Items = append(result.Items, observedClient{Device: name.Device, Address: address.String(), Name: name.Name, NameSource: name.Source, NameFresh: name.Fresh, Count: decimal(row.Count), Blocked: decimal(row.Blocked), LastSeen: row.LastSeen})
+		result.Items = append(result.Items, observedClient{NameExpires: nameExpiry(name), Device: name.Device, Address: address.String(), Name: name.Name, NameSource: name.Source, NameFresh: name.Fresh, Count: decimal(row.Count), Blocked: decimal(row.Blocked), LastSeen: row.LastSeen})
 	}
 	return result, nil
 }
