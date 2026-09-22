@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAttributedFixtures(t *testing.T) {
+func TestSyntheticCatalogDialectFixtures(t *testing.T) {
 	for _, e := range Entries() {
 		t.Run(e.ID, func(t *testing.T) {
 			f, err := os.Open("../../testdata/lists/" + e.ID + ".txt")
@@ -72,7 +72,7 @@ func TestCatalog(t *testing.T) {
 			assert.NotEmpty(t, e.UnavailableReason)
 		}
 	}
-	assert.Equal(t, 1, enabled, "StevenBlack compatibility preset passes the frozen full-feed audit")
+	assert.Equal(t, 1, enabled, "only the hosts compatibility preset is marked as the default choice")
 	assert.Equal(t, "stevenblack-unified", entries[0].ID)
 	assert.True(t, entries[0].DefaultEnabled)
 	assert.True(t, entries[0].Available)

@@ -1,4 +1,4 @@
+! Synthetic adblock-format fixture, authored for dimsum under MIT.
 [Adblock Plus]
-! HaGeZi Multi NORMAL; see README.md
-||ad.001zb.com^
-||analytics.004gmbh.de^
+||ads.normal.example.test^
+||tracker.normal.example.test^

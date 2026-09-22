@@ -1,4 +1,3 @@
-[Adblock Plus]
-! HaGeZi TIF Mini; see README.md
-||allegrolokalnie.0-230-23.rest^
-||xn--ildcard-0c2c.facture-rapide.fr^
+! Synthetic valid and malformed domain entries, authored for dimsum under MIT.
+||threat.example.test^
+||bad..example.test^

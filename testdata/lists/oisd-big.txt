@@ -1,6 +1,5 @@
-[Adblock Plus]
-! OISD Big; see README.md
-||0--foodwarez.da.ru^
-||en--start-tr-zor-cdn.typedream.app^
-||us--start-en-trazor-io-com-cdn--en.typedream.app^
-||xs--ee.blogspot.de^
+! Synthetic valid and malformed domain entries, authored for dimsum under MIT.
+||ads.big.example.test^
+||one..example.test^
+||two..example.test^
+||three..example.test^

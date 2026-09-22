@@ -1,4 +1,3 @@
-[Adblock Plus]
-! HaGeZi Multi PRO; see README.md
-||d-p-d-0027912.0013484922656.com^
-||ad.001zb.com^
+! Synthetic adblock-format fixture, authored for dimsum under MIT.
+||ads.pro.example.test^
+||telemetry.pro.example.test^

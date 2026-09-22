@@ -1,4 +1,4 @@
-[Adblock Plus]
-! HaGeZi Multi LIGHT; see README.md
-||0.0-02.net^
-||2.004k.com^
+! Synthetic adblock-format fixture, authored for dimsum under MIT.
+[Adblock Plus 2.0]
+||ads.light.example.test^
+||metrics.light.example.test^

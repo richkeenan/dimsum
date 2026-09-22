@@ -50,7 +50,7 @@ func TestUnderscoreParserCompileInvariant(t *testing.T) {
 		d    Dialect
 		text string
 	}{
-		{Hosts, "0.0.0.0 philadelphia_cbslocal.us.intellitxt.com"},
+		{Hosts, "0.0.0.0 ads_with_underscore.example.test"},
 		{Domains, "_sip._tcp.bücher.example"},
 		{Adblock, "||ads_track.example^\n@@||safe_track.example^"},
 	} {
@@ -184,7 +184,7 @@ func TestSourceMembership(t *testing.T) {
 	assert.Equal(t, []string{"two"}, m.Evaluate(policy.Query{Name: name, Explain: true}).SourceIDs)
 }
 func FuzzParse(f *testing.F) {
-	for _, s := range []string{"||example.com^", "@@||a.example^$important", "0.0.0.0 a.example b.example", "\ufeff# comment\r\n", "a.example", "0.0.0.0 philadelphia_cbslocal.us.intellitxt.com", "_sip._tcp.bücher.example", "@@||safe_track.example^"} {
+	for _, s := range []string{"||example.com^", "@@||a.example^$important", "0.0.0.0 a.example b.example", "\ufeff# comment\r\n", "a.example", "0.0.0.0 ads_with_underscore.example.test", "_sip._tcp.bücher.example", "@@||safe_track.example^"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, text string) {
