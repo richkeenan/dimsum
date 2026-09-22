@@ -224,6 +224,10 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 	if err := dhcp.ValidateDNS(next, s.dns); err != nil {
 		return failed(err)
 	}
+	// Once preparation starts, the caller's deadline only stops its wait.
+	// The gate keeps this work owned until it finishes; a healthy but slow open
+	// must not become a permanently latched failure. Close fences publication
+	// through s.closed even after the waiting caller has gone away.
 	link, probe, err := s.openLink(next)
 	if err != nil {
 		return failed(err)
@@ -234,9 +238,6 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 			_ = link.Close()
 		}
 	}()
-	if err = ctx.Err(); err != nil {
-		return failed(err)
-	}
 	s.mu.RLock()
 	closed := s.closed
 	s.mu.RUnlock()
@@ -256,7 +257,7 @@ func (s *DHCPSupervisor) reconcile(ctx context.Context, next dhcp.Settings, g ui
 		return failed(err)
 	}
 	s.mu.Lock()
-	if s.closed || ctx.Err() != nil {
+	if s.closed {
 		s.mu.Unlock()
 		_ = store.Close(context.Background())
 		return failed(errors.New("dhcp: preparation canceled"))

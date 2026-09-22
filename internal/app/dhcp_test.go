@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -345,6 +346,78 @@ func TestDHCPStalledPreparationIsOwnedAndShutdownBounded(t *testing.T) {
 	assert.False(t, s.Projection().Enabled)
 	_, err := os.Stat(filepath.Join(s.dir, "leases.sqlite"))
 	assert.True(t, os.IsNotExist(err))
+}
+
+// A caller's waiting deadline must not discard healthy preparation or latch a
+// failure for the desired generation. Shutdown still fences late preparation.
+func TestDHCPPreparationOutlivesCallerButNotSupervisor(t *testing.T) {
+	for _, stage := range []string{"link", "store"} {
+		for _, shutdown := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/shutdown-%t", stage, shutdown), func(t *testing.T) {
+				s := NewDHCPSupervisor(t.TempDir(), []string{"0.0.0.0:53"})
+				entered, release := make(chan struct{}), make(chan struct{})
+				var once sync.Once
+				unblock := func() { once.Do(func() { close(release) }) }
+				t.Cleanup(func() { unblock(); _ = s.Close(context.Background()) })
+				var links, stores atomic.Int32
+				wait := func() { close(entered); <-release }
+				s.openLink = func(settings dhcp.Settings) (dhcp.Link, dhcp.ProbeFunc, error) {
+					links.Add(1)
+					if stage == "link" {
+						wait()
+					}
+					return fixtureDHCPLink(settings)
+				}
+				openStore := s.openStore
+				s.openStore = func(path string) (dhcp.LeaseWriter, dhcp.LeaseRecovery, error) {
+					stores.Add(1)
+					store, recovery, err := openStore(path)
+					if stage == "store" {
+						wait()
+					}
+					return store, recovery, err
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() { done <- s.Reconcile(ctx, dhcpSettings(), 1) }()
+				select {
+				case <-entered:
+				case <-time.After(time.Second):
+					t.Fatal("preparation did not start")
+				}
+				cancel()
+				select {
+				case err := <-done:
+					require.ErrorIs(t, err, context.Canceled)
+				case <-time.After(time.Second):
+					t.Fatal("caller did not stop waiting")
+				}
+				if shutdown {
+					// A canceled close returns promptly but permanently fences startup.
+					require.ErrorIs(t, s.Close(ctx), context.Canceled)
+				}
+				unblock()
+				if shutdown {
+					require.NoError(t, s.Close(context.Background()))
+					assert.False(t, s.Status().AppliedEnabled)
+					assert.Nil(t, s.View())
+				} else {
+					require.NoError(t, s.Reconcile(context.Background(), dhcpSettings(), 1))
+					assert.Equal(t, "running", s.Status().State)
+					assert.EqualValues(t, 1, s.Status().AppliedGeneration)
+					assert.EqualValues(t, 1, stores.Load(), "healthy preparation must not be reopened")
+					require.NoError(t, s.Close(context.Background()))
+				}
+				assert.EqualValues(t, 1, links.Load(), "only one preparation owns the gate")
+				if stores.Load() != 0 {
+					reopened, _, err := dhcp.OpenLeaseStore(s.dir, dhcp.MaximumLeases, nil)
+					require.NoError(t, err, "late preparation must release the writer on shutdown")
+					require.NoError(t, reopened.Close(context.Background()))
+				}
+			})
+		}
+	}
 }
 
 func TestDHCPReconcileRecognizesCompletedOwnerSwitch(t *testing.T) {
