@@ -187,7 +187,7 @@ export function Details({ value }: { value: unknown }) {
         ([key, v]) => (
           <div key={key}>
             <dt>{key.replaceAll("_", " ")}</dt>
-            <dd>{text(v)}</dd>
+            <dd>{typeof v === "number" ? v.toLocaleString() : text(v)}</dd>
           </div>
         ),
       )}

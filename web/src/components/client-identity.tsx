@@ -15,7 +15,7 @@ import {
   Tv,
   type LucideIcon,
 } from "lucide-react";
-import type { Device } from "@/lib/api";
+import { count, type Device } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -139,7 +139,7 @@ export function DeviceDetails({ device }: { device?: Device }) {
               >
                 <p>{entry.domain}</p>
                 <p className="text-xs text-muted-foreground">
-                  {entry.queries} queries · First seen{" "}
+                  {count(entry.queries)} queries · First seen{" "}
                   {new Date(entry.first_seen).toLocaleString()}
                 </p>
                 <p className="text-xs text-muted-foreground">

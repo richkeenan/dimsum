@@ -195,28 +195,44 @@ export function text(value: unknown): string {
       ? JSON.stringify(value)
       : String(value);
 }
-export function count(value: unknown): string {
+export function count(value: unknown, locale?: string): string {
   const s = text(value);
-  return /^\d+$/.test(s) ? BigInt(s).toLocaleString() : s;
+  return /^\d+$/.test(s) ? BigInt(s).toLocaleString(locale) : s;
 }
-export function percentage(part: unknown, total: unknown): string {
+export function percentage(
+  part: unknown,
+  total: unknown,
+  locale?: string,
+): string {
   if (
     !/^\d+$/.test(String(part)) ||
     !/^\d+$/.test(String(total)) ||
     BigInt(String(total)) === 0n
   )
     return "—";
-  return (
-    (
-      Number((BigInt(String(part)) * 1000n) / BigInt(String(total))) / 10
-    ).toFixed(1) + "%"
-  );
+  const ratio =
+    Number((BigInt(String(part)) * 1000n) / BigInt(String(total))) / 1000;
+  return ratio.toLocaleString(locale, {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 }
 // Decimal-unit formatting never passes an identifier or counter through Number.
-export function microsecondsToMS(value: unknown): string {
+export function microsecondsToMS(value: unknown, locale?: string): string {
   if (typeof value !== "string" || !/^\d+$/.test(value)) return "—";
   const n = BigInt(value);
-  return `${n / 1000n}.${String(n % 1000n).padStart(3, "0")}`;
+  const fraction = (n % 1000n).toLocaleString(locale, {
+    minimumIntegerDigits: 3,
+    useGrouping: false,
+  });
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  })
+    .formatToParts(n / 1000n)
+    .map((part) => (part.type === "fraction" ? fraction : part.value))
+    .join("");
 }
 export function queryParameters(
   filters: Record<string, string>,

@@ -328,7 +328,8 @@ export default function App() {
               )}
               <Button
                 variant="outline"
-                aria-label="Refresh all data"
+                aria-label="Reload displayed data"
+                title="Reload displayed data"
                 onClick={() => {
                   setRefresh((v) => v + 1);
                   setAnchor(Date.now());

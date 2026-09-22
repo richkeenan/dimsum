@@ -60,7 +60,7 @@ describe("API boundary", () => {
     expect(result.resolution).toBe(86400);
   });
   it("formats duration decimals exactly and restricts download links to backup artifacts", () => {
-    expect(microsecondsToMS("9007199254740993")).toBe("9007199254740.993");
+    expect(microsecondsToMS("9007199254740993")).toBe("9,007,199,254,740.993");
     expect(microsecondsToMS("180")).toBe("0.180");
     expect(backupURL({ download_url: "https://evil.test" })).toBeUndefined();
     expect(
@@ -123,6 +123,17 @@ describe("API boundary", () => {
     expect(count("9007199254740993")).toBe("9,007,199,254,740,993");
     expect(percentage("1", "4")).toBe("25.0%");
     expect(percentage(undefined, "4")).toBe("—");
+  });
+  it("localizes counts, percentages and exact durations without losing precision", () => {
+    expect(count("9007199254740993", "de-DE")).toBe("9.007.199.254.740.993");
+    expect(percentage("1", "4", "de-DE")).toBe("25,0\u00a0%");
+    expect(percentage("1", "0", "de-DE")).toBe("—");
+    expect(microsecondsToMS("9007199254740993", "de-DE")).toBe(
+      "9.007.199.254.740,993",
+    );
+    expect(microsecondsToMS("1001", "de-DE")).toBe("1,001");
+    expect(microsecondsToMS("1001", "ar-EG")).toBe("١٫٠٠١");
+    expect(microsecondsToMS(undefined, "de-DE")).toBe("—");
   });
   it("sends surgical edits with the exact read revision", async () => {
     const fetcher = vi

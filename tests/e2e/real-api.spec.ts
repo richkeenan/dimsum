@@ -263,7 +263,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     file,
     (await readFile(file, "utf8")) + "unknown_setting: true\n",
   );
-  await page.getByRole("button", { name: "Refresh all data" }).click();
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect(page.getByRole("alert")).toContainText("unknown_setting");
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(

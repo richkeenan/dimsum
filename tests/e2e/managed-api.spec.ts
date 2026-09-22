@@ -23,7 +23,7 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     page.getByRole("heading", { name: "Welcome to dimsum", exact: true }),
   ).not.toBeVisible();
   await expect(async () => {
-    await page.getByRole("button", { name: "Refresh all data" }).click();
+    await page.getByRole("button", { name: "Reload displayed data" }).click();
     await expect(
       page
         .getByText("Total queries", { exact: true })

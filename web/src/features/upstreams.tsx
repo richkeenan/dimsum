@@ -434,7 +434,7 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
   else if (job?.state === "succeeded")
     message =
       result?.healthy === true
-        ? `Responded in ${(Number(result.duration_us) / 1000).toFixed(1)} ms`
+        ? `Responded in ${(Number(result.duration_us) / 1000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ms`
         : result?.responding === true
           ? "Server responded with a DNS error. Try another server."
           : "No valid response. Check the address, port and network connection.";

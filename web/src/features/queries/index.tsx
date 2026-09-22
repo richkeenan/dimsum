@@ -5,6 +5,7 @@ import type { Device } from "@/lib/api";
 import {
   api,
   rows,
+  count,
   text,
   queryParameters,
   microsecondsToMS,
@@ -361,7 +362,9 @@ export default function Queries({
           />
         </section>
         <div className="my-[15px] flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>Page {cursors.length} · up to 100 queries</span>
+          <span>
+            Page {count(cursors.length)} · up to {count(100)} queries
+          </span>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"

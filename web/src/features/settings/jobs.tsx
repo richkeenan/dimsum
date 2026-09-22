@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   api,
   archiveBase64,
@@ -81,9 +82,7 @@ export default function Jobs() {
   return (
     <div className="min-w-0 [&_p]:leading-relaxed">
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h2 className="mb-3 text-sm font-medium">
-          Back up your configuration
-        </h2>
+        <h2 className="mb-3 text-sm font-medium">Back up your configuration</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
           Archives contain authoritative configuration and required secrets.
           Query history and downloaded lists are excluded. Downloads remain
@@ -163,7 +162,7 @@ export default function Jobs() {
               }}
               disabled={busy}
             >
-              <option value="refresh">Refresh lists</option>
+              <option value="refresh">Update blocklists</option>
               <option value="upstream-probe">Probe configured upstream</option>
               <option value="support-bundle">
                 Create redacted support bundle
@@ -188,7 +187,7 @@ export default function Jobs() {
               : kind === "upstream-probe"
                 ? "Test upstream"
                 : kind === "refresh"
-                  ? "Refresh lists"
+                  ? "Update blocklists"
                   : "Create support bundle"}
           </Button>
         </form>
@@ -236,7 +235,7 @@ export default function Jobs() {
                     ({
                       backup: "Backup",
                       restore: "Restore",
-                      refresh: "List refresh",
+                      refresh: "Blocklist update",
                       "upstream-probe": "Upstream test",
                       "support-bundle": "Support bundle",
                     }) as Record<string, string>
@@ -268,10 +267,16 @@ export default function Jobs() {
                       Download backup
                     </a>
                   ) : (
-                    <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-                      <summary className="cursor-pointer text-muted-foreground">
-                        {r.error ? "View error" : "Details"}
-                      </summary>
+                    <details className="group min-w-0">
+                      <Button asChild size="sm" variant="outline">
+                        <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="group-open:rotate-90"
+                          />
+                          {r.error ? "View error" : "Details"}
+                        </summary>
+                      </Button>
                       <Details
                         value={{ id: r.id, error: r.error, result: r.result }}
                       />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   ClientDeviceButton,
   ClientIdentity,
@@ -7,6 +8,7 @@ import type { Device } from "@/lib/api";
 import {
   api,
   rows,
+  count,
   text,
   collectionRows,
   normalizeSettings,
@@ -409,8 +411,16 @@ export default function Configuration({
                           ? new Date(String(r.last_seen)).toLocaleString()
                           : "—",
                     },
-                    { key: "count", label: "Queries" },
-                    { key: "blocked", label: "Blocked" },
+                    {
+                      key: "count",
+                      label: "Queries",
+                      render: (r) => count(r.count),
+                    },
+                    {
+                      key: "blocked",
+                      label: "Blocked",
+                      render: (r) => count(r.blocked),
+                    },
                     {
                       key: "actions",
                       label: "Actions",
@@ -470,7 +480,7 @@ export default function Configuration({
                   disabled={busy}
                   onClick={() => operation("jobs", { kind: "refresh" })}
                 >
-                  Refresh lists
+                  Update blocklists
                 </Button>
               )}
               <Button disabled={!ready} onClick={() => open()}>
@@ -535,6 +545,8 @@ export default function Configuration({
                       ) : (
                         "Unknown"
                       )
+                    ) : key === "rules" || key === "ttl" ? (
+                      count(r[key])
                     ) : (
                       (optionLabels[String(r[key])] ?? text(r[key]))
                     ),
@@ -542,6 +554,7 @@ export default function Configuration({
                 {
                   key: "actions",
                   label: "Actions",
+                  align: "right",
                   render: (r) => (
                     <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                       <Button
@@ -559,10 +572,16 @@ export default function Configuration({
                         />
                       )}
                       {kind === "lists" && (
-                        <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-                          <summary className="cursor-pointer text-muted-foreground">
-                            Details
-                          </summary>
+                        <details className="group min-w-0 text-left">
+                          <Button asChild size="sm" variant="outline">
+                            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                              <ChevronRight
+                                aria-hidden="true"
+                                className="group-open:rotate-90"
+                              />
+                              Details
+                            </summary>
+                          </Button>
                           <Details
                             value={{
                               URL: r.url,

@@ -21,7 +21,7 @@ test("loading, empty, and offline states are distinct", async ({ page }) => {
     page.getByRole("cell", { name: "No results for this selection." }),
   ).toBeVisible();
   await page.route("**/api/v1/queries?**", (route) => route.abort());
-  await page.getByRole("button", { name: "Refresh all data" }).click();
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect(
     page.getByText("Unable to refresh. Showing the last available data.", {
       exact: false,
@@ -236,7 +236,7 @@ test("service faults appear and clear when diagnostics recover", async ({ page }
   await expect(page.getByRole("alert")).toContainText("DNS is not ready.");
   await expect(page.getByRole("alert")).toContainText("Statistics are unavailable.");
   healthy = true;
-  await page.getByRole("button", { name: "Refresh all data" }).click();
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect(page.getByRole("alert")).not.toBeVisible();
 });
 

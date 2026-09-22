@@ -70,7 +70,7 @@ test("list toggle shows pending activation and failed refresh preserves configur
   await page.getByLabel("Enabled", { exact: true }).selectOption("false");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Applying saved changes…")).toBeVisible();
-  await page.getByRole("button", { name: "Refresh lists" }).click();
+  await page.getByRole("button", { name: "Update blocklists" }).click();
   await expect(
     page.getByText("Download failed; previous active version retained"),
   ).toBeVisible();
@@ -122,7 +122,7 @@ test("outdated edits retain their draft and revision until explicitly discarded"
   await page.getByLabel("Memory budget (bytes)").fill("4194304");
   current = { ...settings, status: { ...activation, saved_revision: "fixture-revision-2" } };
   const before = reads;
-  await page.getByRole("button", { name: "Refresh all data" }).click();
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect.poll(() => reads).toBeGreaterThan(before);
   await expect(page.getByLabel("Memory budget (bytes)")).toHaveValue("4194304");
   await page.getByRole("button", { name: "Save settings" }).click();

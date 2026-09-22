@@ -39,7 +39,12 @@ export default function Distribution({
                   <span
                     aria-hidden="true"
                     className="absolute inset-y-1 left-0 rounded-sm bg-primary/10"
-                    style={{ width: share === "—" ? "0%" : share }}
+                    style={{
+                      width:
+                        share === "—"
+                          ? "0%"
+                          : percentage(band.count, total, "en-US"),
+                    }}
                   />
                   <span className="relative">{label}</span>
                 </th>
