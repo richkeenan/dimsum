@@ -247,6 +247,9 @@ export default function App() {
             </Link>
           ))}
         </nav>
+        <div className="mt-5 border-t border-[#395778] pt-4 [&>button]:w-full [&>button]:justify-between [&>button]:font-normal [&>button]:text-[#c2d0e5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
+          <DNSAddresses />
+        </div>
         <div className="mt-auto pt-8 [&>button]:w-full [&>button]:justify-start [&>button]:font-normal [&>button]:text-[#c2d0e5] [&>button_svg]:stroke-[1.5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
           <Button variant="ghost" onClick={() => setDark(!dark)}>
             {dark ? <Sun size={16} /> : <Moon size={16} />}{" "}
@@ -270,18 +273,14 @@ export default function App() {
         </div>
       </aside>
       <div className="min-w-0 flex-1 md:ml-60">
-        <header className="flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-border bg-background px-4 py-2 text-xs md:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button
-              className="md:hidden"
-              variant="ghost"
-              aria-label="Open navigation"
-              onClick={() => setMenu(true)}
-            >
-              <Menu size={20} />
-            </Button>
-            <DNSAddresses />
-          </div>
+        <header className="flex min-h-16 items-center border-b border-border bg-background px-4 py-2 text-xs md:hidden">
+          <Button
+            variant="ghost"
+            aria-label="Open navigation"
+            onClick={() => setMenu(true)}
+          >
+            <Menu size={20} />
+          </Button>
         </header>
         <main id="main" className="mx-auto max-w-425 px-4 py-6 md:px-8 md:py-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
