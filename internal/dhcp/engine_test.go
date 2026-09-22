@@ -71,6 +71,94 @@ func TestEngineDurabilityAndDuplicates(t *testing.T) {
 	assert.Equal(t, Outcome{}, e.CompleteCommit(CommitResult{Token: m.Token}))
 }
 
+func TestEngineSelectingRequestSuppliesHostname(t *testing.T) {
+	e, _ := engineFixture(t, fixtureSettings())
+	r := client(1, Discover)
+	o := offered(t, e, r)
+	r.Type, r.RequestedIP, r.ServerID = RequestMessage, o.Address, netip.MustParseAddr("192.0.2.2")
+	r.Hostname = "Client-One"
+	out := e.Handle(r)
+	require.NotNil(t, out.Mutation)
+	assert.Equal(t, "client-one", out.Mutation.Lease.Hostname)
+	assert.Empty(t, e.DurableLeases())
+	require.NotNil(t, e.CompleteCommit(CommitResult{Token: out.Mutation.Token}).Reply)
+	assert.Equal(t, "client-one", e.DurableLeases()[0].Hostname)
+}
+
+func TestEngineRenewalHostnameIsDurableAndReplayIsReadOnly(t *testing.T) {
+	e, _ := engineFixture(t, fixtureSettings())
+	r := client(1, Discover)
+	r.Hostname = "original"
+	l := bind(t, e, r)
+	r.Type, r.CIAddr, r.Hostname = RequestMessage, l.Address, "Renamed"
+	out := e.Handle(r)
+	require.NotNil(t, out.Mutation)
+	assert.Equal(t, "renamed", out.Mutation.Lease.Hostname)
+	assert.Equal(t, "original", e.DurableLeases()[0].Hostname)
+	e.CompleteCommit(CommitResult{Token: out.Mutation.Token, Err: errors.New("disk full")})
+	assert.Equal(t, "original", e.Leases()[0].Hostname)
+	assert.Equal(t, "original", e.DurableLeases()[0].Hostname)
+	// Retry with a new transaction; a failed renewal must not publish its name.
+	r.XID++
+	out = e.Handle(r)
+	require.NotNil(t, out.Mutation)
+	require.NotNil(t, e.CompleteCommit(CommitResult{Token: out.Mutation.Token}).Reply)
+	assert.Equal(t, "renamed", e.DurableLeases()[0].Hostname)
+	r.Hostname = "replayed-name"
+	out = e.Handle(r)
+	assert.Nil(t, out.Mutation)
+	require.NotNil(t, out.Reply)
+	assert.Equal(t, "renamed", e.DurableLeases()[0].Hostname)
+}
+
+func TestEngineHostnameAbsentOrInvalidRetainsClientName(t *testing.T) {
+	for _, name := range []string{"", "invalid.name", "-invalid"} {
+		t.Run(name, func(t *testing.T) {
+			e, _ := engineFixture(t, fixtureSettings())
+			r := client(1, Discover)
+			r.Hostname = "Client-One"
+			o := offered(t, e, r)
+			r.Type, r.RequestedIP, r.ServerID = RequestMessage, o.Address, netip.MustParseAddr("192.0.2.2")
+			r.Hostname = name
+			out := e.Handle(r)
+			require.NotNil(t, out.Mutation)
+			assert.Equal(t, "client-one", out.Mutation.Lease.Hostname)
+			require.NotNil(t, e.CompleteCommit(CommitResult{Token: out.Mutation.Token}).Reply)
+			r.XID++
+			r.CIAddr, r.RequestedIP, r.ServerID = o.Address, netip.Addr{}, netip.Addr{}
+			out = e.Handle(r)
+			require.NotNil(t, out.Mutation)
+			assert.Equal(t, "client-one", out.Mutation.Lease.Hostname)
+		})
+	}
+}
+
+func TestEngineReservationHostnameNeverBecomesClientHostname(t *testing.T) {
+	for _, name := range []string{"Client-One", "", "invalid.name"} {
+		t.Run(name, func(t *testing.T) {
+			s := fixtureSettings()
+			s.Reservations = []Reservation{{ID: "fixed", MAC: "02:00:00:00:00:01", Address: "192.0.2.20", Hostname: "configured"}}
+			e, now := engineFixture(t, s)
+			r := client(1, Discover)
+			r.Hostname = name
+			l := bind(t, e, r)
+			want := ""
+			if name == "Client-One" {
+				want = "client-one"
+			}
+			assert.Equal(t, want, l.Hostname)
+			s.Reservations[0].Hostname = ""
+			require.NoError(t, e.Apply(s, 2))
+			assert.Equal(t, want, e.DurableLeases()[0].Hostname)
+			// Recovery must preserve client provenance after clearing the overlay.
+			recovered, err := NewEngine(s, 3, func() time.Time { return *now })
+			require.NoError(t, err)
+			require.NoError(t, recovered.Restore(e.DurableLeases(), *now))
+			assert.Equal(t, want, recovered.DurableLeases()[0].Hostname)
+		})
+	}
+}
+
 func TestEngineRequestStates(t *testing.T) {
 	for _, mode := range []string{"renew", "rebind", "reboot"} {
 		t.Run(mode, func(t *testing.T) {

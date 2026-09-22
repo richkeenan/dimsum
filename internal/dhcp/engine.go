@@ -79,6 +79,8 @@ type Lease struct {
 	Identity string
 	MAC      [6]byte
 	Address  netip.Addr
+	// Hostname is the validated client-provided name. Current reservation names
+	// are a publication overlay and must not become durable client observations.
 	Hostname string
 	// Expiry is the latest advertised grant (or quarantine interval) deadline.
 	// DNS views use this deadline; allocation/reclamation must use HoldUntil.
@@ -375,9 +377,6 @@ func (e *Engine) discover(r Request, now time.Time, attempt int) Outcome {
 	if !validLabel(name) {
 		name = ""
 	}
-	if res, ok := e.reservation(r); ok && res.Hostname != "" {
-		name = strings.ToLower(res.Hostname)
-	}
 	v := &entry{lease: Lease{Identity: identity(r), MAC: r.MAC, Address: ip, Hostname: name, State: Probing}, request: r, token: e.token(), deadline: now.Add(500 * time.Millisecond), attempts: attempt}
 	e.byIP[ip] = v
 	e.byID[v.lease.Identity] = v
@@ -482,6 +481,11 @@ func (e *Engine) Handle(r Request) Outcome {
 		}
 		target, timing := e.grant(v, now, time.Duration(e.settings.LeaseSeconds)*time.Second)
 		target.MAC = r.MAC
+		// Missing or invalid option 12 does not erase the last valid client name.
+		// Only a durable grant updates it; replayed ACKs remain read-only.
+		if name := strings.ToLower(r.Hostname); validLabel(name) {
+			target.Hostname = name
+		}
 		target.State = Bound
 		out := e.mutate(v, PutLease, target, timing, r)
 		v.deadline = target.Expiry
