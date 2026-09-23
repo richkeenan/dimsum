@@ -4,7 +4,9 @@ import { activation, fixtureAPI, query, policyFixture } from "./fixtures";
 test.beforeEach(async ({ page }) => {
   await fixtureAPI(page);
   await page.route("**/api/v1/rules/test", (route) =>
-    route.fulfill({ json: { decision: { result: "block" } } }),
+    route.fulfill({
+      json: { client_id: "study-laptop", decision: { result: "block" } },
+    }),
   );
 });
 
@@ -44,7 +46,10 @@ test("blocking after an allow exception explains that the exception still wins",
   );
   await page.route("**/api/v1/rules/test", (route) =>
     route.fulfill({
-      json: { decision: { result: "allow", rule_id: "existing-allow" } },
+      json: {
+        client_id: "study-laptop",
+        decision: { result: "allow", rule_id: "existing-allow" },
+      },
     }),
   );
   const actions: string[] = [];

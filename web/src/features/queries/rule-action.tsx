@@ -1,5 +1,13 @@
 import { useState } from "react";
 import { useResource } from "@/lib/hooks";
+import { useQuery } from "@tanstack/react-query";
+
+function resolveAddress(address: string) {
+  return api.send<Schema["ClientPolicyExplanation"]>("rules/test", "POST", {
+    address,
+    name: "identity.invalid",
+  });
+}
 import {
   ownerPolicy,
   selectClass,
@@ -55,10 +63,7 @@ function useRuleSave(name: string, address?: string) {
       let saved: unknown;
       if (target !== "network") {
         if (target === "device") {
-          const inventory = await api.get<Schema["ClientsResponse"]>("clients");
-          clientID = inventory.observed?.items.find(
-            (o) => o.address === address,
-          )?.client_id;
+          clientID = (await resolveAddress(address!)).client_id;
           if (!clientID)
             throw new Error(
               "This address has no matched configured identity. Configure the device first, or explicitly select network scope.",
@@ -162,10 +167,13 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
   const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
     "profiles",
   );
-  const clients = useResource<Schema["ClientsResponse"]>("clients");
-  const id = clients.data?.observed?.items.find(
-    (o) => o.address === address,
-  )?.client_id;
+  const resolution = useQuery({
+    queryKey: ["api", "client-resolution", address],
+    queryFn: () => resolveAddress(address!),
+    staleTime: 5000,
+    retry: false,
+  });
+  const id = resolution.data?.client_id;
   return (
     <details className="max-w-60 whitespace-normal text-xs">
       <summary className="cursor-pointer py-2">
@@ -194,12 +202,20 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
         </select>
       </label>
       {profiles.error && <ErrorNotice error={profiles.error} />}
-      <a
-        className="inline-block py-2 text-xs underline"
-        href={id ? `/clients?device=${encodeURIComponent(id)}` : "/clients"}
-      >
-        {id ? "Edit device policy" : "Configure device identity"}
-      </a>
+      {resolution.error ? (
+        <p role="status">
+          Device identity unavailable. Retry the action to resolve it again.
+        </p>
+      ) : resolution.isPending ? (
+        <p>Resolving device identity…</p>
+      ) : (
+        <a
+          className="inline-block py-2 text-xs underline"
+          href={id ? `/clients?device=${encodeURIComponent(id)}` : "/clients"}
+        >
+          {id ? "Edit device policy" : "Configure device identity"}
+        </a>
+      )}
     </details>
   );
 }

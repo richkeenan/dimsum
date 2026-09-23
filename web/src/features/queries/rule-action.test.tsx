@@ -1,13 +1,90 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { InlineRuleAction } from "./rule-action";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+it.each(["matched", "unmatched", "unavailable"])(
+  "resolves device scope authoritatively when observations are missing: %s",
+  async (mode) => {
+    const writes: any[] = [];
+    const status = {
+      saved_revision: "r1",
+      active_revision: "r1",
+      active_generation: "1",
+      pending: false,
+      recovered: false,
+      restart_required: false,
+      sources: [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.endsWith("settings"))
+          return Response.json({ status, config: {} });
+        if (url.endsWith("profiles")) return Response.json({ items: [] });
+        if (url.includes("client-policy?"))
+          return Response.json({
+            scope: "client",
+            id: "stable",
+            desired: { id: "stable" },
+            status,
+          });
+        if (url.endsWith("rules/test"))
+          return mode === "unavailable"
+            ? Response.json(
+                { error: { message: "Identity service unavailable" } },
+                { status: 503 },
+              )
+            : Response.json({
+                client_id: mode === "matched" ? "stable" : "",
+                decision: { result: "allow" },
+              });
+        if (url.endsWith("client-policy")) {
+          writes.push(JSON.parse(String(init?.body)));
+          return Response.json(status);
+        }
+        throw new Error(`Unexpected inventory dependency: ${url}`);
+      }),
+    );
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <InlineRuleAction
+          name="ads.example"
+          outcome="blocked"
+          address="192.0.2.12"
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Allow ads.example" }));
+    if (mode === "matched")
+      await waitFor(() =>
+        expect(writes[0]).toMatchObject({ scope: "client", id: "stable" }),
+      );
+    else {
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        mode === "unmatched"
+          ? "no matched configured identity"
+          : "Identity service unavailable",
+      );
+      expect(writes).toHaveLength(0);
+    }
+  },
+);
 
 afterEach(() => vi.unstubAllGlobals());
 
 it.each([
   ["forwarded", "block", undefined],
   ["blocked", "allow", undefined],
-  ["forwarded", "allow", "saved, but an allow exception still takes precedence."],
+  [
+    "forwarded",
+    "allow",
+    "saved, but an allow exception still takes precedence.",
+  ],
 ])(
   "checks the active policy after a flat activation response: %s",
   async (outcome, decision, notice) => {
@@ -33,12 +110,16 @@ it.each([
     );
     render(<InlineRuleAction name="ads.example" outcome={outcome!} />);
     const label = outcome === "blocked" ? "Allow" : "Block";
-    fireEvent.click(screen.getByRole("button", { name: `${label} ads.example` }));
+    fireEvent.click(
+      screen.getByRole("button", { name: `${label} ads.example` }),
+    );
     if (notice) {
       expect(await screen.findByRole("status")).toHaveTextContent(notice);
     } else {
       await waitFor(() => {
-        const button = screen.getByRole("button", { name: `${label} ads.example` });
+        const button = screen.getByRole("button", {
+          name: `${label} ads.example`,
+        });
         expect(button).toBeDisabled();
         expect(button).toHaveTextContent(label);
       });

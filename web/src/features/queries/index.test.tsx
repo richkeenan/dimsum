@@ -176,3 +176,6 @@ it("does not poll or advance fixed historical ranges", () => {
   expect(screen.getByRole("button", { name: "Pause live" })).toBeDisabled();
   expect(onLiveTick).not.toHaveBeenCalled();
 });
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: undefined, isPending: true, error: null }),
+}));
