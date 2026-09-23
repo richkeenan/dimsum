@@ -80,6 +80,46 @@ it("waits for an editable revision before opening a form", () => {
   expect(screen.getByRole("button", { name: "Add record" })).toBeEnabled();
 });
 
+it("requires explicit list assignments to be reset before offering deletion, including off exceptions", async () => {
+  resources.values.lists = {
+    loading: false,
+    data: {
+      revision: "original-revision",
+      items: [
+        {
+          id: "recommended",
+          url: "https://example.com/domains",
+          dialect: "dns-adblock",
+          domain_kind: "suffix",
+          enabled: true,
+        },
+      ],
+    },
+  };
+  resources.values.clients = {
+    loading: false,
+    data: {
+      items: [
+        {
+          policy_id: "tablet",
+          name: "Tablet",
+          overrides: { lists: { recommended: false } },
+        },
+      ],
+    },
+  };
+  resources.values.profiles = { loading: false, data: { items: [] } };
+  render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(
+    within(dialog).getByRole("button", { name: "Delete list" }),
+  ).toBeDisabled();
+  expect(
+    within(dialog).getByText(/1 explicit device or profile assignments/),
+  ).toBeInTheDocument();
+});
+
 it("adds a provider as one revision-checked mutation", async () => {
   resources.values.upstreams = {
     loading: false,
@@ -147,6 +187,7 @@ it("subscribes directly from the catalog with its parser settings", async () => 
       revision: "original-revision",
       item: {
         id: expect.stringMatching(/^list-/),
+        default_apply: false,
         url: "https://example.com/domains",
         dialect: "dns-adblock",
         domain_kind: "suffix",
@@ -175,7 +216,7 @@ it.each([true, false])(
     };
     const send = vi.spyOn(api, "send").mockResolvedValue({});
     render(<Configuration kind="lists" range="" />);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Recommended domains" }),
     );
@@ -223,7 +264,9 @@ it("shows download progress then the source failure without claiming it is activ
     expect(screen.queryByText("Downloading…")).not.toBeInTheDocument(),
   );
   view.rerender(<Configuration kind="lists" range="" />);
-  expect(screen.getByRole("checkbox")).toBeChecked();
+  expect(
+    screen.getByRole("checkbox", { name: "Recommended domains" }),
+  ).toBeChecked();
   expect(screen.getByText("Download failed")).toBeInTheDocument();
   expect(screen.getByText("Publisher returned HTTP 503")).toBeInTheDocument();
   expect(screen.queryByText("Active", { exact: true })).not.toBeInTheDocument();
@@ -262,6 +305,7 @@ it("adds a custom URL with the chosen format", async () => {
         dialect: "hosts",
         domain_kind: "exact",
         enabled: true,
+        default_apply: false,
       },
     }),
   );
@@ -287,7 +331,7 @@ it("keeps a retained source visibly active when its update fails", () => {
   expect(
     screen.getByRole("checkbox", { name: "example.org/hosts" }),
   ).toBeChecked();
-  expect(screen.getByText("Active · update failed")).toBeInTheDocument();
+  expect(screen.getByText("Downloaded · update failed")).toBeInTheDocument();
   expect(
     screen.getByText("Retained previous source after HTTP 503"),
   ).toBeInTheDocument();
@@ -327,7 +371,7 @@ it("keeps a catalog choice distinct from a source with the same ID and an edited
   fireEvent.click(choice);
   expect(screen.getAllByText("Downloading…")).toHaveLength(1);
   expect(
-    within(configured.closest("tr")!).getByText("Active", { exact: true }),
+    within(configured.closest("tr")!).getByText("Downloaded", { exact: true }),
   ).toBeInTheDocument();
   finish({});
   await waitFor(() =>

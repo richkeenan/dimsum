@@ -61,6 +61,11 @@ const fields: Record<string, Field[]> = {
     },
     { key: "domain_kind", label: "Domain scope", options: ["exact", "suffix"] },
     { key: "enabled", label: "Enabled", type: "boolean" },
+    {
+      key: "default_apply",
+      label: "Apply by default on the network",
+      type: "boolean",
+    },
   ],
   rules: [
     {
@@ -136,6 +141,7 @@ export function editorDefaults(kind: string): Row {
     defaults.id = `${kind.slice(0, -1)}-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
   if (kind === "records")
     Object.assign(defaults, { ttl: 300, auto_ptr: false });
+  if (kind === "lists") defaults.default_apply = false;
   return defaults;
 }
 export default function Configuration({
@@ -196,6 +202,8 @@ export default function Configuration({
   ];
   function open(row?: Row) {
     if (!ready) return;
+    if (kind === "lists" && row && row.default_apply === undefined)
+      row = { ...row, default_apply: row.enabled === true };
     const defaults = editorDefaults(kind);
     setOriginal(row?.__index === undefined ? undefined : row);
     setEditRevision(revision);
@@ -310,6 +318,7 @@ export default function Configuration({
             ? {
                 item: {
                   ...editorDefaults("lists"),
+                  default_apply: false,
                   url: row.url,
                   dialect: row.dialect,
                   domain_kind: row.domain_kind,
@@ -717,6 +726,21 @@ export default function Configuration({
                       : "Use the rule tester to inspect wildcard/regex precedence and matching."}
                 </div>
               )}
+              {kind === "lists" && Number(original?.__references) > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  This subscription has {String(original?.__references)}{" "}
+                  explicit device or profile assignments. Reset those list
+                  choices in{" "}
+                  <a href="/clients" className="underline">
+                    Devices
+                  </a>{" "}
+                  or{" "}
+                  <a href="/profiles" className="underline">
+                    Profiles
+                  </a>{" "}
+                  before deleting it.
+                </p>
+              )}
               {error && (
                 <ErrorNotice
                   error={error}
@@ -753,7 +777,10 @@ export default function Configuration({
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (kind === "lists" && Number(original?.__references) > 0)
+                    }
                     onClick={() => mutate("DELETE")}
                   >
                     Delete {kind.slice(0, -1)}

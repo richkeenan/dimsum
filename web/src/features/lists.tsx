@@ -5,6 +5,8 @@ import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { Schema } from "./clients/model";
+import { ActivationStatus } from "./clients/policy";
 
 export type ListToggle = { id: unknown; enabled: boolean };
 
@@ -32,6 +34,14 @@ export function ListSubscriptions({
   edit: (row: Row) => void;
 }) {
   const catalog = useResource<Row>("catalog");
+  const clients = useResource<Schema["ClientsResponse"]>("clients");
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
+    "profiles",
+  );
+  const [applicationError, setApplicationError] = useState<Error>();
+  const [applicationBusy, setApplicationBusy] = useState(false);
+  const [applicationStatus, setApplicationStatus] =
+    useState<Schema["Activation"]>();
   const configured = collectionRows(data);
   const presets = rows(catalog.data);
   // Match by URL rather than ID: existing/custom subscriptions may use any ID.
@@ -57,6 +67,13 @@ export function ListSubscriptions({
   return (
     <>
       {catalog.error && <ErrorNotice error={catalog.error} />}
+      {applicationError && <ErrorNotice error={applicationError} />}
+      {applicationStatus && <ActivationStatus status={applicationStatus} />}
+      <p className="px-4 py-3 text-xs text-muted-foreground">
+        Subscriptions control downloads. Network defaults control application;
+        device and profile exceptions take precedence. New subscriptions are not
+        applied until selected.
+      </p>
       {catalog.loading && (
         <p className="px-4 py-3 text-xs text-muted-foreground">
           Loading available lists…
@@ -67,7 +84,7 @@ export function ListSubscriptions({
         columns={[
           {
             key: "enabled",
-            label: "Enabled",
+            label: "Subscribed",
             render: (row) => (
               <label className="flex min-h-9 min-w-9 cursor-pointer items-center justify-center has-disabled:cursor-default">
                 <input
@@ -130,10 +147,10 @@ export function ListSubscriptions({
                     : "Disabled"
                   : source?.error
                     ? source.usable === true
-                      ? "Active · update failed"
+                      ? "Downloaded · update failed"
                       : "Download failed"
                     : source?.enabled === true && source.usable === true
-                      ? "Active"
+                      ? "Downloaded"
                       : "Waiting for activation";
               return (
                 <div className="max-w-72 whitespace-normal" aria-live="polite">
@@ -144,6 +161,99 @@ export function ListSubscriptions({
                     </p>
                   )}
                 </div>
+              );
+            },
+          },
+          {
+            key: "application",
+            label: "Network default",
+            render: (row) =>
+              row.__index === undefined ? (
+                <span className="text-xs text-muted-foreground">
+                  Not subscribed
+                </span>
+              ) : (
+                <label className="flex min-h-10 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    aria-label={`Apply ${listLabel(row)} by default`}
+                    checked={
+                      row.default_apply === undefined
+                        ? row.enabled === true
+                        : row.default_apply === true
+                    }
+                    disabled={disabled || applicationBusy}
+                    onChange={async (e) => {
+                      const apply = e.target.checked;
+                      setApplicationBusy(true);
+                      setApplicationError(undefined);
+                      try {
+                        const current = await api.get<
+                          Schema["ClientPolicyRead"]
+                        >("client-policy?scope=network");
+                        setApplicationStatus(
+                          await api.send("client-policy", "PATCH", {
+                            revision: current.status.saved_revision,
+                            scope: "network",
+                            fields: [
+                              {
+                                path: ["lists", String(row.sourceID)],
+                                value: apply,
+                              },
+                            ],
+                          }),
+                        );
+                      } catch (e) {
+                        setApplicationError(e as Error);
+                      } finally {
+                        setApplicationBusy(false);
+                      }
+                    }}
+                  />
+                  Apply
+                </label>
+              ),
+          },
+          {
+            key: "exceptions",
+            label: "Explicit assignments",
+            render: (row) => {
+              const id = String(row.sourceID);
+              const devices =
+                clients.data?.items?.filter(
+                  (c) => c.overrides?.lists?.[id] !== undefined,
+                ) ?? [];
+              const owners =
+                profiles.data?.items?.filter(
+                  (p) => p.policy?.lists?.[id] !== undefined,
+                ) ?? [];
+              return (
+                <details className="max-w-64 whitespace-normal text-xs">
+                  <summary className="cursor-pointer py-2">
+                    {devices.length} devices · {owners.length} profiles
+                  </summary>
+                  {devices.map((c) => (
+                    <a
+                      className="block py-2 underline"
+                      key={c.policy_id}
+                      href={`/clients?device=${encodeURIComponent(c.policy_id!)}`}
+                    >
+                      {c.name || c.policy_id}:{" "}
+                      {c.overrides!.lists![id] ? "On" : "Off"}
+                    </a>
+                  ))}
+                  {owners.map((p) => (
+                    <p key={p.id}>
+                      {p.name || p.id}: {p.policy!.lists![id] ? "On" : "Off"} ·{" "}
+                      {clients.data?.items?.filter((c) => c.profile === p.id)
+                        .length ?? 0}{" "}
+                      assigned devices
+                    </p>
+                  ))}
+                  {(clients.error || profiles.error) && (
+                    <span>Usage unavailable</span>
+                  )}
+                </details>
               );
             },
           },
@@ -164,7 +274,23 @@ export function ListSubscriptions({
                     size="sm"
                     variant="outline"
                     disabled={disabled}
-                    onClick={() => edit({ ...row, id: row.sourceID })}
+                    onClick={() =>
+                      edit({
+                        ...row,
+                        id: row.sourceID,
+                        __references:
+                          (clients.data?.items?.filter(
+                            (c) =>
+                              c.overrides?.lists?.[String(row.sourceID)] !==
+                              undefined,
+                          ).length ?? 0) +
+                          (profiles.data?.items?.filter(
+                            (p) =>
+                              p.policy?.lists?.[String(row.sourceID)] !==
+                              undefined,
+                          ).length ?? 0),
+                      })
+                    }
                   >
                     Edit
                   </Button>

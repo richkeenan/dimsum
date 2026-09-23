@@ -1,4 +1,11 @@
 import { useState } from "react";
+import { useResource } from "@/lib/hooks";
+import {
+  ownerPolicy,
+  selectClass,
+  type PolicyRead,
+  type Schema,
+} from "../clients/model";
 import { Ban, ShieldCheck } from "lucide-react";
 import { api, normalizeSettings, type Settings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -29,7 +36,8 @@ function queryRuleID() {
   ).join("")}`;
 }
 
-function useRuleSave(name: string) {
+function useRuleSave(name: string, address?: string) {
+  const [target, setTarget] = useState(address ? "device" : "network");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   const [result, setResult] = useState<RuleResult>();
@@ -43,18 +51,67 @@ function useRuleSave(name: string) {
         throw new Error(
           "The current settings revision is unavailable. Try again.",
         );
-      const saved = await api.send<unknown>("rules", "POST", {
-        revision: settings.revision,
-        item: {
-          id: queryRuleID(),
-          kind,
-          action,
-          pattern: name,
-          enabled: true,
-        },
-      });
+      let clientID: string | undefined;
+      let saved: unknown;
+      if (target !== "network") {
+        if (target === "device") {
+          const inventory = await api.get<Schema["ClientsResponse"]>("clients");
+          clientID = inventory.observed?.items.find(
+            (o) => o.address === address,
+          )?.client_id;
+          if (!clientID)
+            throw new Error(
+              "This address has no matched configured identity. Configure the device first, or explicitly select network scope.",
+            );
+        }
+        const scope = target === "device" ? "client" : "profile";
+        const id = clientID ?? target.slice("profile:".length);
+        const current = await api.get<PolicyRead>(
+          `client-policy?${new URLSearchParams({ scope, id })}`,
+        );
+        if (
+          scope === "client" &&
+          !(current.desired as Schema["PolicyClient"]).id
+        )
+          throw new Error(
+            "Give this legacy device a stable ID in Devices before adding device rules.",
+          );
+        saved = await api.send("client-policy", "PATCH", {
+          revision: current.status.saved_revision,
+          scope,
+          id,
+          fields: [
+            {
+              path: ["rules"],
+              value: [
+                ...(ownerPolicy(current).rules ?? []),
+                {
+                  id: queryRuleID(),
+                  kind,
+                  action,
+                  pattern: name,
+                  enabled: true,
+                },
+              ],
+            },
+          ],
+        });
+      } else
+        saved = await api.send<unknown>("rules", "POST", {
+          revision: settings.revision,
+          item: {
+            id: queryRuleID(),
+            kind,
+            action,
+            pattern: name,
+            enabled: true,
+          },
+        });
       const result: RuleResult = { action, settings: normalizeSettings(saved) };
-      if (isActive(result.settings)) {
+      if (isActive(result.settings) && target.startsWith("profile:"))
+        result.notice =
+          "saved for this profile · inspect an assigned device to check the winning rule";
+      if (isActive(result.settings) && !target.startsWith("profile:")) {
         // Activation confirms the configuration was loaded, not that this rule
         // wins. Check the same generation without issuing another DNS lookup.
         try {
@@ -62,6 +119,7 @@ function useRuleSave(name: string) {
             decision?: { result?: string };
           }>("rules/test", "POST", {
             name,
+            ...(clientID ? { client_id: clientID } : {}),
             generation: result.settings.status!.active_generation,
           });
           const decision = explanation.decision?.result;
@@ -88,7 +146,62 @@ function useRuleSave(name: string) {
       setBusy(false);
     }
   }
-  return { busy, error, result, save };
+  return { busy, error, result, save, target, setTarget };
+}
+
+type TargetProps = {
+  address?: string;
+  value: string;
+  change: (value: string) => void;
+  disabled: boolean;
+};
+function RuleTarget(props: TargetProps) {
+  return props.address ? <ScopedRuleTarget {...props} /> : null;
+}
+function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
+    "profiles",
+  );
+  const clients = useResource<Schema["ClientsResponse"]>("clients");
+  const id = clients.data?.observed?.items.find(
+    (o) => o.address === address,
+  )?.client_id;
+  return (
+    <details className="max-w-60 whitespace-normal text-xs">
+      <summary className="cursor-pointer py-2">
+        {value === "device"
+          ? "This device"
+          : value === "network"
+            ? "Network defaults"
+            : `Profile: ${value.slice(8)}`}
+      </summary>
+      <label className="text-xs">
+        Apply rule to
+        <select
+          aria-label={`Rule target for ${address}`}
+          className={`${selectClass} block max-w-60`}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => change(e.target.value)}
+        >
+          <option value="device">This device ({address})</option>
+          {profiles.data?.items?.map((p) => (
+            <option key={p.id} value={`profile:${p.id}`}>
+              Profile: {p.name || p.id}
+            </option>
+          ))}
+          <option value="network">Network · all inheriting devices</option>
+        </select>
+      </label>
+      {profiles.error && <ErrorNotice error={profiles.error} />}
+      <a
+        className="inline-block py-2 text-xs underline"
+        href={id ? `/clients?device=${encodeURIComponent(id)}` : "/clients"}
+      >
+        {id ? "Edit device policy" : "Configure device identity"}
+      </a>
+    </details>
+  );
 }
 
 function RuleSaved({ result }: { result: RuleResult }) {
@@ -125,11 +238,13 @@ function RuleSaved({ result }: { result: RuleResult }) {
 export function InlineRuleAction({
   name,
   outcome,
+  address,
 }: {
   name: string;
   outcome: string;
+  address?: string;
 }) {
-  const state = useRuleSave(name);
+  const state = useRuleSave(name, address);
   if (!name || !["blocked", "forwarded", "cache", "stale"].includes(outcome))
     return null;
   const action = outcome === "blocked" ? "allow" : "deny";
@@ -137,12 +252,18 @@ export function InlineRuleAction({
   const Icon = action === "deny" ? Ban : ShieldCheck;
   return (
     <div className="space-y-1">
+      <RuleTarget
+        address={address}
+        value={state.target}
+        change={state.setTarget}
+        disabled={state.busy || !!state.result}
+      />
       <Button
         variant="ghost"
         size="sm"
         className="text-[12px]"
         aria-label={`${label} ${name}`}
-        title={`${label} this exact domain for all clients`}
+        title={`${label} this exact domain for the selected scope`}
         disabled={state.busy || !!state.result}
         onClick={() => state.save(action, "exact")}
       >
@@ -165,15 +286,17 @@ export function InlineRuleAction({
 export function QueryRuleForm({
   name,
   outcome,
+  address,
 }: {
   name: string;
   outcome: string;
+  address?: string;
 }) {
   const [action, setAction] = useState(
     outcome === "blocked" ? "allow" : "deny",
   );
   const [scope, setScope] = useState("exact");
-  const state = useRuleSave(name);
+  const state = useRuleSave(name, address);
   if (outcome === "local")
     return (
       <p className="rounded-md bg-muted p-3 text-sm leading-relaxed text-muted-foreground">
@@ -190,6 +313,12 @@ export function QueryRuleForm({
   return (
     <section className="space-y-3 rounded-lg border border-border p-4">
       <h3 className="text-sm font-medium">Create a rule</h3>
+      <RuleTarget
+        address={address}
+        value={state.target}
+        change={state.setTarget}
+        disabled={state.busy || !!state.result}
+      />
       <div className="grid grid-cols-1 gap-3 min-[501px]:grid-cols-2">
         <label className="flex flex-col gap-1.5 text-xs">
           Action
@@ -220,7 +349,7 @@ export function QueryRuleForm({
         {scope === "exact"
           ? `Matches only ${name}. Subdomains are not included.`
           : `Matches ${name} and every descendant, including child.${name}.`}{" "}
-        Applies to all clients.
+        Applies to the selected policy scope.
       </p>
       {state.error && <ErrorNotice error={state.error} />}
       <Button

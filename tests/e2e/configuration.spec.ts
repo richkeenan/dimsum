@@ -1,29 +1,35 @@
 import { test, expect } from "../../web/e2e";
-import { fixtureAPI, settings, activation } from "./fixtures";
+import { fixtureAPI, settings, activation, policyFixture } from "./fixtures";
 test.beforeEach(async ({ page }) => fixtureAPI(page));
-test("friendly-name changes are surgical indexed edits", async ({ page }) => {
+test("friendly-name changes preserve the stable policy identity", async ({
+  page,
+}) => {
   let body: unknown;
-  await page.route("**/api/v1/clients*", (route) => {
+  await page.route("**/api/v1/client-policy*", (route) => {
     if (route.request().method() === "PATCH") {
       body = route.request().postDataJSON();
       return route.fulfill({ json: activation });
     }
     return route.fulfill({
       json: {
-        status: activation,
-        items: [{ address: "192.0.2.12", name: "Old name" }],
+        ...policyFixture,
+        desired: { ...policyFixture.desired, name: "Old name" },
       },
     });
   });
-  await page.goto("/clients");
-  await page.getByRole("button", { name: "Set name", exact: true }).click();
-  await page.getByLabel("Friendly name", { exact: true }).fill("Study laptop");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  expect(body).toEqual({
-    revision: activation.saved_revision,
-    edits: [{ path: ["0", "name"], value: "Study laptop" }],
-  });
+  await page.goto("/clients?device=study-laptop");
+  await page.getByLabel("Name", { exact: true }).fill("Study laptop");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect
+    .poll(() => body)
+    .toEqual({
+      revision: activation.saved_revision,
+      scope: "client",
+      id: "study-laptop",
+      name: "Study laptop",
+    });
 });
 test("list toggle shows pending activation and failed refresh preserves configured source", async ({
   page,
@@ -66,7 +72,9 @@ test("list toggle shows pending activation and failed refresh preserves configur
     }),
   );
   await page.goto("/lists");
-  await page.getByRole("checkbox", { name: "Fixture privacy" }).uncheck();
+  await page
+    .getByRole("checkbox", { name: "Fixture privacy", exact: true })
+    .uncheck();
   await expect(page.getByText("Applying saved changes…")).toBeVisible();
   await page.getByRole("button", { name: "Update blocklists" }).click();
   await expect(
@@ -322,13 +330,16 @@ test("checkbox subscriptions activate, persist, disable and re-enable without du
     });
   });
   await page.goto("/lists");
-  const checkbox = page.getByRole("checkbox", { name: "Fixture privacy" });
+  const checkbox = page.getByRole("checkbox", {
+    name: "Fixture privacy",
+    exact: true,
+  });
   await checkbox.focus();
   await page.keyboard.press("Space");
   await expect(page.getByText("Downloading…", { exact: true })).toBeVisible();
   await expect(checkbox).toBeDisabled();
   release();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Downloaded", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("cell", { name: "1,234", exact: true }),
   ).toBeVisible();
@@ -337,7 +348,7 @@ test("checkbox subscriptions activate, persist, disable and re-enable without du
   await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
   await expect(checkbox).toBeEnabled();
   await checkbox.check();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Downloaded", { exact: true })).toBeVisible();
   await page.reload();
   await expect(checkbox).toBeChecked();
   await expect(checkbox).toHaveCount(1);

@@ -1,5 +1,5 @@
 import { test, expect } from "../../web/e2e";
-import { activation, fixtureAPI, query } from "./fixtures";
+import { activation, fixtureAPI, query, policyFixture } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await fixtureAPI(page);
@@ -48,8 +48,8 @@ test("blocking after an allow exception explains that the exception still wins",
     }),
   );
   const actions: string[] = [];
-  await page.route("**/api/v1/rules", (route) => {
-    actions.push(route.request().postDataJSON().item.action);
+  await page.route("**/api/v1/client-policy", (route) => {
+    actions.push(route.request().postDataJSON().fields[0].value[0].action);
     return route.fulfill({ json: { status: activation } });
   });
   await page.goto("/queries");
@@ -57,8 +57,12 @@ test("blocking after an allow exception explains that the exception still wins",
     .getByRole("button", { name: "Allow " + query.name, exact: true })
     .click();
   await expect.poll(() => actions).toEqual(["allow"]);
-  await expect(page.getByRole("button", { name: "Allow " + query.name, exact: true })).toHaveText("Allow");
-  await expect(page.getByRole("button", { name: "Allow " + query.name, exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Allow " + query.name, exact: true }),
+  ).toHaveText("Allow");
+  await expect(
+    page.getByRole("button", { name: "Allow " + query.name, exact: true }),
+  ).toBeDisabled();
   outcome = "forwarded";
   await page.reload();
   await page
@@ -109,6 +113,66 @@ const answered = {
   },
 };
 
+test("broader rule scopes require an explicit choice and profile writes stay sparse", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/client-policy?scope=profile&*", (route) =>
+    route.fulfill({
+      json: {
+        ...policyFixture,
+        scope: "profile",
+        id: "children",
+        desired: { id: "children", policy: {} },
+      },
+    }),
+  );
+  await page.route("**/api/v1/profiles", (route) =>
+    route.fulfill({
+      json: {
+        status: activation,
+        items: [{ id: "children", name: "Children" }],
+      },
+    }),
+  );
+  const network: unknown[] = [],
+    profile: any[] = [];
+  await page.route("**/api/v1/rules", (route) => {
+    network.push(route.request().postDataJSON());
+    return route.fulfill({ json: activation });
+  });
+  await page.route("**/api/v1/client-policy", (route) => {
+    profile.push(route.request().postDataJSON());
+    return route.fulfill({ json: activation });
+  });
+  await page.goto("/queries");
+  await page.getByText("This device", { exact: true }).click();
+  const target = page.getByLabel(`Rule target for ${query.client}`, {
+    exact: true,
+  });
+  await expect(target).toHaveValue("device");
+  await target.selectOption("network");
+  await page
+    .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+    .click();
+  await expect.poll(() => network.length).toBe(1);
+  expect(profile).toHaveLength(0);
+  await page.reload();
+  await page.getByText("This device", { exact: true }).click();
+  await target.selectOption("profile:children");
+  await page
+    .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+    .click();
+  await expect.poll(() => profile.length).toBe(1);
+  expect(profile[0]).toMatchObject({
+    scope: "profile",
+    id: "children",
+    fields: [
+      { path: ["rules"], value: [{ pattern: query.name, action: "allow" }] },
+    ],
+  });
+  expect(network).toHaveLength(1);
+});
+
 test("answers, historical TTLs and contextual blocking are useful without technical columns", async ({
   page,
 }, testInfo) => {
@@ -119,7 +183,7 @@ test("answers, historical TTLs and contextual blocking are useful without techni
     route.fulfill({ json: answered }),
   );
   let saved: unknown;
-  await page.route("**/api/v1/rules", (route) => {
+  await page.route("**/api/v1/client-policy", (route) => {
     saved = route.request().postDataJSON();
     return route.fulfill({ json: { status: activation } });
   });
@@ -135,9 +199,7 @@ test("answers, historical TTLs and contextual blocking are useful without techni
   await page.getByRole("button", { name: query.name, exact: true }).click();
   const panel = page.getByRole("dialog", { name: "Query detail" });
   await expect(panel.getByText("192.0.2.9", { exact: true })).toBeVisible();
-  await expect(
-    panel.getByTitle("TTL when answered").first(),
-  ).toBeVisible();
+  await expect(panel.getByTitle("TTL when answered").first()).toBeVisible();
   await expect(panel.getByText("42 s", { exact: true })).toBeVisible();
   await expect(panel.getByText("0 s", { exact: true })).toBeVisible();
   await expect(panel.getByText("NOERROR", { exact: false })).toBeVisible();
@@ -156,10 +218,21 @@ test("answers, historical TTLs and contextual blocking are useful without techni
     .poll(() => saved)
     .toMatchObject({
       revision: activation.saved_revision,
-      item: { action: "deny", kind: "exact", pattern: query.name },
+      scope: "client",
+      id: "study-laptop",
+      fields: [
+        {
+          path: ["rules"],
+          value: [{ action: "deny", kind: "exact", pattern: query.name }],
+        },
+      ],
     });
-  await expect(page.getByRole("button", { name: "Block " + query.name, exact: true })).toHaveText("Block");
-  await expect(page.getByRole("button", { name: "Block " + query.name, exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Block " + query.name, exact: true }),
+  ).toHaveText("Block");
+  await expect(
+    page.getByRole("button", { name: "Block " + query.name, exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 });
 
@@ -167,7 +240,7 @@ test("inline failures can be retried and pending rules are not labelled active",
   page,
 }) => {
   let attempts = 0;
-  await page.route("**/api/v1/rules", (route) => {
+  await page.route("**/api/v1/client-policy", (route) => {
     attempts++;
     return route.fulfill(
       attempts === 1
@@ -209,16 +282,20 @@ test("inline blocking works when randomUUID is unavailable", async ({
     }),
   );
   let item: { id?: string } | undefined;
-  await page.route("**/api/v1/rules", async (route) => {
-    item = JSON.parse(route.request().postData() ?? "{}").item;
+  await page.route("**/api/v1/client-policy", async (route) => {
+    item = JSON.parse(route.request().postData() ?? "{}").fields[0].value[0];
     await route.fulfill({ json: { status: activation } });
   });
   await page.goto("/queries");
   await page.getByRole("button", { name: "Block " + query.name }).click();
   await expect(page.getByRole("alert")).not.toBeVisible();
   await expect.poll(() => item?.id).toMatch(/^query-[0-9a-f]{24}$/);
-  await expect(page.getByRole("button", { name: "Block " + query.name })).toHaveText("Block");
-  await expect(page.getByRole("button", { name: "Block " + query.name })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Block " + query.name }),
+  ).toHaveText("Block");
+  await expect(
+    page.getByRole("button", { name: "Block " + query.name }),
+  ).toBeDisabled();
 });
 
 test("long query details can be scrolled to and operate their final action", async ({
@@ -246,7 +323,7 @@ test("long query details can be scrolled to and operate their final action", asy
     }),
   );
   let saved: unknown;
-  await page.route("**/api/v1/rules", (route) => {
+  await page.route("**/api/v1/client-policy", (route) => {
     saved = route.request().postDataJSON();
     return route.fulfill({ json: { status: activation } });
   });
@@ -273,7 +350,14 @@ test("long query details can be scrolled to and operate their final action", asy
     .poll(() => saved)
     .toMatchObject({
       revision: activation.saved_revision,
-      item: { action: "allow", kind: "exact", pattern: query.name },
+      scope: "client",
+      id: "study-laptop",
+      fields: [
+        {
+          path: ["rules"],
+          value: [{ action: "allow", kind: "exact", pattern: query.name }],
+        },
+      ],
     });
   await page.keyboard.press("Escape");
   await expect(

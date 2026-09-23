@@ -155,7 +155,11 @@ export function QueryDetail({
               ) : null,
             )}
           </div>
-          <QueryRuleForm name={row.name} outcome={row.outcome} />
+          <QueryRuleForm
+            name={row.name}
+            outcome={row.outcome}
+            address={row.client}
+          />
         </div>
       )}
     </Resource>

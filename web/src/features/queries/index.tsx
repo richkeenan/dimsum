@@ -335,6 +335,7 @@ export default function Queries({
                 width: 96,
                 render: (r) => (
                   <InlineRuleAction
+                    address={text(r.client)}
                     name={typeof r.name === "string" ? r.name : ""}
                     outcome={text(r.outcome)}
                   />
