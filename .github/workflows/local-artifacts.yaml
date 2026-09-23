@@ -31,7 +31,7 @@ jobs:
           args: build --snapshot --clean --single-target --output dist/dimsum
       - run: go test ./...
       - run: go vet ./...
-      - run: node scripts/qualification.mjs dist/dimsum --output qualification-macos --duration 5
+      - run: node tests/qualification.mjs dist/dimsum --output qualification-macos --duration 5
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.runner }}-qualification
@@ -61,7 +61,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: sh scripts/build-web.sh
-      - run: node --test scripts/*.test.mjs
+      - run: node --test tests/*.test.mjs
       - run: npm --prefix web test
       - run: npm exec --prefix web -- playwright install --with-deps chromium
       - run: npm --prefix web run test:e2e
@@ -83,7 +83,7 @@ jobs:
           version: v2.18.2
           args: check
       - run: goreleaser build --snapshot --clean --single-target --output dist/dimsum
-      - run: node scripts/qualification.mjs dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
+      - run: node tests/qualification.mjs dist/dimsum --output qualification-evidence --duration 30 --reload-every 5 --outage-every 10 --outage-for 2 --sample-every 2
       - run: goreleaser release --snapshot --clean --skip=publish,docker
       - name: Test packaged install and upgrade
         run: |
@@ -109,7 +109,7 @@ jobs:
         with:
           node-version: '24.21.0'
       - name: Check first boot, DNS, credentials and persistent volumes
-        run: node scripts/container-smoke.mjs dimsum:smoke
+        run: node tests/container-smoke.mjs dimsum:smoke
       - name: Export multi-platform OCI image locally
         run: docker buildx build --platform linux/amd64,linux/arm64 --build-arg SOURCE_COMMIT="$(git rev-parse HEAD)" --build-arg SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" --file deploy/Dockerfile --output type=oci,dest=dimsum-local.oci.tar .
       - uses: actions/upload-artifact@v4

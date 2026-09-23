@@ -105,5 +105,5 @@ and process RSS. Synthetic local results do not establish performance on a
 Raspberry Pi or a production network.
 
 For the separate resolver qualification smoke test, see
-[`scripts/README.md`](../scripts/README.md). Its workload and measurements differ
+[`guides/testing.md`](../guides/testing.md). Its workload and measurements differ
 from the fixtures here.

@@ -8,7 +8,7 @@ import { createSocket } from "node:dgram";
 import { connect, createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 
-assert(process.argv[2], "Usage: node scripts/container-smoke.mjs IMAGE");
+assert(process.argv[2], "Usage: node tests/container-smoke.mjs IMAGE");
 // Reserve on the host first: Desktop's forwarding does not consistently handle
 // a published port of zero, even when the engine reports an assigned VM port.
 async function freePort() {

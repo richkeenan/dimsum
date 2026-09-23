@@ -25,7 +25,7 @@ ARG SOURCE_DATE_EPOCH
 RUN mkdir -p /out && \
     SOURCE_DATE="$(if [ -n "$SOURCE_DATE_EPOCH" ]; then date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ; else echo unrecorded; fi)" \
     SOURCE_COMMIT=$SOURCE_COMMIT GOOS=$TARGETOS GOARCH=$TARGETARCH goreleaser build --snapshot --clean --single-target --skip=before --output /out/dimsum
-RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH node scripts/artifact-metadata.mjs /out/metadata
+RUN SOURCE_COMMIT=$SOURCE_COMMIT SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH node deploy/artifact-metadata.mjs /out/metadata
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*

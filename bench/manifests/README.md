@@ -7,7 +7,7 @@ UTF-8 records, in index order, using this exact format (including trailing LF):
 index<TAB>scheduled_offset_nanoseconds<TAB>absolute_name<TAB>numeric_qtype<LF>
 ```
 
-The hashes were calculated independently with Python integer arithmetic and
+The hashes were calculated independently with integer arithmetic and
 checked against the Go generator. Changing generation semantics requires a new
 version and reviewed hashes; tests must not regenerate expected hashes.
 
@@ -68,5 +68,5 @@ schedule plus timeout **only when the supplied handler honors cancellation**.
 The driver cannot forcibly stop arbitrary Go callbacks.
 
 The exported Go API and `go test` commands are the entry points for this driver.
-Use `scripts/qualification.mjs` for the separate bounded resolver smoke test;
+Use `tests/qualification.mjs` for the separate bounded resolver smoke test;
 its workload and measurements are not interchangeable with these manifests.

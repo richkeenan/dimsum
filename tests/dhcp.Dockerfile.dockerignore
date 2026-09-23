@@ -1,0 +1,11 @@
+# Include only the Go test fixture and generated embedded UI.
+**
+!go.mod
+!go.sum
+!api/*.go
+!api/*.yaml
+!internal/**/*.go
+!internal/storage/migrations/*.sql
+!internal/webassets/dist/**
+!testdata/**
+!tests/dhcp.Dockerfile

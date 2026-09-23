@@ -23,6 +23,15 @@
   ignored. Keep screenshots and local build evidence out of commits.
 - Public documentation belongs in `guides/`. `docs/`, `superpowers/`, and
   `.superpowers/` are ignored locations for local notes and agent scratch output.
+- No Python: do not add Python files, embedded Python, or Python tooling
+  dependencies. Use the existing Go, Node, and shell toolchains.
+- `scripts/` contains only `build-web.sh` and `install-service.sh`, the essential
+  frontend-build and release-install entry points. Do not add other files there.
+  Required packaging code belongs in `deploy/`; maintained integration tests
+  belong in `tests/`. Prefer documented commands to new wrappers. Do not move
+  unnecessary helpers elsewhere merely to satisfy the directory limit.
+- Do not commit one-off agent helpers, qualification/report generators, or
+  investigation scripts. Keep scratch work in the ignored locations above.
 
 ## Running-instance administration
 

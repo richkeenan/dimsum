@@ -17,11 +17,11 @@ sh scripts/build-web.sh
 go test ./...
 go vet ./...
 npm --prefix web test
-node --test scripts/*.test.mjs
+node --test tests/*.test.mjs
 ```
 
 Run `go test -race ./...` for changes involving concurrency. Linux-only DHCP
-adapters need Linux tests; [scripts/README.md](scripts/README.md) describes the
+adapters need Linux tests; [the testing guide](guides/testing.md) describes the
 isolated container harness. Tests that send LAN discovery traffic require
 explicit environment opt-ins. Use synthetic names and documentation addresses
 in fixtures, and keep live network captures out of commits and CI artifacts.
@@ -46,7 +46,8 @@ See [web/README.md](web/README.md) for the frontend workflow.
 - `api/openapi.yaml`: shared HTTP contract.
 - `web/`: React dashboard and generated API/route types.
 - `tests/`: browser and cross-package integration tests.
-- `deploy/` and `scripts/`: service, packaging, and verification helpers.
+- `deploy/`: service configuration and required packaging code.
+- `scripts/`: only the frontend-build and release-install entry points.
 - `bench/`: synthetic workloads and reproducible benchmark methodology.
 
 Configuration is authoritative text. Preserve comments and unrelated bytes when
@@ -81,6 +82,13 @@ See [deployment.md](guides/deployment.md#containers) for container commands.
 Public guides belong in `guides/`. The ignored `docs/` directory is available
 for private maintainer notes. Keep local credentials, build output, screenshots,
 and agent scratch reports out of commits.
+
+Python files, embedded Python, and Python tooling dependencies are not accepted.
+Use the existing Go, Node, and shell toolchains. `scripts/` is limited to
+`build-web.sh` and `install-service.sh`. Put maintained integration tests in
+`tests/` and required packaging code in `deploy/`; prefer documented commands
+over new wrappers. One-off investigation scripts and report generators belong
+in ignored scratch space, not the public source tree.
 
 Commit OpenAPI and route-tree generated types with their source changes. Embedded
 web bundles are generated during builds and remain ignored. Explain benchmark

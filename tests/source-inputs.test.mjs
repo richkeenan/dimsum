@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { sourceInputs } from './source-inputs.mjs';
+import { sourceInputs } from '../deploy/source-inputs.mjs';
 
 test('provenance excludes private and untracked files and reports modified inputs', (t) => {
   const root = mkdtempSync(path.join(tmpdir(), 'dimsum-inputs-'));

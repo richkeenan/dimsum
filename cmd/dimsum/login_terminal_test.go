@@ -1,3 +1,5 @@
+//go:build linux || darwin
+
 package main
 
 import (
@@ -7,9 +9,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 
+	"github.com/creack/pty"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 func TestLoginPromptProcess(t *testing.T) {
@@ -33,67 +41,96 @@ func TestLoginPromptProcess(t *testing.T) {
 }
 
 func TestLoginPromptCancellationRestoresTerminal(t *testing.T) {
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		t.Skip("Python 3 is required for the pseudo-terminal integration test")
-	}
 	binary, err := os.Executable()
 	require.NoError(t, err)
 	for _, mode := range []string{"sigint", "sigterm", "ctrl-c", "enter"} {
 		t.Run(mode, func(t *testing.T) {
-			cmd := exec.CommandContext(t.Context(), python, "-c", loginPromptPTY, binary, t.TempDir(), mode)
-			output, err := cmd.CombinedOutput()
-			require.NoError(t, err, "%s", output)
+			master, slave, err := pty.Open()
+			require.NoError(t, err)
+			defer master.Close()
+			defer slave.Close()
+			state := func() unix.Termios {
+				value, err := unix.IoctlGetTermios(int(slave.Fd()), loginGetTermios)
+				require.NoError(t, err)
+				// Darwin sets this transient retype-pending flag on a mode change.
+				value.Lflag &^= unix.PENDIN
+				return *value
+			}
+			before := state()
+			dir := t.TempDir()
+			cmd := exec.CommandContext(t.Context(), binary, "-test.run=^TestLoginPromptProcess$")
+			cmd.Env = append(os.Environ(), "DIMSUM_TEST_LOGIN_PROMPT=1", "XDG_CONFIG_HOME="+dir)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = slave, slave, slave
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+			require.NoError(t, cmd.Start())
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			waited := false
+			defer func() {
+				if !waited {
+					_ = cmd.Process.Kill()
+					<-done
+				}
+			}()
+
+			var output strings.Builder
+			readOutput := func() {
+				for {
+					fds := []unix.PollFd{{Fd: int32(master.Fd()), Events: unix.POLLIN}}
+					n, err := unix.Poll(fds, 0)
+					if err == unix.EINTR {
+						continue
+					}
+					require.NoError(t, err)
+					if n == 0 {
+						return
+					}
+					var buffer [4096]byte
+					n, err = master.Read(buffer[:])
+					require.NoError(t, err)
+					output.Write(buffer[:n])
+				}
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				readOutput()
+				if strings.Contains(output.String(), "Dashboard password:") && state().Lflag&unix.ECHO == 0 {
+					break
+				}
+				require.True(t, time.Now().Before(deadline), "hidden prompt did not appear: %s", output.String())
+				time.Sleep(20 * time.Millisecond)
+			}
+			switch mode {
+			case "enter":
+				_, err = master.WriteString("fixture-secret\r")
+			case "ctrl-c":
+				_, err = master.WriteString("\x03")
+			case "sigint":
+				err = cmd.Process.Signal(syscall.SIGINT)
+			case "sigterm":
+				err = cmd.Process.Signal(syscall.SIGTERM)
+			}
+			require.NoError(t, err)
+			select {
+			case err := <-done:
+				waited = true
+				assert.Error(t, err, "cancelled or rejected login reported success")
+			case <-time.After(2 * time.Second):
+				t.Fatal("login remained blocked after cancellation without Enter")
+			}
+			assert.Equal(t, before, state(), "terminal settings were not restored")
+			readOutput()
+			if mode == "enter" {
+				data, err := os.ReadFile(filepath.Join(dir, "submitted.json"))
+				require.NoError(t, err)
+				assert.JSONEq(t, `{"password":"fixture-secret"}`, string(data))
+				assert.NotContains(t, output.String(), "fixture-secret")
+				assert.Contains(t, output.String(), "Login rejected")
+			} else {
+				assert.Contains(t, output.String(), "Login cancelled.")
+				assert.NotContains(t, output.String(), "context canceled")
+				assert.NotContains(t, output.String(), "EOF")
+			}
 		})
 	}
 }
-
-const loginPromptPTY = `
-import json, os, pty, select, signal, subprocess, sys, termios, time
-master, slave = pty.openpty()
-before = termios.tcgetattr(slave)
-env = dict(os.environ, DIMSUM_TEST_LOGIN_PROMPT="1", XDG_CONFIG_HOME=sys.argv[2])
-child = subprocess.Popen([sys.argv[1], "-test.run=^TestLoginPromptProcess$"],
-                         stdin=slave, stdout=slave, stderr=slave, env=env,
-                         start_new_session=True)
-try:
-    output = b""
-    deadline = time.monotonic() + 5
-    while b"Dashboard password:" not in output or termios.tcgetattr(slave)[3] & termios.ECHO:
-        assert time.monotonic() < deadline, "hidden prompt did not appear: %r" % output
-        if select.select([master], [], [], 0.02)[0]:
-            output += os.read(master, 4096)
-    if sys.argv[3] == "enter":
-        os.write(master, b"fixture-secret\r")
-    elif sys.argv[3] == "ctrl-c":
-        os.write(master, b"\x03")
-    else:
-        child.send_signal(signal.SIGINT if sys.argv[3] == "sigint" else signal.SIGTERM)
-    try:
-        code = child.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        raise AssertionError("login remained blocked after cancellation without Enter")
-    assert code != 0, "cancelled login reported success"
-    after = termios.tcgetattr(slave)
-    # Darwin sets this transient retype-pending flag on a mode change.
-    before[3] &= ~getattr(termios, "PENDIN", 0)
-    after[3] &= ~getattr(termios, "PENDIN", 0)
-    assert after == before, "terminal settings were not restored: before=%r after=%r" % (before, after)
-    while select.select([master], [], [], 0)[0]:
-        output += os.read(master, 4096)
-    if sys.argv[3] == "enter":
-        with open(os.path.join(sys.argv[2], "submitted.json")) as f:
-            assert json.load(f) == {"password": "fixture-secret"}
-        assert b"fixture-secret" not in output, "password appeared in terminal output"
-        assert b"Login rejected" in output, output
-    else:
-        assert b"Login cancelled." in output, output
-        assert b"context canceled" not in output and b"EOF" not in output, output
-finally:
-    if child.poll() is None:
-        child.kill()
-        child.wait()
-    termios.tcsetattr(slave, termios.TCSANOW, before)
-    os.close(master)
-    os.close(slave)
-`

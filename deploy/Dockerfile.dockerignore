@@ -19,8 +19,8 @@
 !web/THIRD_PARTY.md
 !web/src/**
 !web/scripts/embed.mjs
-!scripts/artifact-metadata.mjs
-!scripts/source-inputs.mjs
+!deploy/artifact-metadata.mjs
+!deploy/source-inputs.mjs
 web/src/**/.*
 **/AGENTS.local.md
 **/superpowers/**

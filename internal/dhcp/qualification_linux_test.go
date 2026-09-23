@@ -115,7 +115,7 @@ func TestLinuxDiagnosticBroadcast(t *testing.T) {
 		value, err := os.ReadFile("/proc/sys/net/ipv4/conf/" + setting.path)
 		require.NoError(t, err)
 		require.Equal(t, setting.want, strings.TrimSpace(string(value)),
-			"isolated diagnostic fixture needs %s=%s; run scripts/dhcp-qualification.py or set the documented container sysctls", setting.path, setting.want)
+			"isolated diagnostic fixture needs %s=%s; see guides/testing.md for container sysctls", setting.path, setting.want)
 	}
 	s := fixtureSettings()
 	s.Interface = "dhcp-server"

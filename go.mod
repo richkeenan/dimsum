@@ -6,6 +6,7 @@ toolchain go1.26.8
 
 require (
 	github.com/creachadair/tomledit v0.0.29
+	github.com/creack/pty v1.1.24
 	github.com/google/jsonschema-go v0.4.3
 	github.com/insomniacslk/dhcp v0.0.0-20260901064844-234b97448fae
 	github.com/mdlayher/packet v1.1.2
