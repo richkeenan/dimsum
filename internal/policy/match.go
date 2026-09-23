@@ -49,6 +49,9 @@ func Compile(generation uint64, rules []Rule, limits Limits) (*Matcher, error) {
 	count := 0
 	var total int64
 	for _, r := range rules {
+		if err := validateRuleScope(r); err != nil {
+			return nil, fmt.Errorf("policy: rule %q: %w", r.ID, err)
+		}
 		if r.ID == "" || seen[r.ID] {
 			return nil, fmt.Errorf("policy: empty or duplicate rule ID %q", r.ID)
 		}

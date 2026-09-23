@@ -28,6 +28,7 @@ const (
 // means Go for Regex; other forms do not accept a dialect. Only enabled source
 // rules (including explicitly enabled special rules) should be supplied.
 type Rule struct {
+	Scope                    Scope
 	ID, SourceID, SourceText string
 	Kind                     Kind
 	Class                    Class
@@ -46,6 +47,7 @@ const (
 )
 
 type Decision struct {
+	Scope      Scope
 	Result     Result
 	Generation uint64
 	RuleID     string

@@ -49,6 +49,9 @@ func (m *Matcher) match(n Name, explain bool) Decision {
 	var winner *compiledRule
 	for i := range m.rules {
 		r := &m.rules[i]
+		if !((*Selection)(nil)).eligible(r.rule.Scope, r.rule.Class, r.rule.SourceID) {
+			continue
+		}
 		if !r.matches(n, labels, display) {
 			continue
 		}
@@ -61,6 +64,7 @@ func (m *Matcher) match(n Name, explain bool) Decision {
 	}
 	if winner != nil {
 		d.RuleID = winner.rule.ID
+		d.Scope = winner.rule.Scope
 		d.Result = Block
 		if winner.rule.Class == CustomAllow || winner.rule.Class == SubscriptionAllow {
 			d.Result = Allow

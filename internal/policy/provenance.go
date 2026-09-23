@@ -26,7 +26,13 @@ func (r ruleMeta) textRef() textRef {
 }
 
 func (s *PolicySnapshot) rule(r ruleMeta) Rule {
-	return Rule{ID: s.text(r.idRef()), SourceID: s.text(s.sharedText[r.source]), SourceText: s.text(r.textRef()), Pattern: s.text(r.patternRef()), Dialect: s.text(s.sharedText[r.dialect]), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}
+	return Rule{Scope: s.scope(r), ID: s.text(r.idRef()), SourceID: s.text(s.sharedText[r.source]), SourceText: s.text(r.textRef()), Pattern: s.text(r.patternRef()), Dialect: s.text(s.sharedText[r.dialect]), Class: snapshotClasses[r.class], Kind: snapshotKinds[r.kind]}
+}
+
+var scopeKinds = [...]ScopeKind{NetworkScope, ProfileScope, ClientScope}
+
+func (s *PolicySnapshot) scope(r ruleMeta) Scope {
+	return s.scopes[s.text(r.idRef())]
 }
 
 var snapshotClasses = [...]Class{CustomAllow, CustomDeny, SubscriptionAllow, SubscriptionDeny, SpecialDeny}

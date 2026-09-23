@@ -30,6 +30,8 @@ type SnapshotMemory struct {
 	Rules                                                               int
 }
 type PolicySnapshot struct {
+	selection   *Selection
+	scopes      map[string]Scope // sparse owner metadata; subscription entries stay 32 bytes
 	generation  uint64
 	rules       []ruleMeta
 	provenance  string
@@ -74,7 +76,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 				// IDNA can change lengths, so validated appends may grow it.
 				suffixReserve += uint64(min(len(r.Pattern), 253) + 2)
 			}
-			textBytes += uint64(len(r.ID)) + uint64(len(r.SourceID)) + uint64(len(r.SourceText)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect))
+			textBytes += uint64(len(r.ID)) + uint64(len(r.SourceID)) + uint64(len(r.SourceText)) + uint64(len(r.Pattern)) + uint64(len(r.Dialect)) + uint64(len(r.Scope.ID))
 			if count > o.MaxRules || uint64(count) > math.MaxUint32-1 || textBytes > o.MaxBytes {
 				return nil, fmt.Errorf("policy: snapshot input budget exceeded")
 			}
@@ -82,7 +84,7 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 			if r.SourceText != r.Pattern {
 				storedTextBytes += uint64(len(r.SourceText))
 			}
-			for _, value := range []string{r.SourceID, r.Dialect} {
+			for _, value := range []string{r.SourceID, r.Dialect, r.Scope.ID} {
 				if _, ok := shared[value]; !ok {
 					storedTextBytes += uint64(len(value))
 					shared[value] = 0
@@ -128,6 +130,9 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		if o.DisabledSources[r.SourceID] {
 			continue
 		}
+		if err := validateRuleScope(r); err != nil {
+			return nil, fmt.Errorf("policy: rule %q: %w", r.ID, err)
+		}
 		if r.ID == "" || seen[r.ID] {
 			return nil, fmt.Errorf("policy: empty or duplicate rule ID %q", r.ID)
 		}
@@ -155,6 +160,12 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 		}
 		m.source = intern(r.SourceID)
 		m.dialect = intern(r.Dialect)
+		if r.Scope.Kind != NetworkScope {
+			if s.scopes == nil {
+				s.scopes = make(map[string]Scope)
+			}
+			s.scopes[strings.Clone(r.ID)] = Scope{Kind: r.Scope.Kind, ID: strings.Clone(r.Scope.ID)}
+		}
 		head := uint32(len(s.rules) + 1)
 		if r.Kind == Exact || r.Kind == Suffix {
 			if r.Dialect != "" {
@@ -229,6 +240,10 @@ func compileSnapshot(g uint64, input []Rule, limits Limits, o SnapshotOptions, l
 	s.provenance = text.String()
 	s.memory = SnapshotMemory{Rules: count, ProvenanceBytes: uint64(text.Cap()) + uint64(cap(s.sharedText))*8 + uint64(cap(s.rules))*uint64(unsafe.Sizeof(ruleMeta{})), ExactBytes: uint64(cap(s.exact.slots))*16 + uint64(cap(s.exact.keys)), SuffixBytes: uint64(cap(s.suffix.entries))*8 + uint64(cap(s.suffix.keys)), FallbackBytes: uint64(cap(s.fallback))*uint64(unsafe.Sizeof(compiledRule{})) + uint64(cap(s.fallbackIDs))*4 + fallbackCharge}
 	s.memory.TotalBytes = s.memory.ProvenanceBytes + s.memory.ExactBytes + s.memory.SuffixBytes + s.memory.FallbackBytes + uint64(unsafe.Sizeof(*s))
+	for id, scope := range s.scopes {
+		s.memory.ProvenanceBytes += uint64(128 + len(id) + len(scope.ID))
+		s.memory.TotalBytes += uint64(128 + len(id) + len(scope.ID))
+	}
 	if s.memory.TotalBytes > o.MaxBytes {
 		return nil, fmt.Errorf("policy: snapshot byte budget exceeded")
 	}
@@ -250,18 +265,27 @@ func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
 }
 
 func (s *PolicySnapshot) matchOwnNumber(n Name, explain bool) (Decision, uint32) {
+	return s.matchSelectedNumber(n, explain, s.selection)
+}
+
+func (s *PolicySnapshot) matchSelectedNumber(n Name, explain bool, selection *Selection) (Decision, uint32) {
 	d := Decision{Result: Forward, Generation: s.generation}
 	var winner uint32
 	visit := func(head uint32) {
 		for head != 0 {
 			r := s.rules[head-1]
+			if !selection.eligible(s.scope(r), snapshotClasses[r.class], s.text(s.sharedText[r.source])) {
+				head = r.next
+				continue
+			}
 			if explain && r.source != 0 {
 				d.SourceIDs = append(d.SourceIDs, s.text(s.sharedText[r.source]))
 			}
 			better := winner == 0
 			if !better {
 				w := s.rules[winner-1]
-				better = r.class < w.class || r.class == w.class && (r.score > w.score || r.score == w.score && s.text(r.idRef()) < s.text(w.idRef()))
+				rs, ws := scopeRank(s.scope(r).Kind), scopeRank(s.scope(w).Kind)
+				better = rs > ws || rs == ws && (r.class < w.class || r.class == w.class && (r.score > w.score || r.score == w.score && s.text(r.idRef()) < s.text(w.idRef())))
 			}
 			if better {
 				winner = head
@@ -289,6 +313,7 @@ func (s *PolicySnapshot) matchOwnNumber(n Name, explain bool) (Decision, uint32)
 	if winner != 0 {
 		r := s.rules[winner-1]
 		d.RuleID = s.text(r.idRef())
+		d.Scope = s.scope(r)
 		d.Result = Block
 		if r.class == 0 || r.class == 2 {
 			d.Result = Allow

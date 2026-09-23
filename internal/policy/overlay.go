@@ -88,13 +88,14 @@ func compileOverlay(generation uint64, ownerRules []Rule, base *PolicySnapshot, 
 
 func (s *PolicySnapshot) matchOverlay(n Name, explain bool) (Decision, uint32) {
 	owner, ownNumber := s.matchOwnNumber(n, explain)
-	base, baseNumber := s.base.matchOwnNumber(n, explain)
+	base, baseNumber := s.base.matchSelectedNumber(n, explain, s.selection)
 	winner, number := owner, ownNumber
 	if baseNumber != 0 {
 		better := ownNumber == 0
 		if !better {
 			a, b := s.rules[ownNumber-1], s.base.rules[baseNumber-1]
-			better = b.class < a.class || b.class == a.class && (b.score > a.score || b.score == a.score && base.RuleID < owner.RuleID)
+			as, bs := scopeRank(s.scope(a).Kind), scopeRank(s.base.scope(b).Kind)
+			better = bs > as || bs == as && (b.class < a.class || b.class == a.class && (b.score > a.score || b.score == a.score && base.RuleID < owner.RuleID))
 		}
 		if better {
 			winner, number = base, baseNumber+uint32(len(s.rules))
