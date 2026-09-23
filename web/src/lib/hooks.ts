@@ -21,6 +21,7 @@ export function useResource<T>(path: string, refresh = 0) {
       "diagnostics",
       "settings",
       "blocking",
+      "client-policy",
       "dhcp",
       "dhcp/status",
       "dhcp/reservations",

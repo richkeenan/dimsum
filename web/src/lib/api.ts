@@ -150,6 +150,8 @@ export const api = {
         "rules",
         "records",
         "clients",
+        "client-policy",
+        "profiles",
         "upstreams",
         "blocking",
       ].includes(path)
