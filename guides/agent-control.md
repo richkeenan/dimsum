@@ -58,6 +58,8 @@ documentation examples; substitute your own when making changes.
 | Manage subscriptions | “Show me the available filter-list subscriptions and which ones I have enabled.” |
 | Refresh lists | “Refresh my filter lists and report whether the job succeeded.” |
 | Name a device | “Rename the device at 192.0.2.25 to Office laptop.” |
+| Apply a device list | “Add the NSFW list to Jan’s iPhone, leaving other devices unchanged.” |
+| Reset an exception | “Reset the tablet's list overrides so it follows its profile again.” |
 | Add local DNS | “Create a local A record for printer.home.arpa pointing to 192.0.2.30.” |
 | Configure upstreams | “Show my upstream DNS servers and switch my primary upstream to the Quad9 DNS-over-HTTPS preset.” |
 | Check performance | “Show DNS response-time percentiles for the last hour and check upstream diagnostics.” |
@@ -84,7 +86,7 @@ them when it connects, so you can ask for a task without knowing tool names.
 | --- | --- |
 | Traffic and performance | `get_summary`, `get_rankings`, `get_timeseries`, `get_performance`, `list_queries`, `get_query` |
 | Filtering | `get_blocking`, `set_blocking`, `explain_domain`; list, add, edit, and remove rules and filter subscriptions; inspect the subscription catalog |
-| Devices and local DNS | List, add, edit, and remove client-name overrides and local DNS records |
+| Devices and local DNS | Client inventory and names, local DNS records; `list_profiles`, `get_client_policy`, `preview_client_policy`, `update_client_policy` |
 | Upstreams and settings | List, add, edit, and remove upstreams; `get_settings`, `update_settings`, `get_diagnostics` |
 | Staged configuration | `stage_configuration` to validate edits, then `commit_configuration` to commit them |
 | Maintenance | `create_job` for refresh, backup, restore, and diagnostics; `list_jobs` to inspect results |
@@ -156,6 +158,89 @@ Explanation evaluates the active selected policy without making a DNS lookup;
 it does not fetch a CNAME chain or reconstruct historical policy. When running
 independent diagnostic calls in parallel, collect each success or error rather
 than letting one rejected name hide the other results.
+
+### Device policy operations
+
+For **“Add the NSFW list to Jan’s iPhone”**, the agent should:
+
+1. Use `list_clients` to identify the configured `policy_id` and matching evidence,
+   and `get_catalog` to find the intended subscription. If names or list choices
+   are ambiguous, ask which one; never infer identity from a display name alone.
+2. Read `get_client_policy` with `scope: "client"` and that ID. Use its current
+   `status.saved_revision`. Promote a legacy naming-only entry to an explicit
+   stable ID before or within the same policy mutation.
+3. Preview if needed, then call `update_client_policy` once with subscription
+   metadata and the device's list assignment together. Use the catalogue's exact
+   ID, URL, dialect and domain kind.
+4. Read back the device and network policy, activation status and source health.
+   Use `explain_domain` with `client_id` to check the active decision. A failed
+   first download is not protection; report it even if the assignment was saved.
+
+For a selected HaGeZi NSFW catalogue entry, the MCP arguments are:
+
+```json
+{
+  "body": {
+    "revision": "REV",
+    "scope": "client",
+    "id": "jan-iphone",
+    "subscribe": [{
+      "id": "hagezi-nsfw",
+      "url": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nsfw.txt",
+      "dialect": "dns-adblock",
+      "domain_kind": "suffix",
+      "enabled": true
+    }],
+    "fields": [{"path": ["lists", "hagezi-nsfw"], "value": true}]
+  }
+}
+```
+
+Replace `REV` and the device ID with values from the current read. A newly created
+subscription receives `default_apply: false`; an existing subscription retains
+its availability and network application. Conflicting metadata or revisions
+reject the entire transaction. Configuration remains authoritative YAML, not a
+device-policy database. See [inheritance and identity limits](configuration.md#device-policies-and-inheritance).
+
+All device-policy UI operations use the shared API and have CLI/MCP equivalents:
+
+| Operation | CLI after `dimsum control` | MCP |
+| --- | --- | --- |
+| Inventory / profiles | `clients` / `profiles` | `list_clients` / `list_profiles` |
+| Read device policy | `client-policy --query 'scope=client&id=jan-iphone'` | `get_client_policy` with `scope`, `id` |
+| Preview a mutation | `client-policy-preview 'JSON'` | `preview_client_policy` with `body` |
+| Save a mutation | `patch client-policy 'JSON'` | `update_client_policy` with `body` |
+| Explain for a device | `rules-test 'JSON'` | `explain_domain` with `body` |
+
+HTTP uses `GET /api/v1/client-policy`, `POST /api/v1/client-policy/preview`,
+`PATCH /api/v1/client-policy`, and `POST /api/v1/rules/test`. CLI/HTTP JSON is the
+inner mutation object; only MCP wraps it in `body`. For example:
+
+```sh
+dimsum control client-policy --query 'scope=client&id=jan-iphone'
+dimsum control patch client-policy '{"revision":"REV","scope":"client","id":"jan-iphone","fields":[{"path":["lists","hagezi-nsfw"],"reset":true}]}'
+dimsum control rules-test '{"name":"example.com","client_id":"jan-iphone"}'
+```
+
+Field paths are relative to the selected policy: `blocking`, `lists/ID`,
+`upstream`, or `rules`. Set with `value`; inherit with `reset: true` rather than
+`null`. Use `scope: "profile"` and its ID for profile operations; `scope:
+"network"` has no ID. `create: true` creates a client/profile; `delete: true`
+deletes an unreferenced owner. `profile: "children"` assigns one profile;
+`profile: ""` removes assignment. `reset_all: true` removes policy overrides,
+while `reset_pause: true` separately clears a device pause.
+
+Relink with a full `selectors` object or `lease_address`, never both. Selectors
+replace the previous set while retaining ID/profile/policy. `lease_address`
+requires a current authoritative DHCP lease and saves only its MAC. Explicit
+legacy promotion uses `id: "address:192.0.2.25"` and `promote_id: "office-laptop"`.
+
+Device explanation accepts either `client_id` or `address`; address resolution
+uses active authoritative selectors even when query observations are unavailable.
+Optional `generation` rejects a stale active-policy assumption. Results include
+matching method, effective sources and winning rule scope. Explanation does not
+query upstreams or inspect an unseen CNAME chain. Query-log rule actions default
+to the selected device; profile and network scope must be chosen explicitly.
 
 ## Connection troubleshooting
 

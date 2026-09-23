@@ -46,7 +46,8 @@ dimsum serve -config /path/to/dimsum.yaml -state /path/to/recovery
 | `lists` | Downloaded lists, parser dialects, and enabled state. |
 | `filtering` | Policy behavior and special-domain handling. |
 | `records`, `zones` | Local DNS answers and local zones. |
-| `clients`, `naming` | Explicit client names and discovery sources. |
+| `blocking`, `profiles`, `clients` | Network filtering default, reusable policies, stable device identities and overrides. |
+| `naming` | Client-name discovery sources. |
 | `statistics` | Query history and retention settings. |
 | `dhcp` | Optional DHCPv4 settings and reservations. |
 
@@ -85,3 +86,116 @@ Listener, secure-cookie, and runtime path changes can require a restart. Ordinar
 rules, client names, and supported settings apply through the coordinator.
 Preserve the configuration directory's ownership and permissions. Avoid mounting
 only the file, since atomic saves replace its directory entry.
+
+## Device policies and inheritance
+
+Policy settings follow **network defaults → one optional profile → device
+overrides**. Profiles cannot inherit other profiles. Omitted settings inherit;
+explicit `true` or `false` remains an override even when equal to its parent.
+Reset removes the override, so later parent changes apply again. Resetting all
+device overrides retains its stable ID, selectors and profile assignment; reset
+the pause separately. Removing a profile assignment resumes network inheritance.
+
+For example, merge these sections into your configuration. The list URL and
+upstream below are documentation placeholders, not working services:
+
+```yaml
+blocking: true
+lists:
+  - id: adult
+    url: https://example.test/adult.txt
+    dialect: domains
+    domain_kind: suffix
+    enabled: true
+    default_apply: false
+profiles:
+  - id: children
+    name: Children
+    policy:
+      lists: {adult: true}
+clients:
+  - id: jan-iphone
+    name: Jan's iPhone
+    selectors:
+      macs: ['02:00:00:00:00:01']
+    profile: children
+    overrides:
+      upstream:
+        upstreams: ['192.0.2.53:53']
+        fallback_upstreams: ['192.0.2.54:53']
+  - id: tablet
+    name: Tablet
+    selectors:
+      addresses: [192.0.2.20, '2001:db8::20']
+    profile: children
+    overrides:
+      lists: {adult: false}
+```
+
+Jan's phone inherits the profile's list and uses an explicit upstream route. The
+tablet excludes that list even if the profile or network default later changes.
+Deleting the tablet's `overrides.lists.adult` key makes it follow the profile.
+Primary and fallback upstream arrays form one setting and are replaced together.
+Custom owner rules use the same `id`, `kind`, `action`, `pattern`, and `enabled`
+fields as network `rules`, under profile `policy.rules` or device `overrides.rules`.
+
+### Subscription versus application
+
+`enabled` controls whether a subscription is available for downloading/loading.
+`default_apply` controls its network application. Omitting `default_apply`
+preserves legacy behavior: enabled subscriptions apply network-wide. Profiles
+and devices choose **inherit / on / off** for each subscription. An assignment
+does not enable a disabled subscription.
+
+Adding a new catalogue list from a device can subscribe and apply it in one
+transaction with `default_apply: false`, leaving peers unaffected. Applying an
+existing globally applied list does not remove it from peers. A list cannot be
+deleted while any profile/device references it, including explicit Off entries;
+a profile cannot be deleted while assigned to a device.
+
+Check both effective assignment and source health. A failed first download has
+no usable membership even if assignment is On. A later refresh failure can retain
+previously downloaded usable rules. Saved policy, active policy and download
+health are shown separately in Clients and Filter lists.
+
+### Identity and portability
+
+The stable `id`, selectors, profile and overrides live in YAML and survive
+configuration backup/restore. Matching uses **explicit address → authoritative
+DHCP MAC → longest matching CIDR → network default**. Selectors accept multiple
+`addresses`, `macs` or `cidrs`; ambiguous duplicate selectors are rejected.
+Existing `{address, name}` entries retain their legacy behavior.
+
+Ordinary DNS packets do not contain a MAC. MAC matching requires an unexpired,
+committed lease from dimsum's authoritative DHCP service; discovery names,
+reservations alone and display labels do not establish identity. Private Wi-Fi
+MACs may change between networks. A restored ID preserves policy, not automatic
+recognition of hardware on a new network.
+
+Use **Relink** to replace selectors while preserving ID and policy. Creating or
+relinking from an authoritative lease saves its MAC only, without retaining a
+dynamic IP that might later belong to a peer. Address selectors suit stable
+addresses; reassess them when moving configuration. The inventory shows the
+actual matching method. Names are labels and need not be unique.
+
+### Rules, pauses and caches
+
+Custom rule precedence is **device → profile → network**. Within each scope,
+allow/deny, specificity and stable rule-ID precedence remain unchanged. Applicable
+subscription allows precede subscription denies. Resetting an owner's rules
+removes that owner's collection and exposes broader rules again. Original-name
+and response-alias checks use the same captured device policy.
+
+Global pause dominates every device setting. Device `paused_until` is an absolute
+RFC3339 timestamp; expiry resumes its effective policy. Effective `blocking:
+false` also suppresses ordinary filtering. Local DNS handling and private-reverse
+protection keep their precedence, including during pauses.
+
+Devices on the same complete upstream route share raw answer caches and in-flight
+requests; answers are filtered separately for each device. Different routes
+isolate caches, coalescing and stale refreshes. Policy publication changes the
+generation used for cache lookup, and in-flight requests retain their captured
+policy. Subscription indexes are shared, not copied once per device.
+
+See [agent control](agent-control.md#device-policy-operations) for CLI, HTTP and
+MCP examples, including scoped resets and explanations.
