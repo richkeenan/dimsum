@@ -122,6 +122,19 @@ it("assigns one profile without copying inherited policy", async () => {
   await waitFor(() => expect(writes[0]?.profile).toBe("children"));
   expect(writes[0].fields).toBeUndefined();
 });
+
+it("changes-only keeps a name edit visible without unrelated profile or list controls", async () => {
+  setup();
+  fireEvent.change(await screen.findByLabelText("Name"), {
+    target: { value: "Study tablet" },
+  });
+  fireEvent.click(screen.getByLabelText("Changes only"));
+  expect(screen.getByLabelText("Name")).toHaveValue("Study tablet");
+  expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: "Filter lists" }),
+  ).not.toBeInTheDocument();
+});
 it("subscribes and applies a catalogue list in one device-only transaction", async () => {
   const writes = setup();
   fireEvent.click(

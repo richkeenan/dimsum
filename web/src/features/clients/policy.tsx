@@ -406,48 +406,51 @@ function PolicyForm({
             extra.profile !== undefined ||
             extra.name !== undefined) && (
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                Name
-                <Input
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    setExtra((x) => {
-                      const next = { ...x };
-                      if (e.target.value === (desiredClient.name ?? ""))
-                        delete next.name;
-                      else next.name = e.target.value;
-                      return next;
-                    });
-                  }}
-                />
-              </label>
-              {read.scope === "client" && (
+              {(!only || extra.name !== undefined) && (
                 <label className="space-y-1 text-sm">
-                  Profile
-                  <select
-                    className={`${selectClass} w-full`}
-                    aria-label="Profile"
-                    value={extra.profile ?? desiredClient.profile ?? ""}
-                    onChange={(e) =>
+                  Name
+                  <Input
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
                       setExtra((x) => {
                         const next = { ...x };
-                        if (e.target.value === (desiredClient.profile ?? ""))
-                          delete next.profile;
-                        else next.profile = e.target.value;
+                        if (e.target.value === (desiredClient.name ?? ""))
+                          delete next.name;
+                        else next.name = e.target.value;
                         return next;
-                      })
-                    }
-                  >
-                    <option value="">No profile · network defaults</option>
-                    {profiles.data?.items.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name || p.id}
-                      </option>
-                    ))}
-                  </select>
+                      });
+                    }}
+                  />
                 </label>
               )}
+              {read.scope === "client" &&
+                (!only || extra.profile !== undefined) && (
+                  <label className="space-y-1 text-sm">
+                    Profile
+                    <select
+                      className={`${selectClass} w-full`}
+                      aria-label="Profile"
+                      value={extra.profile ?? desiredClient.profile ?? ""}
+                      onChange={(e) =>
+                        setExtra((x) => {
+                          const next = { ...x };
+                          if (e.target.value === (desiredClient.profile ?? ""))
+                            delete next.profile;
+                          else next.profile = e.target.value;
+                          return next;
+                        })
+                      }
+                    >
+                      <option value="">No profile · network defaults</option>
+                      {profiles.data?.items.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name || p.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
             </div>
           )}
         {profiles.error && <ErrorNotice error={profiles.error} />}
@@ -468,25 +471,31 @@ function PolicyForm({
           own.blocking,
           effective?.blocking ?? read.effective.blocking,
         )}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-medium">Filter lists</h3>
-          <Button
-            variant="ghost"
-            disabled={!!extra.reset_all || !Object.keys(own.lists ?? {}).length}
-            onClick={() => {
-              setSubscriptions([]);
-              setFields((old) => [
-                ...old.filter((f) => f.path[0] !== "lists"),
-                ...Object.keys(own.lists ?? {}).map((id) => ({
-                  path: ["lists", id],
-                  reset: true as const,
-                })),
-              ]);
-            }}
-          >
-            Reset list overrides
-          </Button>
-        </div>
+        {(!only ||
+          extra.reset_all ||
+          fields.some((f) => f.path[0] === "lists")) && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Filter lists</h3>
+            <Button
+              variant="ghost"
+              disabled={
+                !!extra.reset_all || !Object.keys(own.lists ?? {}).length
+              }
+              onClick={() => {
+                setSubscriptions([]);
+                setFields((old) => [
+                  ...old.filter((f) => f.path[0] !== "lists"),
+                  ...Object.keys(own.lists ?? {}).map((id) => ({
+                    path: ["lists", id],
+                    reset: true as const,
+                  })),
+                ]);
+              }}
+            >
+              Reset list overrides
+            </Button>
+          </div>
+        )}
         {Object.entries({
           ...Object.fromEntries(
             subscriptions.map((s) => [
