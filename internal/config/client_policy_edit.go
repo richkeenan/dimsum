@@ -55,18 +55,24 @@ func (d *Document) policySplice(start, end int, text string) []byte {
 }
 
 func (d *Document) policyField(f PolicyField) ([]byte, error) {
-	n, err := d.node(f.Path)
+	if parent, e := d.policyNode(f.Path[:len(f.Path)-1]); e == nil && parent.Kind == yaml.MappingNode && parent.Style&yaml.FlowStyle != 0 {
+		if f.Append {
+			return nil, fmt.Errorf("append inside flow mapping requires explicit text edit")
+		}
+		return d.policyFlowField(parent, f.Path[len(f.Path)-1], f.Value, f.Reset)
+	}
+	n, err := d.policyNode(f.Path)
 	if err != nil {
 		// Walk to the first missing mapping key. Sequence indexes must exist.
 		for i := range f.Path {
-			if _, e := d.node(f.Path[:i+1]); e == nil {
+			if _, e := d.policyNode(f.Path[:i+1]); e == nil {
 				continue
 			}
-			parent, e := d.node(f.Path[:i])
+			parent, e := d.policyNode(f.Path[:i])
 			if e != nil {
 				return nil, e
 			}
-			if parent.Kind == yaml.MappingNode && parent.Style&yaml.FlowStyle != 0 && len(parent.Content) == 0 && i > 0 {
+			if parent.Kind == yaml.MappingNode && parent.Style&yaml.FlowStyle != 0 && i > 0 {
 				if f.Reset {
 					return d.Bytes(), nil
 				}
@@ -74,10 +80,10 @@ func (d *Document) policyField(f PolicyField) ([]byte, error) {
 				if f.Append {
 					value = []any{value}
 				}
-				for j := len(f.Path) - 1; j >= i; j-- {
+				for j := len(f.Path) - 1; j > i; j-- {
 					value = map[string]any{f.Path[j]: value}
 				}
-				return d.replacePolicyField(f.Path[:i], parent, value, false)
+				return d.policyFlowField(parent, f.Path[i], value, false)
 			}
 			if parent.Kind != yaml.MappingNode || parent.Style&yaml.FlowStyle != 0 {
 				return nil, fmt.Errorf("policy edit: requires block mapping")
@@ -128,7 +134,15 @@ func (d *Document) policyField(f PolicyField) ([]byte, error) {
 		}
 		if n.Style&yaml.FlowStyle != 0 {
 			if len(n.Content) != 0 {
-				return nil, fmt.Errorf("policy append: nonempty flow sequence requires explicit text edit")
+				end, e := d.flowEnd(n)
+				if e != nil {
+					return nil, e
+				}
+				token, e := flowValue(f.Value)
+				if e != nil {
+					return nil, e
+				}
+				return d.policySplice(end-1, end-1, ", "+token), nil
 			}
 			return d.replacePolicyField(f.Path, n, []any{f.Value}, false)
 		}
@@ -150,7 +164,12 @@ func (d *Document) policyField(f PolicyField) ([]byte, error) {
 // Replacement retains comment text as standalone comments at the same level.
 // Existing subtrees are never marshaled. Ambiguous multiline/flow parents fail.
 func (d *Document) replacePolicyField(path []string, n *yaml.Node, value any, reset bool) ([]byte, error) {
-	parent, e := d.node(path[:len(path)-1])
+	if n.Style&yaml.FlowStyle != 0 {
+		if _, err := d.flowEnd(n); err != nil {
+			return nil, err
+		}
+	}
+	parent, e := d.policyNode(path[:len(path)-1])
 	if e != nil {
 		return nil, e
 	}
