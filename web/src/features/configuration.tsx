@@ -408,10 +408,18 @@ export default function Configuration({
                 )}
                 <DataTable
                   items={devices}
+                  initialSorting={[{ id: "count", desc: true }]}
+                  sortScope={
+                    (state.data?.observed as Row)?.truncated
+                      ? "Sorting applies to loaded devices."
+                      : undefined
+                  }
                   columns={[
                     {
                       key: "name",
                       label: "Client",
+                      sortType: "address",
+                      sortValue: (r) => r.name || r.address,
                       render: (r) => (
                         <button
                           className="max-w-full text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -430,22 +438,26 @@ export default function Configuration({
                     {
                       key: "last_seen",
                       label: "Last seen",
+                      sortType: "datetime",
                       render: (r) =>
                         r.last_seen ? new Date(String(r.last_seen)).toLocaleString() : "—",
                     },
                     {
                       key: "count",
                       label: "Queries",
+                      sortType: "number",
                       render: (r) => count(r.count),
                     },
                     {
                       key: "blocked",
                       label: "Blocked",
+                      sortType: "number",
                       render: (r) => count(r.blocked),
                     },
                     {
                       key: "actions",
                       label: "Actions",
+                      sortable: false,
                       render: (r) => (
                         <div className="flex items-center gap-2">
                           <ClientDeviceButton
@@ -571,6 +583,9 @@ export default function Configuration({
                           {
                             key: "priority",
                             label: "Priority",
+                            sortType: "number" as const,
+                            sortDescFirst: false,
+                            sortValue: (r: Row) => r.__index,
                             render: (r: Row) => (
                               <UpstreamOrder
                                 address={text(r.address)}
@@ -585,6 +600,15 @@ export default function Configuration({
                       : []),
                     ...columns[kind].map((key) => ({
                       key,
+                      sortType: key === "ttl" ? ("number" as const) : ("text" as const),
+                      sortValue: (r: Row) =>
+                        key === "enabled"
+                          ? r.enabled === true
+                            ? "Enabled"
+                            : r.enabled === false
+                              ? "Disabled"
+                              : undefined
+                          : (optionLabels[String(r[key])] ?? r[key]),
                       label:
                         (
                           {
@@ -619,6 +643,7 @@ export default function Configuration({
                     {
                       key: "actions",
                       label: "Actions",
+                      sortable: false,
                       align: "right",
                       render: (r) => (
                         <div className="flex items-center justify-end gap-2 whitespace-nowrap">

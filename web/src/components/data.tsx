@@ -1,8 +1,14 @@
-import { useMemo, type ReactNode } from "react";
-import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
+import { type ReactNode } from "react";
+import { type SortingState } from "@tanstack/react-table";
 import { APIError, text, type Row } from "@/lib/api";
 import { Button } from "./ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "./ui/table";
+import {
+  SortableHead,
+  useSortableTable,
+  type SortColumn,
+  type SortingControl,
+} from "./table-sorting";
 
 export function ErrorNotice({ error, retry }: { error: Error; retry?: () => void }) {
   const conflict = error instanceof APIError && error.status === 409;
@@ -59,64 +65,59 @@ export function Resource({
   );
 }
 
-export type Column = {
-  key: string;
-  label: string;
+export type Column = SortColumn<Row> & {
   render?: (row: Row) => ReactNode;
   width?: number | string;
   align?: "left" | "right";
-  hidden?: boolean;
 };
-const features = tableFeatures({});
-const helper = createColumnHelper<typeof features, Row>();
 export function DataTable({
   items,
   columns,
   empty = "No results for this selection.",
   compact = false,
+  initialSorting,
+  sorting,
+  sortScope,
 }: {
   items: Row[];
   columns: Column[];
   empty?: string;
   compact?: boolean;
+  initialSorting?: SortingState;
+  sorting?: SortingControl;
+  sortScope?: string;
 }) {
   const visible = columns.filter((c) => !c.hidden);
-  const definitions = useMemo(
-    () =>
-      columns
-        .filter((c) => !c.hidden)
-        .map((c) =>
-          helper.accessor((r) => r[c.key], {
-            id: c.key,
-            header: c.label,
-          }),
-        ),
-    [columns],
-  );
-  const table = useTable({
-    features,
-    columns: definitions,
-    data: items,
-    getRowId: (r, i) => text(r.id ?? r.address ?? r.name ?? i),
+  const table = useSortableTable({
+    columns,
+    items,
+    initialSorting,
+    sorting,
+    getRowId: (r, i) => text(r.id ?? r.address ?? r.__index ?? r.time ?? r.name ?? i),
   });
   return (
     <Table
       className={compact ? "min-w-190 table-fixed" : visible.length > 5 ? "min-w-190" : undefined}
     >
+      {sortScope && (
+        <caption className="px-4 py-2 text-left text-xs text-muted-foreground">{sortScope}</caption>
+      )}
       <TableHeader>
         {table.getHeaderGroups().map((group) => (
           <TableRow key={group.id}>
             {group.headers.map((header, i) => (
-              <TableHead
+              <SortableHead
                 key={header.id}
+                column={header.column}
+                sorted={header.column.getIsSorted()}
+                label={visible[i].label}
+                align={visible[i].align}
                 className={compact ? "bg-muted px-3 text-[12px]" : "bg-muted px-4 text-xs"}
                 style={{
                   width: visible[i]?.width,
                   textAlign: visible[i]?.align,
                 }}
-              >
-                <table.FlexRender header={header} />
-              </TableHead>
+              />
             ))}
           </TableRow>
         ))}

@@ -204,30 +204,26 @@ export default function Jobs() {
         <Resource state={state}>
           <DataTable
             items={jobs}
+            initialSorting={[{ id: "created", desc: true }]}
+            sortScope="Sorting applies to the loaded job history."
             columns={[
               {
                 key: "kind",
                 label: "Operation",
-                render: (r) =>
-                  (
-                    ({
-                      backup: "Backup",
-                      restore: "Restore",
-                      refresh: "Blocklist update",
-                      "upstream-probe": "Upstream test",
-                      "support-bundle": "Support bundle",
-                    }) as Record<string, string>
-                  )[String(r.kind)] ?? text(r.kind),
+                sortValue: (r) => jobLabel(r.kind),
+                render: (r) => jobLabel(r.kind),
               },
               { key: "state", label: "State" },
               {
                 key: "created",
                 label: "Started",
+                sortType: "datetime",
                 render: (r) => (r.created ? new Date(String(r.created)).toLocaleString() : "—"),
               },
               {
                 key: "result",
                 label: "Result",
+                sortable: false,
                 render: (r) => {
                   const url = r.state === "succeeded" ? backupURL(r.result) : undefined;
                   if (url && r.id !== downloadable) return "Superseded by a newer backup";
@@ -258,5 +254,19 @@ export default function Jobs() {
         </Resource>
       </section>
     </div>
+  );
+}
+
+function jobLabel(kind: unknown) {
+  return (
+    (
+      {
+        backup: "Backup",
+        restore: "Restore",
+        refresh: "Blocklist update",
+        "upstream-probe": "Upstream test",
+        "support-bundle": "Support bundle",
+      } as Record<string, string>
+    )[String(kind)] ?? text(kind)
   );
 }

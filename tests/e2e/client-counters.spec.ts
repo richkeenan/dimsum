@@ -33,4 +33,18 @@ test("compiled device rows sum large counters exactly and show zero without obse
   await expect(laptop.getByRole("cell", { name: "12", exact: true })).toBeVisible();
   const idle = page.getByRole("row").filter({ hasText: "Idle device" });
   await expect(idle.getByRole("cell", { name: "0", exact: true })).toHaveCount(2);
+  const firstDevice = page.locator("tbody tr").first();
+  await expect(firstDevice).toContainText("Counter laptop");
+  const queries = page.getByRole("columnheader", { name: "Queries", exact: true });
+  await expect(queries).toHaveAttribute("aria-sort", "descending");
+  await queries.getByRole("button").focus();
+  await page.keyboard.press("Enter");
+  await expect(firstDevice).toContainText("Idle device");
+  await expect(queries).toHaveAttribute("aria-sort", "ascending");
+  await page.getByRole("button", { name: "Reload displayed data", exact: true }).click();
+  await expect(firstDevice).toContainText("Idle device");
+  await expect(queries).toHaveAttribute("aria-sort", "ascending");
+  await queries.getByRole("button").click();
+  await expect(firstDevice).toContainText("Counter laptop");
+  await expect(queries).toHaveAttribute("aria-sort", "descending");
 });

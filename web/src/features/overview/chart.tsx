@@ -96,15 +96,19 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
         {table && (
           <DataTable
             items={buckets}
+            initialSorting={[{ id: "time", desc: false }]}
             columns={[
               {
                 key: "time",
                 label: "Interval",
+                sortType: "datetime",
                 render: (r) => text(r.time),
               },
               ...outcomes.map((key) => ({
                 key,
                 label: labels[key],
+                sortType: "number" as const,
+                sortValue: (r: Row) => (r.gap ? undefined : (r.outcomes as Row | undefined)?.[key]),
                 align: "right" as const,
                 render: (r: Row) =>
                   r.gap || !r.outcomes ? "Missing" : count((r.outcomes as Row)[key]),

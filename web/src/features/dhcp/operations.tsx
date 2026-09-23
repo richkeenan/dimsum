@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { SortingState } from "@tanstack/react-table";
 import {
   api,
   APIError,
@@ -62,10 +63,14 @@ export function Reservations({ tick, refresh }: { tick: number; refresh: () => v
         ) : (
           <DataTable
             items={items.slice(currentPage * 25, (currentPage + 1) * 25)}
+            sortScope={
+              items.length > 25 ? "Sorting applies to this page of reservations." : undefined
+            }
             columns={[
               {
                 key: "device",
                 label: "Device",
+                sortValue: (r) => r.hostname || r.id,
                 render: (r) => (
                   <div>
                     <p className="font-medium">{String(r.hostname || r.id)}</p>
@@ -85,11 +90,12 @@ export function Reservations({ tick, refresh }: { tick: number; refresh: () => v
                   </div>
                 ),
               },
-              { key: "address", label: "IP address" },
+              { key: "address", label: "IP address", sortType: "address" },
               { key: "id", label: "Reservation name" },
               {
                 key: "actions",
                 label: "Actions",
+                sortable: false,
                 render: (r) => (
                   <div className="flex gap-2">
                     <Button
@@ -349,6 +355,7 @@ function leaseState(value: unknown, expiry: unknown) {
 }
 
 export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
+  const [sorting, setSorting] = useState<SortingState>([]);
   const [cursor, setCursor] = useState<string>();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState("");
@@ -416,10 +423,13 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
           )}
           <DataTable
             items={state.data?.items ?? []}
+            sortScope="Sorting applies to this page of addresses."
+            sorting={{ value: sorting, onChange: setSorting }}
             columns={[
               {
                 key: "device",
                 label: "Device",
+                sortValue: (r) => r.hostname || r.mac || "Unknown device",
                 render: (r) => (
                   <div>
                     <p className="font-medium">{String(r.hostname || r.mac || "Unknown device")}</p>
@@ -429,20 +439,23 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
                   </div>
                 ),
               },
-              { key: "address", label: "IP address" },
+              { key: "address", label: "IP address", sortType: "address" },
               {
                 key: "state",
                 label: "Status",
+                sortValue: (r) => leaseState(r.state, r.expiry),
                 render: (r) => leaseState(r.state, r.expiry),
               },
               {
                 key: "expiry",
                 label: "Expires",
+                sortType: "datetime",
                 render: (r) => localTime(r.expiry),
               },
               {
                 key: "details",
                 label: "Details",
+                sortable: false,
                 render: (r) => (
                   <details className="text-xs">
                     <summary

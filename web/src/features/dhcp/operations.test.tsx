@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, expect, it, vi } from "vitest";
@@ -13,6 +13,38 @@ function resource(ui: React.ReactNode) {
   });
   return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
+
+it("retains lease sorting across the loading state of a new address filter", async () => {
+  const data = {
+    runtime_available: true,
+    items: [
+      { address: "192.0.2.2", hostname: "Alpha", state: "bound", expiry: "2099-06-01T12:30:00Z" },
+      { address: "192.0.2.10", hostname: "Beta", state: "bound", expiry: "2099-06-01T12:30:00Z" },
+    ],
+  };
+  let finish!: (value: typeof data) => void;
+  vi.spyOn(api, "get").mockImplementation((path) =>
+    path.includes("address=")
+      ? (new Promise((resolve) => {
+          finish = resolve;
+        }) as never)
+      : (Promise.resolve(data) as never),
+  );
+  resource(<Leases tick={0} />);
+  await screen.findByText("Alpha");
+  fireEvent.click(screen.getByRole("button", { name: "IP address" }));
+  fireEvent.click(screen.getByRole("button", { name: "IP address" }));
+  fireEvent.change(screen.getByLabelText("Filter by IP address"), {
+    target: { value: "192.0.2.10" },
+  });
+  await screen.findByText("Loading addresses…");
+  await act(async () => finish({ ...data, items: [data.items[1]] }));
+  await screen.findByText("Beta");
+  expect(screen.getByRole("columnheader", { name: "IP address" })).toHaveAttribute(
+    "aria-sort",
+    "descending",
+  );
+});
 
 it("keeps the reservation name as the API identifier and saves the current revision", async () => {
   vi.spyOn(api, "get").mockResolvedValue({

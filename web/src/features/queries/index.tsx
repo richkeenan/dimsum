@@ -215,12 +215,15 @@ export default function Queries({
       <Resource state={state} retry={invalidate}>
         <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
           <DataTable
+            initialSorting={[{ id: "time", desc: true }]}
+            sortScope="Sorting applies to this page of queries."
             compact={!technical}
             items={rows(state.data)}
             columns={[
               {
                 key: "time",
                 label: "Time",
+                sortType: "datetime",
                 width: 84,
                 render: (r) => (
                   <button
@@ -235,6 +238,8 @@ export default function Queries({
               {
                 key: "client",
                 label: "Client",
+                sortType: "address",
+                sortValue: (r) => r.client_name || r.client,
                 width: technical ? 190 : "20%",
                 render: (r) => (
                   <ClientIdentity
@@ -266,6 +271,7 @@ export default function Queries({
               {
                 key: "outcome",
                 label: "Result",
+                sortValue: (r) => resultLabel(r.outcome),
                 width: 132,
                 render: (r) => (
                   <div className="space-y-0.5">
@@ -279,12 +285,14 @@ export default function Queries({
               {
                 key: "response",
                 label: "Answer",
+                sortable: false,
                 width: technical ? 200 : "20%",
                 render: (r) => <AnswerPreview row={r} inspect={() => inspect(r)} />,
               },
               {
                 key: "actions",
                 label: "Action",
+                sortable: false,
                 width: 96,
                 render: (r) => (
                   <InlineRuleAction
@@ -339,6 +347,7 @@ export default function Queries({
               {
                 key: "generation",
                 label: "Configuration version",
+                sortType: "number",
                 hidden: !technical,
               },
             ]}

@@ -11,6 +11,27 @@ export type ClientRow = {
   configured?: Schema["PolicyClient"];
   observed: Observation[];
 };
+export function clientIdentity(row: ClientRow) {
+  const observation = row.observed[0];
+  return {
+    name: row.configured?.name || observation?.name || row.configured?.id,
+    address:
+      observation?.address ||
+      row.configured?.address ||
+      row.configured?.selectors?.addresses?.[0] ||
+      "",
+    device: observation?.device,
+    source: observation?.name_source,
+  };
+}
+export function clientLastSeen(row: ClientRow) {
+  const times = row.observed.map((o) => Date.parse(o.last_seen || "")).filter(Number.isFinite);
+  return times.length ? new Date(Math.max(...times)).toISOString() : undefined;
+}
+export function clientCount(row: ClientRow, key: "count" | "blocked") {
+  // Use the constructor: oxc-transform-react 0.145.0 lowers inline 0n to undefined.
+  return row.observed.reduce((sum, o) => sum + BigInt(o[key] ?? 0), BigInt(0));
+}
 export function mergeClients(data: Partial<Schema["ClientsResponse"]>): ClientRow[] {
   const result: ClientRow[] = (data.items ?? []).map((configured) => ({
     key: configured.policy_id!,

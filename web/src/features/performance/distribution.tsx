@@ -1,7 +1,23 @@
 import { count, percentage, type LatencyBand } from "@/lib/api";
 import { formatLatency } from "./format";
+import { SortableHead, useSortableTable } from "@/components/table-sorting";
 
 export default function Distribution({ bands, total }: { bands: LatencyBand[]; total: string }) {
+  const table = useSortableTable({
+    items: bands,
+    columns: [
+      { key: "lower_us", label: "Response time", sortType: "number", sortDescFirst: false },
+      { key: "count", label: "Queries", sortType: "number" },
+      {
+        key: "share",
+        label: "Share",
+        sortType: "number",
+        sortValue: (band) => (total === "0" ? undefined : band.count),
+      },
+    ],
+    getRowId: (band) => band.lower_us,
+    initialSorting: [{ id: "lower_us", desc: false }],
+  });
   return (
     <div className="px-5 py-4">
       <table className="w-full text-xs tabular-nums">
@@ -10,13 +26,20 @@ export default function Distribution({ bands, total }: { bands: LatencyBand[]; t
         </caption>
         <thead>
           <tr className="text-muted-foreground">
-            <th className="pb-3 text-left font-normal">Response time</th>
-            <th className="pb-3 text-right font-normal">Queries</th>
-            <th className="pb-3 pl-4 text-right font-normal">Share</th>
+            {table.getHeaderGroups()[0].headers.map((header, i) => (
+              <SortableHead
+                key={header.id}
+                column={header.column}
+                sorted={header.column.getIsSorted()}
+                label={String(header.column.columnDef.header)}
+                align={i ? "right" : "left"}
+                className={`px-0 pb-3 text-xs font-normal text-muted-foreground ${i === 2 ? "pl-4" : ""}`}
+              />
+            ))}
           </tr>
         </thead>
         <tbody>
-          {bands.map((band) => {
+          {table.getRowModel().rows.map(({ original: band }) => {
             const share = percentage(band.count, total);
             const label =
               band.upper_us == null

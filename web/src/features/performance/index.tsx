@@ -68,33 +68,39 @@ export default function Performance(props: PerformanceProps) {
               </div>
               <DataTable
                 items={data.outcomes}
+                initialSorting={[{ id: "count", desc: true }]}
                 columns={[
                   {
                     key: "outcome",
                     label: "Outcome",
+                    sortValue: (r) => outcomeLabels[String(r.outcome)] ?? r.outcome,
                     render: (r) => outcomeLabels[String(r.outcome)] ?? String(r.outcome),
                   },
                   {
                     key: "count",
                     label: "Queries",
+                    sortType: "number",
                     align: "right",
                     render: (r) => count(r.count),
                   },
                   {
                     key: "average_us",
                     label: "Average",
+                    sortType: "number",
                     align: "right",
                     render: (r) => formatLatency(r.average_us as string | null),
                   },
                   {
                     key: "p95_us",
                     label: "p95",
+                    sortType: "number",
                     align: "right",
                     render: (r) => estimate(r.p95_us as string | null),
                   },
                   {
                     key: "p99_us",
                     label: "p99",
+                    sortType: "number",
                     align: "right",
                     render: (r) => estimate(r.p99_us as string | null),
                   },

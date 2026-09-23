@@ -5,17 +5,13 @@ import { ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { ActivationStatus, PolicyEditor } from "./policy";
 import {
   mergeClients,
+  clientIdentity,
+  clientLastSeen,
+  clientCount,
   panelClass,
   selectClass,
   words,
@@ -28,6 +24,7 @@ import { DomainInspector } from "./inspect";
 import { usePolicyDraft } from "./draft";
 import { ProfileAssignment, ProfileMap } from "./assignment";
 import { ClientIdentity, ClientDeviceButton } from "@/components/client-identity";
+import { SortableHead, useSortableTable, type SortColumn } from "@/components/table-sorting";
 
 export default function Clients({
   range,
@@ -48,6 +45,58 @@ export default function Clients({
   const rows = mergeClients(state.data ?? {}).filter((row) =>
     JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
   );
+  const columns: (SortColumn<ClientRow> & { width: string; align?: "right" })[] = [
+    {
+      key: "device",
+      label: "Device",
+      sortType: "address",
+      width: "28%",
+      sortValue: (r) => {
+        const identity = clientIdentity(r);
+        return identity.name || identity.address;
+      },
+    },
+    {
+      key: "profile",
+      label: "Profile",
+      width: "18%",
+      sortValue: (r) => {
+        const id = r.configured?.profile;
+        const profile = profiles.data?.items.find((p) => p.id === id);
+        return id ? profile?.name || id : "Network defaults";
+      },
+    },
+    {
+      key: "last_seen",
+      label: "Last seen",
+      width: "17%",
+      sortType: "datetime",
+      sortValue: clientLastSeen,
+    },
+    {
+      key: "count",
+      label: "Queries",
+      width: "9%",
+      align: "right",
+      sortType: "number",
+      sortValue: (r) => clientCount(r, "count"),
+    },
+    {
+      key: "blocked",
+      label: "Blocked",
+      width: "9%",
+      align: "right",
+      sortType: "number",
+      sortValue: (r) => clientCount(r, "blocked"),
+    },
+    { key: "actions", label: "Actions", width: "19%", align: "right", sortable: false },
+  ];
+  const table = useSortableTable({
+    items: rows,
+    columns,
+    initialSorting: [{ id: "count", desc: true }],
+    getRowId: (r) => r.key,
+  });
   if (selected)
     return (
       <div className="space-y-4">
@@ -117,23 +166,29 @@ export default function Clients({
         )}
         {state.data?.observed?.truncated && (
           <p className="text-xs text-muted-foreground">
-            Showing the first 200 observed addresses. Narrow the history window to see others.
+            Showing the first 200 observed addresses. Sorting applies to loaded devices. Narrow the
+            history window to see others.
           </p>
         )}
         <div className="overflow-hidden rounded-lg border border-border bg-background">
           <Table className="min-w-240 table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[28%] bg-muted px-4">Device</TableHead>
-                <TableHead className="w-[18%] bg-muted">Profile</TableHead>
-                <TableHead className="w-[17%] bg-muted">Last seen</TableHead>
-                <TableHead className="w-[9%] bg-muted text-right">Queries</TableHead>
-                <TableHead className="w-[9%] bg-muted text-right">Blocked</TableHead>
-                <TableHead className="w-[19%] bg-muted px-4 text-right">Actions</TableHead>
+                {table.getHeaderGroups()[0].headers.map((header, i) => (
+                  <SortableHead
+                    key={header.id}
+                    column={header.column}
+                    sorted={header.column.getIsSorted()}
+                    label={columns[i].label}
+                    align={columns[i].align}
+                    className={`bg-muted ${i === 0 || i === 5 ? "px-4" : ""}`}
+                    style={{ width: columns[i].width, textAlign: columns[i].align }}
+                  />
+                ))}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {table.getRowModel().rows.map(({ original: row }) => (
                 <DeviceRow
                   key={row.key}
                   row={row}
@@ -193,18 +248,9 @@ function DeviceRow({
   reload: () => Promise<unknown>;
   onStatus: (status: Schema["Activation"]) => void;
 }) {
-  const observation = row.observed[0];
-  const name = row.configured?.name || observation?.name || row.configured?.id;
-  const identity = {
-    name,
-    address:
-      observation?.address ||
-      row.configured?.address ||
-      row.configured?.selectors?.addresses?.[0] ||
-      "",
-    device: observation?.device,
-    source: observation?.name_source,
-  };
+  const identity = clientIdentity(row);
+  const { name } = identity;
+  const lastSeen = clientLastSeen(row);
   return (
     <TableRow>
       <TableCell className="px-4 py-2.5">
@@ -235,22 +281,13 @@ function DeviceRow({
         )}
       </TableCell>
       <TableCell className="py-2.5 text-xs text-muted-foreground">
-        {row.observed.some((o) => o.last_seen)
-          ? new Date(
-              row.observed
-                .map((o) => o.last_seen || "")
-                .sort()
-                .at(-1)!,
-            ).toLocaleString()
-          : "Not seen in this period"}
+        {lastSeen ? new Date(lastSeen).toLocaleString() : "Not seen in this period"}
       </TableCell>
       <TableCell className="py-2.5 text-right tabular-nums">
-        {/* oxc-transform-react 0.145.0 lowers inline 0n to undefined; use the
-            constructor so compiled counters retain exact BigInt arithmetic. */}
-        {count(row.observed.reduce((sum, o) => sum + BigInt(o.count ?? 0), BigInt(0)))}
+        {count(clientCount(row, "count"))}
       </TableCell>
       <TableCell className="py-2.5 text-right tabular-nums">
-        {count(row.observed.reduce((sum, o) => sum + BigInt(o.blocked ?? 0), BigInt(0)))}
+        {count(clientCount(row, "blocked"))}
       </TableCell>
       <TableCell className="px-4 py-2.5">
         <div className="flex justify-end gap-1">

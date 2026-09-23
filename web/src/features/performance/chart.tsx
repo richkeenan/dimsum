@@ -224,33 +224,40 @@ export default function LatencyChart({
         {table && (
           <DataTable
             items={points}
+            initialSorting={[{ id: "time", desc: false }]}
             columns={[
               {
                 key: "time",
                 label: "Interval",
+                sortType: "datetime",
                 render: (p) => dateLabel(String(p.time)),
               },
               {
                 key: "count",
                 label: "Queries",
+                sortType: "number",
+                sortValue: (p) => (p.gap ? undefined : p.count),
                 align: "right",
                 render: (p) => (p.gap ? "—" : count(p.count)),
               },
               {
                 key: "average_us",
                 label: "Average",
+                sortType: "number",
                 align: "right",
                 render: (p) => formatLatency(p.average_us as string | null),
               },
               ...series.map((s) => ({
                 key: s.key,
                 label: s.label,
+                sortType: "number" as const,
                 align: "right" as const,
                 render: (p: Record<string, unknown>) => estimate(p[s.key] as string | null),
               })),
               {
                 key: "complete",
                 label: "Coverage",
+                sortValue: (p) => (p.gap ? "Missing" : p.complete ? "Complete" : "Partial"),
                 render: (p) => (p.gap ? "Missing" : p.complete ? "Complete" : "Partial"),
               },
             ]}

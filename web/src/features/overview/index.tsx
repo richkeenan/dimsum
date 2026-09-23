@@ -108,10 +108,14 @@ export default function Overview({
             </div>
             <DataTable
               items={rows(rankings.data, "clients").slice(0, 10)}
+              initialSorting={[{ id: "count", desc: true }]}
+              sortScope="Sorting applies to these top 10 clients."
               columns={[
                 {
                   key: "name",
                   label: "Client",
+                  sortType: "address",
+                  sortValue: (r) => r.name || r.address,
                   render: (r) => (
                     <button
                       className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
@@ -129,6 +133,7 @@ export default function Overview({
                 {
                   key: "count",
                   label: "Requests",
+                  sortType: "number",
                   align: "right",
                   width: 110,
                   render: (r) => count(r.count),
@@ -143,6 +148,8 @@ export default function Overview({
             </div>
             <DataTable
               items={rows(rankings.data, "domains").slice(0, 10)}
+              initialSorting={[{ id: "count", desc: true }]}
+              sortScope="Sorting applies to these top 10 domains."
               columns={[
                 {
                   key: "name",
@@ -159,6 +166,7 @@ export default function Overview({
                 {
                   key: "count",
                   label: "Blocked",
+                  sortType: "number",
                   align: "right",
                   width: 110,
                   render: (r) => count(r.count),

@@ -19,6 +19,23 @@ function listLabel(row: Row) {
   }
 }
 
+function listStatus(row: Row, pending?: ListToggle) {
+  const source = row.source as Row | undefined;
+  if (pending?.id === row.id && pending?.enabled) return "Downloading…";
+  if (row.enabled !== true) {
+    return row.__index === undefined
+      ? row.available === false
+        ? "Unavailable"
+        : "Available"
+      : "Not downloaded";
+  }
+  if (source?.error)
+    return source.usable === true ? "Downloaded · update failed" : "Download failed";
+  return source?.enabled === true && source.usable === true
+    ? "Downloaded"
+    : "Waiting for activation";
+}
+
 export function ListSubscriptions({
   data,
   disabled,
@@ -71,6 +88,10 @@ export function ListSubscriptions({
           {
             key: "enabled",
             label: "Use by default",
+            sortValue: (row) =>
+              pending?.id === row.id
+                ? pending?.enabled
+                : (row.default_apply ?? row.enabled) === true,
             render: (row) => (
               <label className="flex min-h-9 min-w-9 cursor-pointer items-center justify-center has-disabled:cursor-default">
                 <input
@@ -91,6 +112,7 @@ export function ListSubscriptions({
           {
             key: "label",
             label: "List",
+            sortValue: listLabel,
             render: (row) => (
               <div className="min-w-48 max-w-96 whitespace-normal">
                 <div className="flex flex-wrap items-center gap-2 font-medium">
@@ -113,25 +135,10 @@ export function ListSubscriptions({
           {
             key: "status",
             label: "Status",
+            sortValue: (row) => listStatus(row, pending),
             render: (row) => {
               const source = row.source as Row | undefined;
-              const changing = pending && pending.id === row.id;
-              const status =
-                changing && pending.enabled
-                  ? "Downloading…"
-                  : row.enabled !== true
-                    ? row.__index === undefined
-                      ? row.available === false
-                        ? "Unavailable"
-                        : "Available"
-                      : "Not downloaded"
-                    : source?.error
-                      ? source.usable === true
-                        ? "Downloaded · update failed"
-                        : "Download failed"
-                      : source?.enabled === true && source.usable === true
-                        ? "Downloaded"
-                        : "Waiting for activation";
+              const status = listStatus(row, pending);
               return (
                 <div className="max-w-72 whitespace-normal" aria-live="polite">
                   <span>{status}</span>
@@ -145,6 +152,7 @@ export function ListSubscriptions({
           {
             key: "exceptions",
             label: "Device & profile settings",
+            sortable: false,
             render: (row) => {
               const id = String(row.sourceID);
               const devices =
@@ -182,12 +190,15 @@ export function ListSubscriptions({
           {
             key: "rules",
             label: "Domains",
+            sortType: "number",
+            sortValue: (row) => (row.source as Row | undefined)?.rules,
             align: "right",
             render: (row) => count((row.source as Row | undefined)?.rules),
           },
           {
             key: "actions",
             label: "Actions",
+            sortable: false,
             align: "right",
             render: (row) => (
               <div className="flex items-start justify-end gap-2">
