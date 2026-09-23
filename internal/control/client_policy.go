@@ -233,6 +233,11 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 		fields = append(fields, config.PolicyField{Path: base, Reset: true})
 	}
 	for _, f := range m.Fields {
+		// Validate the original operation before network route expansion, which
+		// otherwise discards Value when translating one reset into two removals.
+		if f.Reset && f.Value != nil || !f.Reset && f.Value == nil {
+			return nil, "", fmt.Errorf("policy field requires either a value or reset:true")
+		}
 		if f.Append || len(f.Path) < 1 || len(f.Path) > 2 {
 			return nil, "", fmt.Errorf("unsupported policy field")
 		}
