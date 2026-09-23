@@ -48,12 +48,17 @@ func cloneDevice(d *Enrichment) *Enrichment {
 // Apply authoritative name selection last, even when discovery refreshes first.
 func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 	primary.Device = cloneDevice(primary.Device)
+	remembered := multicast
 	if multicast.Device != nil && len(multicast.Device.Evidence) > 0 {
 		multicast = enrichDiscovered(multicast, now)
 	}
-	if now.Before(multicast.Expires) {
+	if !now.Before(multicast.Expires) {
+		multicast = Name{}
+	}
+	multicast = preferDiscovered(remembered, multicast, now)
+	if multicast.Name != "" {
 		staleDerived := !primary.Fresh && (primary.Source == "hosts" || primary.Source == "router-ptr")
-		if primary.Name == "" || staleDerived {
+		if primary.Name == "" || staleDerived && multicast.Fresh {
 			primary.Name = multicast.Name
 			primary.Source = multicast.Source
 			primary.Updated = multicast.Updated
@@ -76,6 +81,47 @@ func mergeDiscovered(primary, multicast Name, now time.Time) Name {
 		}
 	}
 	return primary
+}
+
+const discoveredNameRetention = 48 * time.Hour
+
+func retainDiscovered(n Name, now time.Time) bool {
+	return n.Name != "" && !n.Updated.IsZero() && now.Before(n.Updated.Add(discoveredNameRetention))
+}
+
+// Preserve useful identity when records disappear, but accept changed hostnames,
+// friendly names, and conflicting positive device information immediately.
+// Reads and weaker hostname-only renewals cannot extend the remembered deadline.
+func preferDiscovered(previous, live Name, now time.Time) Name {
+	if !retainDiscovered(previous, now) {
+		return live
+	}
+	missing := live.Name == ""
+	p, l := previous.Device, live.Device
+	if p != nil && l != nil && p.Hostname != "" && p.Hostname == l.Hostname &&
+		!live.Updated.After(previous.Updated) && (previous.Name != live.Name ||
+		p.Category != l.Category || p.Model != l.Model || p.Manufacturer != l.Manufacturer) {
+		// Re-selecting among already-known records as some expire is not a
+		// confirmation of a new identity, even if the fallback looks specific.
+		missing = true
+	} else if p != nil && l != nil && p.Hostname != "" && p.Hostname == l.Hostname &&
+		(live.Name == previous.Name || live.Name == l.Hostname) {
+		conflict := l.Category != "" && l.Category != "unknown" && p.Category != l.Category ||
+			l.Model != "" && p.Model != "" && l.Model != p.Model ||
+			l.Manufacturer != "" && p.Manufacturer != "" && l.Manufacturer != p.Manufacturer
+		missing = (!p.Inferred && l.Inferred) || !conflict && (previous.Name != live.Name ||
+			p.Category != "" && p.Category != "unknown" && (l.Category == "" || l.Category == "unknown") ||
+			p.Model != "" && l.Model == "" || p.Manufacturer != "" && l.Manufacturer == "")
+	}
+	if !missing {
+		return live
+	}
+	previous.Fresh = false
+	previous.Device = cloneDevice(previous.Device)
+	if previous.Device != nil {
+		previous.Device.Fresh = false
+	}
+	return previous
 }
 
 func genericName(name string) bool {

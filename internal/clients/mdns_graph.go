@@ -37,7 +37,7 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 	for host, a := range hosts {
 		for _, p := range c.owners[recordGroup{iface, localdns.Reverse(address), 12}] {
 			if p.target == host && now.Before(p.expires) {
-				evidence = append(evidence, Evidence{Source: "mdns", Hostname: host, Updated: p.learned, Expires: minTime(a.expires, p.expires)})
+				evidence = append(evidence, Evidence{Source: "mdns", Hostname: host, Updated: maxTime(a.learned, p.learned), Expires: minTime(a.expires, p.expires)})
 			}
 		}
 		for _, srv := range c.targets[recordGroup{iface, host, 33}] {
@@ -51,7 +51,7 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 				if !strings.HasSuffix(p.key.owner, "._tcp.local") && !strings.HasSuffix(p.key.owner, "._udp.local") {
 					continue
 				}
-				e := Evidence{Source: "dns-sd", Hostname: host, ServiceType: strings.TrimSuffix(p.key.owner, ".local"), Label: p.label, Updated: srv.learned, Expires: minTime(a.expires, minTime(p.expires, srv.expires))}
+				e := Evidence{Source: "dns-sd", Hostname: host, ServiceType: strings.TrimSuffix(p.key.owner, ".local"), Label: p.label, Updated: maxTime(a.learned, maxTime(p.learned, srv.learned)), Expires: minTime(a.expires, minTime(p.expires, srv.expires))}
 				var txt mdnsRecord
 				txtCount := 0
 				for _, candidate := range c.owners[recordGroup{iface, srv.key.owner, 16}] {
@@ -92,6 +92,7 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 						e.Label = friendly
 					}
 					e.Expires = minTime(e.Expires, txt.expires)
+					e.Updated = maxTime(e.Updated, txt.learned)
 				}
 				evidence = append(evidence, e)
 			}
@@ -119,10 +120,18 @@ func (c *mdnsCache) lookup(address netip.Addr, now time.Time) Name {
 	result.Updated = first.Updated
 	result.Fresh = true
 	for _, e := range evidence {
+		result.Updated = maxTime(result.Updated, e.Updated)
 		if e.Expires.After(result.Expires) {
 			result.Expires = e.Expires
 		}
 	}
 	result.Device = &Enrichment{Hostname: first.Hostname, Evidence: evidence}
 	return result
+}
+
+func maxTime(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }

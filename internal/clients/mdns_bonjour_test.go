@@ -64,7 +64,7 @@ func TestBonjourOpaqueInstanceUsesAdvertisedFriendlyName(t *testing.T) {
 	assert.Equal(t, "Example Display", enrichDiscovered(c.lookup(netip.MustParseAddr("192.0.2.20"), now), now).Name)
 }
 
-func TestExpiredMetadataDoesNotHideLiveHostname(t *testing.T) {
+func TestExpiredMetadataRetainsFriendlyIdentity(t *testing.T) {
 	now := time.Now()
 	ip := netip.MustParseAddr("192.0.2.20")
 	c := newMDNSCache()
@@ -77,12 +77,16 @@ func TestExpiredMetadataDoesNotHideLiveHostname(t *testing.T) {
 	snapshot := enrichDiscovered(c.lookup(ip, now), now)
 	assert.Equal(t, "Example Display", snapshot.Name)
 	assert.Equal(t, "tv", snapshot.Device.Category)
-	// A read between worker publications must re-evaluate expired evidence.
+	// A read between worker publications retains the richer identity as stale.
 	after := mergeDiscovered(Name{Address: ip, Source: "unknown"}, snapshot, now.Add(2*time.Second))
-	assert.Equal(t, "android.local", after.Name)
-	assert.Equal(t, "unknown", after.Device.Category)
-	assert.True(t, after.Fresh)
-	assert.Empty(t, mergeDiscovered(Name{Address: ip}, snapshot, now.Add(121*time.Second)).Name)
+	assert.Equal(t, "Example Display", after.Name)
+	assert.Equal(t, "tv", after.Device.Category)
+	assert.False(t, after.Fresh)
+	retained := mergeDiscovered(Name{Address: ip}, snapshot, now.Add(121*time.Second))
+	assert.Equal(t, "Example Display", retained.Name)
+	assert.False(t, retained.Fresh)
+	assert.False(t, retained.Device.Fresh)
+	assert.Empty(t, mergeDiscovered(Name{Address: ip}, snapshot, now.Add(48*time.Hour)).Name)
 }
 
 func TestConflictingTXTDoesNotChooseAFriendlyName(t *testing.T) {

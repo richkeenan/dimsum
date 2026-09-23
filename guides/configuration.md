@@ -57,6 +57,23 @@ unsupported values and incompatible combinations. The
 [native example](../deploy/dimsum.example.yaml) provides installation paths and
 wildcard listeners. DHCP has a [separate guide](dhcp.md).
 
+## Discovered client names
+
+When mDNS discovery expires because a device stops responding, dimsum keeps its
+last discovered name and device type for up to **48 hours from the discovery
+confirmation**. Partial expiry of friendly-name or device metadata also keeps
+the richer remembered identity. The dashboard marks the remembered name as stale. It takes
+priority over DNS-based guesses; newer live discovery replaces it, and explicit
+client names and authoritative local/DHCP names retain priority.
+
+Viewing the dashboard or sending ordinary DNS queries does not extend this
+window. Discovery memory is bounded and in-process: a restart or naming-view
+change clears it. Use an explicit client name for a lasting label.
+
+**Last seen** records the client's latest DNS query in the selected history
+range, not its latest name advertisement. A printer can therefore keep a fresh
+discovered name even when its last DNS query was yesterday.
+
 ## Applying changes
 
 Read `saved_revision` before a mutation and send it with the requested edits.

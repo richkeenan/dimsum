@@ -32,9 +32,16 @@ func TestThreadVendorModelIdentification(t *testing.T) {
 				assert.Empty(t, n.Device.Model)
 			}
 			later := mergeDiscovered(Name{Source: "unknown"}, n, now.Add(2*time.Second))
-			assert.Equal(t, "linux.local", later.Name)
-			assert.Empty(t, later.Device.Model)
-			assert.Equal(t, "unknown", later.Device.Category)
+			if service == "_meshcop._udp" {
+				assert.Equal(t, "Amazon Echo", later.Name)
+				assert.Equal(t, "Echo", later.Device.Model)
+				assert.Equal(t, "speaker", later.Device.Category)
+				assert.False(t, later.Fresh)
+			} else {
+				assert.Equal(t, "linux.local", later.Name)
+				assert.Empty(t, later.Device.Model)
+				assert.Equal(t, "unknown", later.Device.Category)
+			}
 		})
 	}
 }

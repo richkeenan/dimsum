@@ -354,6 +354,19 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				}
 				m.mu.Lock()
 				if m.current() == view {
+					// A missing response must not erase the last known identity.
+					// Partial expiry can also remove useful metadata while leaving
+					// a generic hostname. Preserve that identity until confirmation
+					// of a replacement or the original retention deadline.
+					for a, old := range m.mdnsNames {
+						live, exists := names[a]
+						if old.view == view && (exists || len(names) < 4096) {
+							n := preferDiscovered(old.name, live.name, now)
+							if n.Name != "" {
+								names[a] = entry{view: view, name: n}
+							}
+						}
+					}
 					m.mdnsNames = names
 				}
 				m.mu.Unlock()
