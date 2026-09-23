@@ -32,7 +32,6 @@ export function Reservations({
   }>();
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [needsReload, setNeedsReload] = useState(false);
   const blocked = busy || needsReload;
   const [page, setPage] = useState(0);
@@ -52,7 +51,6 @@ export function Reservations({
       remove,
     });
     setError(undefined);
-    setSaved(false);
   }
   return (
     <section
@@ -182,7 +180,6 @@ export function Reservations({
                 draft.remove ? "DELETE" : draft.existing ? "PATCH" : "POST",
                 body,
               );
-              setSaved(true);
               setNeedsReload(true);
               refresh();
               await state.refetch({ cancelRefetch: true, throwOnError: true });
@@ -321,12 +318,11 @@ export function Reservations({
           </div>
         </form>
       )}
-      {needsReload && (
+      {needsReload && !busy && (
         <div className="mt-3 text-xs">
           <p role="status">
-            {busy
-              ? "Reservation change saved. Refreshing saved reservations…"
-              : "Reservation change saved. Reload saved reservations before editing again."}
+            Reservation change saved. Reload saved reservations before editing
+            again.
           </p>
           <Button
             variant="outline"
@@ -351,11 +347,6 @@ export function Reservations({
             Reload saved reservations
           </Button>
         </div>
-      )}
-      {saved && (
-        <p role="status" className="mt-3 text-xs">
-          Reservation change saved.
-        </p>
       )}
     </section>
   );

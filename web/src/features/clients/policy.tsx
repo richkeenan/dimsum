@@ -19,13 +19,7 @@ import {
   type Schema,
 } from "./model";
 
-export function ActivationStatus({
-  status,
-  showSaved = true,
-}: {
-  status: Activation;
-  showSaved?: boolean;
-}) {
+export function ActivationStatus({ status }: { status: Activation }) {
   const active =
     !status.pending &&
     !status.error &&
@@ -34,7 +28,6 @@ export function ActivationStatus({
     status.saved_revision === status.active_revision;
   if (
     active &&
-    !showSaved &&
     !status.sources.some((s) => s.enabled && (!s.usable || s.error))
   )
     return null;
@@ -47,15 +40,15 @@ export function ActivationStatus({
           : `rounded-md border border-l-[3px] bg-muted px-3 py-2 text-foreground ${status.error ? "border-destructive" : "border-border border-l-primary"}`
       }`}
     >
-      <p>
-        {active
-          ? "Saved"
-          : status.error
+      {!active && (
+        <p>
+          {status.error
             ? `Saved · activation failed: ${status.error}`
             : status.restart_required
               ? "Saved · restart required"
               : "Applying changes…"}
-      </p>
+        </p>
+      )}
       {status.sources
         .filter((s) => s.enabled && (!s.usable || s.error))
         .map((s) => (
@@ -513,10 +506,7 @@ function PolicyForm({
                 ? "Applies to devices assigned to this profile. Other settings follow network defaults."
                 : "Choose a profile or customize settings for this device."}
           </p>
-          <ActivationStatus
-            status={status ?? liveStatus ?? read.status}
-            showSaved={false}
-          />
+          <ActivationStatus status={status ?? liveStatus ?? read.status} />
           {changed > 0 && (
             <p className="text-xs font-medium text-primary" role="status">
               Unsaved changes · save to apply.

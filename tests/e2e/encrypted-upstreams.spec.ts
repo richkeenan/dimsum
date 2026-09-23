@@ -153,7 +153,9 @@ test("advanced bootstrap override and reset read back saved settings", async ({
     .getByLabel("Bootstrap DNS servers")
     .fill("192.0.2.53:53\n[2001:db8::53]:53");
   await page.getByRole("button", { name: "Save bootstrap DNS" }).click();
-  await expect(page.getByText(/Bootstrap DNS saved/)).toBeVisible();
+  await expect
+    .poll(() => bootstrap)
+    .toEqual(["192.0.2.53:53", "[2001:db8::53]:53"]);
   await expect(page.getByLabel("Bootstrap DNS servers")).toHaveValue(
     "192.0.2.53:53\n[2001:db8::53]:53",
   );

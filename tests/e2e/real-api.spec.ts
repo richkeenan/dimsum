@@ -103,8 +103,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await page.getByLabel("Maximum expired-answer age (seconds)").fill("120");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Settings saved." }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Discard edits and reload" }),
+  ).not.toBeVisible();
   const edited = await readFile(file, "utf8");
   expect(edited).toContain("# Isolated test input");
   expect(edited).toContain("max_stale_seconds: 120");

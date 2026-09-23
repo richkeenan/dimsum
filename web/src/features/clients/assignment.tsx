@@ -130,11 +130,6 @@ export function ProfileAssignment({
           </option>
         ))}
       </select>
-      {busy && (
-        <p role="status" className="text-xs text-muted-foreground">
-          Saving…
-        </p>
-      )}
       {error && <ErrorNotice error={error} />}
       {status && !onStatus && <ActivationStatus status={status} />}
     </div>
@@ -199,11 +194,6 @@ export function ProfileMap({
           </Button>
         )}
       </div>
-      {busy && (
-        <p role="status" className="text-xs text-muted-foreground">
-          Saving assignment…
-        </p>
-      )}
       {error && <ErrorNotice error={error} />}
       {status && (
         <ActivationStatus

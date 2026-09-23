@@ -117,16 +117,15 @@ test("discovery settings expose a revision-checked interface array", async ({
   await page.getByLabel("Discover device names with mDNS / Bonjour").check();
   await page.getByLabel("LAN interfaces").fill("eth0\nwlan0");
   await page.getByRole("button", { name: "Save discovery settings" }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Discovery settings saved" }),
-  ).toBeVisible();
-  expect(body).toEqual({
-    revision: activation.saved_revision,
-    edits: [
-      { path: ["naming", "mdns", "enabled"], value: true },
-      { path: ["naming", "mdns", "interfaces"], value: ["eth0", "wlan0"] },
-    ],
-  });
+  await expect
+    .poll(() => body)
+    .toEqual({
+      revision: activation.saved_revision,
+      edits: [
+        { path: ["naming", "mdns", "enabled"], value: true },
+        { path: ["naming", "mdns", "interfaces"], value: ["eth0", "wlan0"] },
+      ],
+    });
 });
 
 test("DNS guesses are labelled on clients, queries and overview with inspectable clues", async ({
@@ -197,8 +196,20 @@ test("DNS guesses are labelled on clients, queries and overview with inspectable
         range: summary.range,
         updated_at: summary.updated_at,
         clients: [
-          { address: "192.0.2.20", name: "Ring device", name_source: "dns-guess", count: "3", device },
-          { address: "192.0.2.21", name: "Retained camera name", name_source: "dns-sd", count: "2", device },
+          {
+            address: "192.0.2.20",
+            name: "Ring device",
+            name_source: "dns-guess",
+            count: "3",
+            device,
+          },
+          {
+            address: "192.0.2.21",
+            name: "Retained camera name",
+            name_source: "dns-sd",
+            count: "2",
+            device,
+          },
         ],
         domains: [],
       },
@@ -225,5 +236,7 @@ test("DNS guesses are labelled on clients, queries and overview with inspectable
   await expect(page.getByText("DNS guess", { exact: true })).toBeVisible();
   await page.goto("/overview");
   await expect(page.getByText("DNS guess", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Retained camera name/ })).not.toContainText("DNS guess");
+  await expect(
+    page.getByRole("button", { name: /Retained camera name/ }),
+  ).not.toContainText("DNS guess");
 });

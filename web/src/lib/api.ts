@@ -136,7 +136,12 @@ export const api = {
     const result = await request<unknown>("/api/v1/" + path, { signal });
     return (path === "settings" ? normalizeSettings(result) : result) as T;
   },
-  send: async <T>(path: string, method: string, body?: unknown) => {
+  send: async <T>(
+    path: string,
+    method: string,
+    body?: unknown,
+    options?: { refresh: string[] },
+  ) => {
     const result = await request<T>("/api/v1/" + path, {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -156,7 +161,9 @@ export const api = {
         "blocking",
       ].includes(path)
     )
-      window.dispatchEvent(new Event("configuration-changed"));
+      window.dispatchEvent(
+        new CustomEvent("configuration-changed", { detail: options }),
+      );
     return result;
   },
   login: async (password: string) => {

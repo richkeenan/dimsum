@@ -152,8 +152,24 @@ export default function App() {
       void queryClient.cancelQueries();
       queryClient.clear();
     };
-    const changed = () => {
-      void queryClient.invalidateQueries({ queryKey: ["api"] });
+    const changed = (event: Event) => {
+      const refresh = (event as CustomEvent<{ refresh?: string[] }>).detail
+        ?.refresh;
+      if (!refresh) {
+        void queryClient.invalidateQueries({ queryKey: ["api"] });
+        return;
+      }
+      // Other cached views become stale for their next visit without refreshing
+      // the whole visible shell for a local inline edit.
+      void queryClient.invalidateQueries({
+        queryKey: ["api"],
+        refetchType: "none",
+      });
+      for (const resource of refresh)
+        void queryClient.invalidateQueries(
+          { queryKey: ["api", resource] },
+          { cancelRefetch: false },
+        );
     };
     window.addEventListener("session-expired", expire);
     window.addEventListener("configuration-changed", changed);
@@ -520,7 +536,6 @@ function Login({ onSuccess }: { onSuccess: () => void }) {
 
 function Blocking() {
   const [minutes, setMinutes] = useState("5");
-  const [result, setResult] = useState<Row>();
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
   async function update(enabled: boolean) {
@@ -528,19 +543,17 @@ function Blocking() {
     setError(undefined);
     try {
       const settings = await api.get<Settings>("settings");
-      setResult(
-        await api.send<Row>("blocking", "PUT", {
-          revision: settings.revision,
-          enabled,
-          ...(!enabled
-            ? {
-                pause_until: new Date(
-                  Date.now() + Number(minutes) * 60000,
-                ).toISOString(),
-              }
-            : {}),
-        }),
-      );
+      await api.send<Row>("blocking", "PUT", {
+        revision: settings.revision,
+        enabled,
+        ...(!enabled
+          ? {
+              pause_until: new Date(
+                Date.now() + Number(minutes) * 60000,
+              ).toISOString(),
+            }
+          : {}),
+      });
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -566,10 +579,7 @@ function Blocking() {
           Pause filtering
         </Button>
       </div>
-      {error && <ErrorNotice error={error} />}{" "}
-      {result && (
-        <p role="status">Pause saved. Filtering will resume automatically.</p>
-      )}
+      {error && <ErrorNotice error={error} />}
     </>
   );
 }

@@ -18,12 +18,10 @@ export function BootstrapSettings({
   const [revision, setRevision] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
-  const [saved, setSaved] = useState(false);
   function change(value: string) {
     setRevision((current) => current ?? settings.revision);
     setDraft(value);
     setError(undefined);
-    setSaved(false);
   }
   return (
     <details className="mb-5 min-w-0 rounded-lg border border-border bg-background p-5">
@@ -35,7 +33,6 @@ export function BootstrapSettings({
         onSubmit={async (event) => {
           event.preventDefault();
           setError(undefined);
-          setSaved(false);
           const servers = (draft ?? "")
             .split("\n")
             .map((line) => line.trim())
@@ -56,7 +53,6 @@ export function BootstrapSettings({
             ]);
             setDraft(undefined);
             setRevision(undefined);
-            setSaved(true);
             refresh();
           } catch (e) {
             setError(e as Error);
@@ -125,11 +121,6 @@ export function BootstrapSettings({
             </Button>
           )}
         </div>
-        {saved && (
-          <p role="status" className="text-xs text-muted-foreground">
-            Bootstrap DNS saved. Activation status is shown above.
-          </p>
-        )}
       </form>
     </details>
   );

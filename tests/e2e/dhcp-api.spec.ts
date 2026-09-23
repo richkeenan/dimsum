@@ -32,14 +32,26 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
     await expect(page.getByLabel("Enable DHCP")).not.toBeChecked();
     const inspected = await call("get_dhcp");
     if (!inspected.availability.supported) {
-      await expect(page.getByRole("heading", { name: "DHCP is unavailable" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "DHCP status" }).getByText(inspected.availability.reason)).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "DHCP is unavailable" }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "DHCP status" })
+          .getByText(inspected.availability.reason),
+      ).toBeVisible();
       await expect(page.getByLabel("Enable DHCP")).toBeDisabled();
       await expect(page.getByLabel("Subnet")).toBeDisabled();
-      await expect(page.getByRole("button", { name: "Add reservation" })).toBeDisabled();
+      await expect(
+        page.getByRole("button", { name: "Add reservation" }),
+      ).toBeDisabled();
       await page.getByText("Troubleshooting", { exact: true }).click();
-      await expect(page.getByRole("button", { name: "Check setup" })).toBeDisabled();
-      expect((await call("get_dhcp")).status.saved_revision).toBe(inspected.status.saved_revision);
+      await expect(
+        page.getByRole("button", { name: "Check setup" }),
+      ).toBeDisabled();
+      expect((await call("get_dhcp")).status.saved_revision).toBe(
+        inspected.status.saved_revision,
+      );
       return;
     }
     if (!(await page.getByLabel("Subnet").isVisible())) {
@@ -48,13 +60,19 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
     await page.getByLabel("Subnet").fill("192.0.2.0/24");
     // Replace host-derived suggestions as a coherent synthetic network.
     await page.getByLabel("Network interface").fill("fixture0");
-    await page.getByLabel("Server IP address", { exact: true }).fill("192.0.2.2");
-    await page.getByLabel("Router IP address", { exact: true }).fill("192.0.2.1");
+    await page
+      .getByLabel("Server IP address", { exact: true })
+      .fill("192.0.2.2");
+    await page
+      .getByLabel("Router IP address", { exact: true })
+      .fill("192.0.2.1");
     await page.getByLabel("First IP address").fill("192.0.2.100");
     await page.getByLabel("Last IP address").fill("192.0.2.199");
     await page.getByLabel("Local domain", { exact: true }).fill("home.arpa");
     await page.getByRole("button", { name: "Save settings" }).click();
-    await expect(page.getByText(/Settings saved/)).toBeVisible();
+    await expect
+      .poll(async () => (await call("get_dhcp")).config.subnet)
+      .toBe("192.0.2.0/24");
     const saved = await call("get_dhcp");
     expect(saved.config.enabled).toBe(false);
     expect(saved.config.subnet).toBe("192.0.2.0/24");
@@ -74,7 +92,9 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
     // The first edit after reload must use the fetched document's revision.
     await page.getByLabel("Network interface").fill("fixture1");
     await page.getByRole("button", { name: "Save settings" }).click();
-    await expect(page.getByText(/Settings saved/)).toBeVisible();
+    await expect
+      .poll(async () => (await call("get_dhcp")).config.interface)
+      .toBe("fixture1");
     expect((await call("get_dhcp")).config.interface).toBe("fixture1");
     await page.getByRole("button", { name: "Add reservation" }).click();
     await page.getByLabel("Reservation name").fill("lab-printer");
@@ -84,7 +104,7 @@ test("DHCP UI and MCP share revisions, reservations and disabled lease inspectio
       .getByLabel("MAC address", { exact: true })
       .fill("02:00:00:00:00:10");
     await page.getByRole("button", { name: "Save reservation" }).click();
-    await expect(page.getByText("Reservation change saved.", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Reservation name")).not.toBeVisible();
     const reservations = await call("list_dhcp_reservations");
     expect(reservations.items[0].hostname).toBe("lab-printer");
     await call("update_dhcp_reservation", {

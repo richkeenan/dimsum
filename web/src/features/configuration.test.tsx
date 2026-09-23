@@ -178,17 +178,22 @@ it("switches upstream selection modes without losing the configured order", asyn
   expect(screen.getByLabelText("Selection mode")).toHaveValue("ordered");
   expect(
     screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-disabled", "true");
   fireEvent.change(screen.getByLabelText("Selection mode"), {
     target: { value: "adaptive" },
   });
   await waitFor(() =>
     expect(screen.getByLabelText("Selection mode")).toHaveValue("adaptive"),
   );
-  expect(send).toHaveBeenCalledWith("settings", "PATCH", {
-    revision: "original-revision",
-    edits: [{ path: ["dns", "upstream_policy", "mode"], value: "adaptive" }],
-  });
+  expect(send).toHaveBeenCalledWith(
+    "settings",
+    "PATCH",
+    {
+      revision: "original-revision",
+      edits: [{ path: ["dns", "upstream_policy", "mode"], value: "adaptive" }],
+    },
+    { refresh: ["upstreams", "settings"] },
+  );
   expect(
     screen.queryByRole("button", { name: /Move .* down/ }),
   ).not.toBeInTheDocument();
@@ -198,12 +203,17 @@ it("switches upstream selection modes without losing the configured order", asyn
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Move 192.0.2.54:53 down" }),
-    ).toBeDisabled(),
+    ).toHaveAttribute("aria-disabled", "true"),
   );
-  expect(send).toHaveBeenLastCalledWith("settings", "PATCH", {
-    revision: "saved-revision",
-    edits: [{ path: ["dns", "upstream_policy", "mode"], value: "ordered" }],
-  });
+  expect(send).toHaveBeenLastCalledWith(
+    "settings",
+    "PATCH",
+    {
+      revision: "saved-revision",
+      edits: [{ path: ["dns", "upstream_policy", "mode"], value: "ordered" }],
+    },
+    { refresh: ["upstreams", "settings"] },
+  );
   expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.53:53");
 });
 
@@ -223,16 +233,21 @@ it("saves an upstream move atomically and displays the returned order", async ()
   await waitFor(() =>
     expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.54:53"),
   );
-  expect(send).toHaveBeenCalledWith("upstreams", "PATCH", {
-    revision: "original-revision",
-    edits: [
-      { path: ["0"], value: "192.0.2.54:53" },
-      { path: ["1"], value: "192.0.2.53:53" },
-    ],
-  });
+  expect(send).toHaveBeenCalledWith(
+    "upstreams",
+    "PATCH",
+    {
+      revision: "original-revision",
+      edits: [
+        { path: ["0"], value: "192.0.2.54:53" },
+        { path: ["1"], value: "192.0.2.53:53" },
+      ],
+    },
+    { refresh: ["upstreams", "settings"] },
+  );
   expect(
     screen.getByRole("button", { name: "Move 192.0.2.54:53 up" }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-disabled", "true");
   expect(
     screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
   ).toBeEnabled();
@@ -279,10 +294,13 @@ it("waits for matching revisions and lets the user refresh after an external cha
   resources.values.upstreams.reload = async () =>
     upstreamResources("ordered", "newer-revision");
   view.rerender(<Configuration kind="upstreams" range="" />);
-  expect(screen.getByLabelText("Selection mode")).toBeDisabled();
+  expect(screen.getByLabelText("Selection mode")).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   expect(
     screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
-  ).toBeDisabled();
+  ).toHaveAttribute("aria-disabled", "true");
   fireEvent.click(
     screen.getByRole("button", { name: "Refresh upstream settings" }),
   );
@@ -677,7 +695,7 @@ it("keeps the DNS record when dashboard approval is declined", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   fireEvent.click(await screen.findByRole("button", { name: "Not now" }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("Changes saved");
+  expect(screen.queryByText("Changes saved.")).not.toBeInTheDocument();
   expect(send).toHaveBeenCalledTimes(1);
 });
 

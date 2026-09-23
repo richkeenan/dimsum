@@ -452,11 +452,10 @@ export function DHCPForm({
               settings.
             </p>
           )}
-          {needsReload && (
+          {needsReload && !busy && (
             <p role="status" className="my-3 text-xs">
-              {busy
-                ? "Saved. Refreshing settings…"
-                : "Settings saved, but couldn’t refresh. Reload settings before editing again."}
+              Settings saved, but couldn’t refresh. Reload settings before
+              editing again.
             </p>
           )}
           {error &&
@@ -518,10 +517,9 @@ export function DHCPForm({
               </span>
             )}
           </div>
-          {saved && !needsReload && (
-            <p role="status" className="mt-3 text-xs">
-              Settings saved.{" "}
-              {saved.error ? `Couldn’t apply changes: ${saved.error}` : ""}
+          {saved?.error && !needsReload && (
+            <p role="alert" className="mt-3 text-xs">
+              Couldn’t apply changes: {saved.error}
             </p>
           )}
         </form>

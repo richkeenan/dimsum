@@ -8,12 +8,10 @@ it("reloads the latest server revision after a conflict", async () => {
   const edit = vi
     .spyOn(api, "edit")
     .mockRejectedValue(new Error("Configuration changed"));
-  const get = vi
-    .spyOn(api, "get")
-    .mockResolvedValue({
-      revision: "latest",
-      config: { naming: { mdns: { enabled: true, interfaces: ["eth2"] } } },
-    });
+  const get = vi.spyOn(api, "get").mockResolvedValue({
+    revision: "latest",
+    config: { naming: { mdns: { enabled: true, interfaces: ["eth2"] } } },
+  });
   render(
     <DiscoverySettings
       settings={{ revision: "old", config: {} }}
@@ -56,9 +54,9 @@ it("saves enabled state and interface list with the captured revision", async ()
     { path: ["naming", "mdns", "enabled"], value: true },
     { path: ["naming", "mdns", "interfaces"], value: ["eth0", "wlan0"] },
   ]);
-  expect(await screen.findByRole("status")).toHaveTextContent(
-    "Discovery settings saved",
-  );
+  expect(
+    screen.queryByText("Discovery settings saved."),
+  ).not.toBeInTheDocument();
   edit.mockRestore();
 });
 it("keeps the draft and revision on a conflict", async () => {

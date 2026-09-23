@@ -167,8 +167,9 @@ export default function Configuration({
   const [editRevision, setEditRevision] = useState("");
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
+  const [upstreamSaving, setUpstreamSaving] = useState(false);
+  const [upstreamOrder, setUpstreamOrder] = useState<Row[]>();
   const [listToggle, setListToggle] = useState<ListToggle>();
-  const [notice, setNotice] = useState<Row>();
   const [dashboardHost, setDashboardHost] = useState<{
     name: string;
     url: string;
@@ -182,6 +183,7 @@ export default function Configuration({
     !state.loading &&
     !state.error &&
     !busy &&
+    !upstreamSaving &&
     !((kind === "lists" || kind === "upstreams") && state.isFetching);
   const upstreamMode = settings.data?.config
     ? String(
@@ -201,32 +203,41 @@ export default function Configuration({
     !!upstreamMode;
 
   async function reloadUpstreamSelection() {
-    setBusy(true);
+    setUpstreamSaving(true);
     try {
       await Promise.all([
         state.reload({ cancelRefetch: false }),
         settings.reload({ cancelRefetch: false }),
       ]);
     } finally {
-      setBusy(false);
+      setUpstreamSaving(false);
     }
   }
 
-  async function saveUpstreamSelection(resource: string, edits: Edit[]) {
+  async function saveUpstreamSelection(
+    resource: string,
+    edits: Edit[],
+    order?: Row[],
+  ) {
     if (!upstreamReady) return;
-    setBusy(true);
+    setUpstreamSaving(true);
+    setUpstreamOrder(order);
     setError(undefined);
-    setNotice(undefined);
     try {
-      const result = await api.send<Row>(resource, "PATCH", {
-        revision,
-        edits,
-      });
-      setNotice(result);
+      await api.send<Row>(
+        resource,
+        "PATCH",
+        {
+          revision,
+          edits,
+        },
+        { refresh: ["upstreams", "settings"] },
+      );
     } catch (e) {
       setError(e as Error);
     } finally {
       await reloadUpstreamSelection();
+      setUpstreamOrder(undefined);
     }
   }
 
@@ -234,10 +245,16 @@ export default function Configuration({
     const items = collectionRows(state.data);
     const other = index + direction;
     if (upstreamMode !== "ordered" || !items[index] || !items[other]) return;
-    void saveUpstreamSelection("upstreams", [
-      { path: [String(index)], value: items[other].address },
-      { path: [String(other)], value: items[index].address },
-    ]);
+    const order = [...items];
+    [order[index], order[other]] = [order[other], order[index]];
+    void saveUpstreamSelection(
+      "upstreams",
+      [
+        { path: [String(index)], value: items[other].address },
+        { path: [String(other)], value: items[index].address },
+      ],
+      order.map((row, i) => ({ ...row, __index: i })),
+    );
   }
   const configuredClients = collectionRows(state.data);
   const observedClients = rows(state.data?.observed);
@@ -325,7 +342,6 @@ export default function Configuration({
         }
       }
       const result = await api.send<Row>(kind, method, body);
-      setNotice(result);
       setDashboardURL("");
       if (kind === "records" && method !== "DELETE") {
         const name = new URL(`http://${row?.name}`).hostname
@@ -361,7 +377,6 @@ export default function Configuration({
         revision: dashboardHost.revision,
         accept_admin_host: dashboardHost.name,
       });
-      setNotice(result);
       setDashboardURL(dashboardHost.url);
       setDashboardHost(undefined);
       setTick((t) => t + 1);
@@ -526,7 +541,10 @@ export default function Configuration({
         <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />
       )}
       {kind !== "clients" && (
-        <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+        <section
+          aria-busy={kind === "upstreams" ? upstreamSaving : undefined}
+          className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
             <h2 className="text-sm font-medium">
               {kind === "lists"
@@ -542,7 +560,11 @@ export default function Configuration({
                   completed={() => setTick((t) => t + 1)}
                 />
               )}
-              <Button disabled={!ready} onClick={() => open()}>
+              <Button
+                disabled={!ready && !upstreamSaving}
+                aria-disabled={!ready}
+                onClick={() => open()}
+              >
                 {kind === "lists"
                   ? "Add custom URL"
                   : kind === "clients"
@@ -568,7 +590,6 @@ export default function Configuration({
                     <UpstreamSelection
                       mode={upstreamMode}
                       disabled={!upstreamReady}
-                      saving={busy}
                       change={(mode) =>
                         void saveUpstreamSelection("settings", [
                           {
@@ -581,7 +602,7 @@ export default function Configuration({
                     {!!revision &&
                       !!settings.data?.revision &&
                       settings.data.revision !== revision &&
-                      !busy &&
+                      !upstreamSaving &&
                       !state.isFetching &&
                       !settings.isFetching && (
                         <div
@@ -602,7 +623,11 @@ export default function Configuration({
                   </>
                 )}
                 <DataTable
-                  items={collectionRows(state.data)}
+                  items={
+                    kind === "upstreams"
+                      ? (upstreamOrder ?? collectionRows(state.data))
+                      : collectionRows(state.data)
+                  }
                   columns={[
                     ...(kind === "upstreams" && upstreamMode === "ordered"
                       ? [
@@ -663,7 +688,8 @@ export default function Configuration({
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={!ready}
+                            disabled={!ready && !upstreamSaving}
+                            aria-disabled={!ready}
                             onClick={() => open(r)}
                           >
                             Edit
@@ -695,16 +721,11 @@ export default function Configuration({
           </Resource>
         </section>
       )}
-      {notice && (
+      {dashboardURL && (
         <section
           className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground"
           role="status"
         >
-          <p>
-            {notice.kind
-              ? "Operation started. View progress in Backups & jobs."
-              : "Changes saved."}
-          </p>
           {dashboardURL && (
             <p>
               Dashboard address added. No restart needed. Open{" "}
@@ -751,8 +772,7 @@ export default function Configuration({
           revision={editRevision}
           configured={collectionRows(state.data)}
           close={() => setEditing(undefined)}
-          saved={(result) => {
-            setNotice(result);
+          saved={() => {
             setEditing(undefined);
             setTick((t) => t + 1);
           }}

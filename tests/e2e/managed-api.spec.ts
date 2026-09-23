@@ -99,8 +99,8 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     .getByRole("button", { name: "Save settings", exact: true })
     .click();
   await expect(
-    page.getByRole("status").filter({ hasText: "Settings saved." }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Discard edits and reload" }),
+  ).not.toBeVisible();
   await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page
     .getByLabel("Configuration archive", { exact: false })

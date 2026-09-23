@@ -135,7 +135,8 @@ test("assignment activation errors survive legacy promotion and clear after acti
   status = { ...activation, saved_revision: "new", active_revision: "new" };
   await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Saved", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Profile for Tablet")).toHaveValue("kids");
 });
 
 test("thousands of inherited network rules stay behind one link", async ({

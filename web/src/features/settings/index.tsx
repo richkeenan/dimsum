@@ -122,11 +122,9 @@ function SettingsForm({
   const [revision, setRevision] = useState<string>();
   const [error, setError] = useState<Error>();
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   function change(path: string, value: string) {
     setRevision((current) => current ?? settings.revision);
     setDraft((current) => ({ ...current, [path]: value }));
-    setSaved(false);
   }
   return (
     <form
@@ -135,7 +133,6 @@ function SettingsForm({
         event.preventDefault();
         setBusy(true);
         setError(undefined);
-        setSaved(false);
         try {
           if (!revision)
             throw new Error("Wait for settings to load before editing.");
@@ -157,7 +154,6 @@ function SettingsForm({
           await api.edit(revision, edits);
           setDraft({});
           setRevision(undefined);
-          setSaved(true);
           refresh();
         } catch (e) {
           setError(e as Error);
@@ -241,11 +237,6 @@ function SettingsForm({
           </Button>
         )}
       </div>
-      {saved && (
-        <p className="mt-3 text-xs text-muted-foreground" role="status">
-          Settings saved.
-        </p>
-      )}
     </form>
   );
 }

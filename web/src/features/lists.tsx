@@ -128,23 +128,22 @@ export function ListSubscriptions({
             render: (row) => {
               const source = row.source as Row | undefined;
               const changing = pending && pending.id === row.id;
-              const status = changing
-                ? pending.enabled
+              const status =
+                changing && pending.enabled
                   ? "Downloading…"
-                  : "Saving…"
-                : row.enabled !== true
-                  ? row.__index === undefined
-                    ? row.available === false
-                      ? "Unavailable"
-                      : "Available"
-                    : "Not downloaded"
-                  : source?.error
-                    ? source.usable === true
-                      ? "Downloaded · update failed"
-                      : "Download failed"
-                    : source?.enabled === true && source.usable === true
-                      ? "Downloaded"
-                      : "Waiting for activation";
+                  : row.enabled !== true
+                    ? row.__index === undefined
+                      ? row.available === false
+                        ? "Unavailable"
+                        : "Available"
+                      : "Not downloaded"
+                    : source?.error
+                      ? source.usable === true
+                        ? "Downloaded · update failed"
+                        : "Download failed"
+                      : source?.enabled === true && source.usable === true
+                        ? "Downloaded"
+                        : "Waiting for activation";
               return (
                 <div className="max-w-72 whitespace-normal" aria-live="polite">
                   <span>{status}</span>

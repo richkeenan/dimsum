@@ -149,11 +149,6 @@ export function DiscoverySettings({
           )}
         </div>
         {error && <ErrorNotice error={error} />}
-        {saved && (
-          <p role="status" className="text-xs">
-            Discovery settings saved.
-          </p>
-        )}
       </form>
       <div className="mt-4">
         <DiscoveryStatus value={diagnostics} />
