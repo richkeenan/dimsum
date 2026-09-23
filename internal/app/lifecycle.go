@@ -74,7 +74,7 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	if err := config.Validate(c); err != nil {
 		return err
 	}
-	if store == nil && (len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || !c.Naming.IsZero()) {
+	if store == nil && (c.Blocking != nil || len(c.Profiles) > 0 || len(c.Lists) > 0 || len(c.Rules) > 0 || len(c.Records) > 0 || len(c.Zones) > 0 || len(c.Clients) > 0 || c.Filtering != (policy.Settings{}) || !c.Naming.IsZero()) {
 		return fmt.Errorf("service: policy configuration requires StartManaged")
 	}
 	if err := upstream.ValidateOptions(c.DNS.UpstreamOptions()); err != nil {

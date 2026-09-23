@@ -13,6 +13,8 @@ import (
 
 func TestUnmanagedRejectsIgnoredPolicy(t *testing.T) {
 	for _, set := range []func(*config.Config){
+		func(c *config.Config) { c.Blocking = new(bool) },
+		func(c *config.Config) { c.Profiles = []config.Profile{{ID: "restricted"}} },
 		func(c *config.Config) { c.Zones = []localdns.Zone{{Name: "home.arpa"}} },
 		func(c *config.Config) { c.Filtering = policy.Settings{MozillaCanary: true} },
 		func(c *config.Config) { c.Clients = []config.ClientOverride{{Address: "192.168.1.2", Name: "device"}} },

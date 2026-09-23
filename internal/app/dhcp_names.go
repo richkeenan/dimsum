@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net"
 	"net/netip"
 	"sync"
 	"sync/atomic"
@@ -62,7 +63,7 @@ func (d *dhcpNames) capture(snapshot *config.Snapshot) *localdns.Leases {
 	for i := 0; i < source.Len(); i++ {
 		l := source.Lease(i)
 		if l.State == dhcp.Bound {
-			rows = append(rows, localdns.Lease{Address: l.Address, Hostname: l.Hostname, Expiry: l.Expiry})
+			rows = append(rows, localdns.Lease{Address: l.Address, MAC: net.HardwareAddr(l.MAC[:]).String(), Hostname: l.Hostname, Expiry: l.Expiry})
 		}
 	}
 	if cached := d.current.Load(); cached != nil && cached.snapshot == snapshot && cached.source.Generation() == source.Generation() {

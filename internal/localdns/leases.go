@@ -15,6 +15,7 @@ import (
 type Lease struct {
 	Address     netip.Addr
 	Hostname    string
+	MAC         string
 	Expiry      time.Time
 	Generated   bool
 	Reservation bool
@@ -160,7 +161,7 @@ func (v *Leases) RefreshExpiries(rows []Lease) *Leases {
 	}
 	expiries := make(map[netip.Addr]time.Time, len(rows))
 	for _, l := range rows {
-		if label, ok := v.labels[l.Address]; !ok || label != l.Hostname {
+		if label, ok := v.labels[l.Address]; !ok || label != l.Hostname || v.names[l.Address].MAC != l.MAC {
 			return nil
 		}
 		expiries[l.Address] = l.Expiry
@@ -171,6 +172,16 @@ func (v *Leases) RefreshExpiries(rows []Lease) *Leases {
 	next := *v
 	next.expiries = expiries
 	return &next
+}
+
+// AuthoritativeMAC is committed ownership only, never a reservation or discovered
+// name. Expired reservation display entries deliberately carry no authority.
+func (v *Leases) AuthoritativeMAC(a netip.Addr, now time.Time) string {
+	l := v.Name(a, now)
+	if now.Before(l.Expiry) {
+		return l.MAC
+	}
+	return ""
 }
 
 func (v *Leases) Name(a netip.Addr, now time.Time) Lease {

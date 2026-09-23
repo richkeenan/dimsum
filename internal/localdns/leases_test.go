@@ -12,6 +12,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAuthoritativeMACRequiresLiveOwnership(t *testing.T) {
+	now := time.Now()
+	a := netip.MustParseAddr("192.0.2.100")
+	b := netip.MustParseAddr("192.0.2.101")
+	rows := []localdns.Lease{{Address: a, MAC: "02:00:00:00:00:01", Hostname: "desk", Expiry: now.Add(time.Second)}}
+	old := localdns.BuildLeases(7, "home.arpa", rows, map[netip.Addr]string{a: "reserved", b: "unleased"}, nil)
+	assert.Equal(t, rows[0].MAC, old.AuthoritativeMAC(a, now))
+	assert.Empty(t, old.AuthoritativeMAC(a, rows[0].Expiry))
+	assert.Empty(t, old.AuthoritativeMAC(b, now), "reservations are not evidence of ownership")
+	rows[0].Expiry = now.Add(time.Hour)
+	renewed := old.RefreshExpiries(rows)
+	require.NotNil(t, renewed)
+	assert.Equal(t, rows[0].MAC, renewed.AuthoritativeMAC(a, now.Add(time.Minute)))
+	assert.Empty(t, old.AuthoritativeMAC(a, now.Add(time.Minute)), "held publications keep captured expiry")
+	rows[0].MAC = "02:00:00:00:00:02"
+	assert.Nil(t, renewed.RefreshExpiries(rows), "MAC changes require rebuilding identity indexes")
+	rebuilt := localdns.BuildLeases(7, "home.arpa", rows, nil, nil)
+	assert.Equal(t, rows[0].MAC, rebuilt.AuthoritativeMAC(a, now))
+}
+
 func TestLeaseExpiryRefreshPreservesCapturedAnswers(t *testing.T) {
 	now := time.Now()
 	a := netip.MustParseAddr("192.0.2.100")

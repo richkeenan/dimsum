@@ -84,6 +84,8 @@ records:
 	require.NotNil(t, v)
 	assert.Same(t, v, publication.capture(snap))
 	assert.Equal(t, "desk.home.arpa", v.Name(ip, time.Now()).Hostname)
+	assert.Equal(t, "02:00:00:00:00:01", v.AuthoritativeMAC(ip, time.Now()))
+	assert.Empty(t, v.AuthoritativeMAC(ip, lease.Expiry))
 	var captured *localdns.Leases
 	allocs := testing.AllocsPerRun(100, func() { captured = publication.capture(snap) })
 	assert.Same(t, v, captured)
