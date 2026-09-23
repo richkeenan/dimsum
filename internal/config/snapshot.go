@@ -54,6 +54,12 @@ func (s *Snapshot) Generation() uint64              { return s.generation }
 func (s *Snapshot) DHCPEnabled() bool               { return s.document.value.DHCP.Enabled }
 func (s *Snapshot) Revision() string                { return s.document.Revision() }
 
+// PreviewClientPolicies compiles desired settings against already loaded source
+// membership without saving, downloading, or publishing a generation.
+func (s *Snapshot) PreviewClientPolicies(c Config) (*ClientPolicies, error) {
+	return c.CompileClientPolicies(s.generation, s.subscriptions.policy)
+}
+
 // UpstreamOptions returns owned endpoint slices from the captured generation.
 func (s *Snapshot) UpstreamOptions() upstream.Options { return s.document.value.DNS.UpstreamOptions() }
 
