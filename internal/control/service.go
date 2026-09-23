@@ -18,7 +18,7 @@ import (
 
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/dhcp"
-	"github.com/richkeenan/dimsum/internal/policy"
+	"github.com/richkeenan/dimsum/internal/localdns"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -48,6 +48,7 @@ type Options struct {
 	BootID      string
 	DHCPStatus  func() any
 	DHCPInspect func() dhcp.LeaseSnapshot
+	Leases      func(*config.Snapshot) *localdns.Leases
 	// A custom packet transport can supply its own deployment capability.
 	DHCPAvailability func() dhcp.Availability
 }
@@ -162,6 +163,8 @@ func (s *Service) Inspect(resource string) (any, error) {
 		value = c.Records
 	case "clients":
 		value = c.Clients
+	case "profiles":
+		value = c.Profiles
 	case "upstreams":
 		value = c.DNS.Upstreams
 	case "blocking":
@@ -394,20 +397,7 @@ func (s *Service) Diagnostics(ctx context.Context) (any, error) {
 	return map[string]any{"configuration": a, "history_available": s.options.Provider != nil}, e
 }
 func (s *Service) TestRule(name, generation string) (any, error) {
-	if s.options.Store == nil || s.options.Store.Snapshot() == nil {
-		return nil, ErrUnavailable
-	}
-	snap := s.options.Store.Snapshot()
-	if generation != "" && generation != strconv.FormatUint(snap.Generation(), 10) {
-		return nil, config.ErrConflict
-	}
-	n, e := policy.NormalizeName(name)
-	if e != nil {
-		return nil, e
-	}
-	d := snap.Policy().Evaluate(policy.Query{Original: n, Name: n, Explain: true, Paused: snap.Filtering().Paused(time.Now())})
-	decision := map[string]any{"result": d.Result, "generation": strconv.FormatUint(d.Generation, 10), "rule_id": d.RuleID, "source_ids": d.SourceIDs}
-	return map[string]any{"name": name, "normalized": n.Display(), "generation": strconv.FormatUint(snap.Generation(), 10), "decision": decision}, nil
+	return s.ExplainClientPolicy(ClientPolicyExplain{Name: name, Generation: generation})
 }
 
 type BlockingMutation struct {

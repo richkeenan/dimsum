@@ -110,7 +110,7 @@ func newManagedRuntime(service *Service, store *config.Store, o *observability, 
 			return safeJSON(result), err
 		},
 	}
-	m.control = control.New(control.Options{BootID: o.boot, DHCPStatus: func() any { return safeJSON(service.DHCPStatus()) }, DHCPInspect: service.DHCPInspect, Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
+	m.control = control.New(control.Options{BootID: o.boot, Leases: newDHCPNames(service.DHCPView).capture, DHCPStatus: func() any { return safeJSON(service.DHCPStatus()) }, DHCPInspect: service.DHCPInspect, Store: store, ConfigPath: store.ConfigPath(), Provider: NewHistoryProvider(o.db, service.ClientName), Jobs: jobs, Diagnostics: func(context.Context) (any, error) {
 		transport, cache := service.DNSStats()
 		interfaces := dnsInterfaces()
 		return map[string]any{"dhcp": safeJSON(service.DHCPStatus()), "naming": safeJSON(service.NamingDiagnostics()), "dns_ready": service.Ready(), "dns_addresses": clientDNSAddresses(service.Addresses().DNS, interfaces), "boot_id": o.boot, "process": safeJSON(o.collector.Snapshot()), "transport": safeJSON(transport), "cache": safeJSON(cache), "storage": safeJSON(o.status()), "upstreams": safeJSON(service.UpstreamHealth())}, nil
