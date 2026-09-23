@@ -52,5 +52,8 @@ export function words(value: string) {
   return value.split(/[\s,]+/).filter(Boolean);
 }
 export function policyRuleID() {
-  return `rule-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  return policyID("rule");
+}
+export function policyID(prefix: string) {
+  return `${prefix}-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }

@@ -9,6 +9,7 @@ test("large inventory uses one compact response per refresh and no owner policy 
     id: `device-${i}`,
     policy_id: `device-${i}`,
     name: `Device ${i}`,
+    ...(i === 0 ? { selectors: { addresses: ["192.0.2.55"] } } : {}),
   }));
   const compact = {
     profile_id: "shared",
@@ -38,15 +39,23 @@ test("large inventory uses one compact response per refresh and no owner policy 
     return route.fulfill({ json: policyFixture });
   });
   await page.goto("/clients");
-  await expect(
-    page.getByRole("button", { name: "Device 511", exact: true }),
-  ).toBeAttached();
-  await expect(
-    page.getByText("Filtering enabled", { exact: true }),
-  ).toHaveCount(512);
+  await expect(page.getByText("Device 511", { exact: true })).toBeAttached();
+  await expect(page.getByText("Custom settings", { exact: true })).toHaveCount(
+    512,
+  );
   await page.waitForTimeout(5500); // Include the inventory polling interval in the request budget.
   expect(details).toBe(0);
   expect(inventories).toBeLessThanOrEqual(3);
+  await expect(
+    page.getByRole("button", {
+      name: "View queries for Device 511",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "View queries for Device 0", exact: true })
+    .click();
+  await expect(page).toHaveURL(/client=192\.0\.2\.55/);
 });
 
 for (const available of [true, false])
@@ -85,12 +94,14 @@ for (const available of [true, false])
     await page.goto(
       "/queries?range=custom&from=2026-09-01T00%3A00%3A00Z&to=2026-09-02T00%3A00%3A00Z",
     );
-    await page.getByText("This device", { exact: true }).click();
-    await expect(
-      page.getByRole("link", { name: "Edit device policy" }),
-    ).toHaveAttribute("href", "/clients?device=study-laptop");
     await page
       .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+      .click();
+    await expect(
+      page.getByRole("link", { name: "Device settings" }),
+    ).toHaveAttribute("href", "/clients?device=study-laptop");
+    await page
+      .getByRole("button", { name: "Create allow rule", exact: true })
       .click();
     await expect.poll(() => saved?.id).toBe("study-laptop");
     expect(saved.scope).toBe("client");
@@ -133,6 +144,7 @@ test("route reset restores inherited controls and failed readback preserves the 
     });
   });
   await page.goto("/clients?device=study-laptop");
+  await page.getByText("Advanced: upstream servers", { exact: true }).click();
   await page
     .getByLabel("Primary servers", { exact: true })
     .fill("192.0.2.99:53");
@@ -151,7 +163,7 @@ test("route reset restores inherited controls and failed readback preserves the 
   await expect(
     page.getByRole("button", { name: "Save 0 changes", exact: true }),
   ).toBeDisabled();
-  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -163,7 +175,9 @@ test("route reset restores inherited controls and failed readback preserves the 
       exact: true,
     }),
   ).toBeVisible();
-  await expect(page.getByLabel("Blocking", { exact: true })).toHaveValue("off");
+  await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveValue(
+    "off",
+  );
   await expect(
     page.getByRole("button", { name: "Save 1 change", exact: true }),
   ).toBeDisabled();
@@ -177,7 +191,9 @@ test("route reset restores inherited controls and failed readback preserves the 
   expect(writes).toBe(1);
 });
 
-test("changes-only exposes the actual reset-all effects", async ({ page }) => {
+test("reset-all exposes pending effects while retaining setting controls", async ({
+  page,
+}) => {
   await fixtureAPI(page);
   await page.route("**/api/v1/client-policy**", (route) =>
     route.fulfill({
@@ -214,7 +230,7 @@ test("changes-only exposes the actual reset-all effects", async ({ page }) => {
   await page
     .getByRole("button", { name: "Reset all overrides", exact: true })
     .click();
-  await page.getByLabel("Changes only").check();
+  await page.getByText("Advanced: upstream servers", { exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Upstream servers", exact: true }),
   ).toBeVisible();
@@ -227,8 +243,10 @@ test("changes-only exposes the actual reset-all effects", async ({ page }) => {
   await expect(
     page.getByText("Removing owner rules: blocked.example", { exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel("Blocking", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveValue(
+    "inherit",
+  );
   await expect(
     page.getByRole("heading", { name: "Filter lists", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 });

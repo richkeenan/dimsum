@@ -61,17 +61,20 @@ test("blocking after an allow exception explains that the exception still wins",
   await page
     .getByRole("button", { name: "Allow " + query.name, exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Create allow rule", exact: true })
+    .click();
   await expect.poll(() => actions).toEqual(["allow"]);
   await expect(
-    page.getByRole("button", { name: "Allow " + query.name, exact: true }),
-  ).toHaveText("Allow");
-  await expect(
-    page.getByRole("button", { name: "Allow " + query.name, exact: true }),
+    page.getByRole("button", { name: "Create allow rule", exact: true }),
   ).toBeDisabled();
   outcome = "forwarded";
   await page.reload();
   await page
     .getByRole("button", { name: "Block " + query.name, exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Create block rule", exact: true })
     .click();
   await expect(
     page.getByText(/an allow exception still takes precedence/),
@@ -150,22 +153,26 @@ test("broader rule scopes require an explicit choice and profile writes stay spa
     return route.fulfill({ json: activation });
   });
   await page.goto("/queries");
-  await page.getByText("This device", { exact: true }).click();
+  await page
+    .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+    .click();
   const target = page.getByLabel(`Rule target for ${query.client}`, {
     exact: true,
   });
   await expect(target).toHaveValue("device");
   await target.selectOption("network");
   await page
-    .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+    .getByRole("button", { name: "Create allow rule", exact: true })
     .click();
   await expect.poll(() => network.length).toBe(1);
   expect(profile).toHaveLength(0);
   await page.reload();
-  await page.getByText("This device", { exact: true }).click();
-  await target.selectOption("profile:children");
   await page
     .getByRole("button", { name: `Allow ${query.name}`, exact: true })
+    .click();
+  await target.selectOption("profile:children");
+  await page
+    .getByRole("button", { name: "Create allow rule", exact: true })
     .click();
   await expect.poll(() => profile.length).toBe(1);
   expect(profile[0]).toMatchObject({
@@ -219,6 +226,9 @@ test("answers, historical TTLs and contextual blocking are useful without techni
   await page
     .getByRole("button", { name: "Block " + query.name, exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Create block rule", exact: true })
+    .click();
   await expect
     .poll(() => saved)
     .toMatchObject({
@@ -233,12 +243,9 @@ test("answers, historical TTLs and contextual blocking are useful without techni
       ],
     });
   await expect(
-    page.getByRole("button", { name: "Block " + query.name, exact: true }),
-  ).toHaveText("Block");
-  await expect(
-    page.getByRole("button", { name: "Block " + query.name, exact: true }),
+    page.getByRole("button", { name: "Create block rule", exact: true }),
   ).toBeDisabled();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("dialog")).toBeVisible();
 });
 
 test("inline failures can be retried and pending rules are not labelled active", async ({
@@ -266,12 +273,17 @@ test("inline failures can be retried and pending rules are not labelled active",
     exact: true,
   });
   await allow.click();
+  const save = page.getByRole("button", {
+    name: "Create allow rule",
+    exact: true,
+  });
+  await save.click();
   await expect(page.getByRole("alert")).toContainText("Settings changed");
-  await allow.click();
+  await save.click();
   await expect(
     page.getByText("Allow rule saved · pending", { exact: true }),
   ).toBeVisible();
-  await expect(allow).toBeDisabled();
+  await expect(save).toBeDisabled();
   expect(attempts).toBe(2);
 });
 
@@ -293,13 +305,13 @@ test("inline blocking works when randomUUID is unavailable", async ({
   });
   await page.goto("/queries");
   await page.getByRole("button", { name: "Block " + query.name }).click();
+  await page
+    .getByRole("button", { name: "Create block rule", exact: true })
+    .click();
   await expect(page.getByRole("alert")).not.toBeVisible();
   await expect.poll(() => item?.id).toMatch(/^query-[0-9a-f]{24}$/);
   await expect(
-    page.getByRole("button", { name: "Block " + query.name }),
-  ).toHaveText("Block");
-  await expect(
-    page.getByRole("button", { name: "Block " + query.name }),
+    page.getByRole("button", { name: "Create block rule", exact: true }),
   ).toBeDisabled();
 });
 

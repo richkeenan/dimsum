@@ -41,6 +41,7 @@ function setup(
   desired = policy.desired,
   onPromoted?: (id: string) => void,
   effective = policy.effective,
+  subscriptions: any[] = [],
 ) {
   const writes: any[] = [];
   vi.stubGlobal(
@@ -69,6 +70,7 @@ function setup(
       }
       if (url.includes("client-policy"))
         return Response.json({ ...policy, desired, effective });
+      if (url.endsWith("lists")) return Response.json({ items: subscriptions });
       if (url.endsWith("catalog"))
         return Response.json({
           items: [
@@ -100,10 +102,9 @@ function setup(
 }
 it("saves an explicit equal-to-parent override sparsely and previews scope", async () => {
   const writes = setup();
-  fireEvent.change(await screen.findByLabelText("Blocking"), {
+  fireEvent.change(await screen.findByLabelText("DNS filtering"), {
     target: { value: "on" },
   });
-  fireEvent.click(screen.getByLabelText("Changes only"));
   fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0]).toEqual({
@@ -116,7 +117,7 @@ it("saves an explicit equal-to-parent override sparsely and previews scope", asy
 
 it("retains a successful write activation failure when readback fails and retries only the read", async () => {
   setup();
-  await screen.findByLabelText("Blocking");
+  await screen.findByLabelText("DNS filtering");
   const previous = globalThis.fetch;
   let writes = 0,
     readable = false;
@@ -140,7 +141,7 @@ it("retains a successful write activation failure when readback fails and retrie
           );
     return previous(url, init);
   });
-  fireEvent.change(screen.getByLabelText("Blocking"), {
+  fireEvent.change(screen.getByLabelText("DNS filtering"), {
     target: { value: "off" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save 1 change" }));
@@ -152,7 +153,7 @@ it("retains a successful write activation failure when readback fails and retrie
   expect(
     screen.getByText(/Saved · activation failed: Activation failed/),
   ).toBeInTheDocument();
-  expect(screen.getByLabelText("Blocking")).toHaveValue("off");
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("off");
   expect(screen.getByRole("button", { name: "Save 1 change" })).toBeDisabled();
   readable = true;
   fireEvent.click(retry);
@@ -186,7 +187,7 @@ it("resetting an unsaved route restores both inherited input buffers when no cha
   expect(screen.getByRole("button", { name: "Save 0 changes" })).toBeDisabled();
 });
 
-it("changes-only shows actual reset-all routes rules and pause without unrelated inherited settings", async () => {
+it("reset-all keeps the settings visible while staging removal of overrides", async () => {
   setup(false, {
     ...policy.desired,
     paused_until: "2026-09-23T18:00:00Z",
@@ -206,7 +207,7 @@ it("changes-only shows actual reset-all routes rules and pause without unrelated
   fireEvent.click(
     await screen.findByRole("button", { name: "Reset all overrides" }),
   );
-  fireEvent.click(screen.getByLabelText("Changes only"));
+  fireEvent.click(screen.getByText("Advanced: upstream servers"));
   expect(
     screen.getByRole("heading", { name: "Upstream servers" }),
   ).toBeInTheDocument();
@@ -216,10 +217,10 @@ it("changes-only shows actual reset-all routes rules and pause without unrelated
   expect(
     screen.getByRole("heading", { name: "Device pause" }),
   ).toBeInTheDocument();
-  expect(screen.queryByLabelText("Blocking")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("inherit");
   expect(
     screen.queryByRole("heading", { name: "Filter lists" }),
-  ).not.toBeInTheDocument();
+  ).toBeInTheDocument();
 });
 it("assigns one profile without copying inherited policy", async () => {
   const writes = setup();
@@ -232,17 +233,16 @@ it("assigns one profile without copying inherited policy", async () => {
   expect(writes[0].fields).toBeUndefined();
 });
 
-it("changes-only keeps a name edit visible without unrelated profile or list controls", async () => {
+it("keeps profile selection available while editing a device name", async () => {
   setup();
   fireEvent.change(await screen.findByLabelText("Name"), {
     target: { value: "Study tablet" },
   });
-  fireEvent.click(screen.getByLabelText("Changes only"));
   expect(screen.getByLabelText("Name")).toHaveValue("Study tablet");
-  expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Profile")).toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Filter lists" }),
-  ).not.toBeInTheDocument();
+  ).toBeInTheDocument();
 });
 it("subscribes and applies a catalogue list in one device-only transaction", async () => {
   const writes = setup();
@@ -261,16 +261,47 @@ it("subscribes and applies a catalogue list in one device-only transaction", asy
   });
   expect(writes[0].fields).toEqual([{ path: ["lists", "adult"], value: true }]);
 });
+it("activates an already selected disabled list without changing network application", async () => {
+  const subscription = {
+    id: "adult",
+    url: "https://example.com/adult",
+    dialect: "dns-adblock",
+    domain_kind: "suffix",
+    enabled: false,
+  };
+  const writes = setup(
+    false,
+    { ...policy.desired, overrides: { lists: { adult: true } } } as any,
+    undefined,
+    {
+      ...policy.effective,
+      lists: {
+        adult: { value: true, source: { kind: "client", id: "tablet" } },
+      },
+    } as any,
+    [subscription],
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Activate list" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save 1 change" }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toEqual({
+    revision: "r1",
+    scope: "client",
+    id: "tablet",
+    subscribe: [{ ...subscription, enabled: true }],
+  });
+});
+
 it("retains edits and offers reload after a conflict", async () => {
   setup(true);
-  fireEvent.change(await screen.findByLabelText("Blocking"), {
+  fireEvent.change(await screen.findByLabelText("DNS filtering"), {
     target: { value: "off" },
   });
   fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Settings changed",
   );
-  expect(screen.getByLabelText("Blocking")).toHaveValue("off");
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("off");
   expect(
     screen.getByRole("button", { name: "Reload saved policy" }),
   ).toBeEnabled();
@@ -278,7 +309,7 @@ it("retains edits and offers reload after a conflict", async () => {
 
 it("surfaces a failed conflict reload without losing the draft or writing again", async () => {
   const writes = setup(true);
-  fireEvent.change(await screen.findByLabelText("Blocking"), {
+  fireEvent.change(await screen.findByLabelText("DNS filtering"), {
     target: { value: "off" },
   });
   fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
@@ -307,13 +338,13 @@ it("surfaces a failed conflict reload without losing the draft or writing again"
       { timeout: 4000 },
     ),
   ).toBeVisible();
-  expect(screen.getByLabelText("Blocking")).toHaveValue("off");
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("off");
   expect(writes).toHaveLength(1);
 });
 
 it("keeps the opened revision and draft when a background refresh observes someone else’s edit", async () => {
   const writes = setup();
-  fireEvent.change(await screen.findByLabelText("Blocking"), {
+  fireEvent.change(await screen.findByLabelText("DNS filtering"), {
     target: { value: "off" },
   });
   const previous = globalThis.fetch;
@@ -333,7 +364,7 @@ it("keeps the opened revision and draft when a background refresh observes someo
   expect(
     await screen.findByText(/Newer settings are available/),
   ).toBeInTheDocument();
-  expect(screen.getByLabelText("Blocking")).toHaveValue("off");
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("off");
   fireEvent.click(screen.getByRole("button", { name: "Save 1 change" }));
   await waitFor(() => expect(writes[0]?.revision).toBe("r1"));
 });
@@ -357,10 +388,10 @@ it("reset removes a saved explicit value instead of writing null or the parent v
     ...policy.desired,
     overrides: { blocking: true },
   } as typeof policy.desired);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Reset Blocking" }),
-  );
-  expect(screen.getByLabelText("Blocking")).toHaveValue("inherit");
+  fireEvent.change(await screen.findByLabelText("DNS filtering"), {
+    target: { value: "inherit" },
+  });
+  expect(screen.getByLabelText("DNS filtering")).toHaveValue("inherit");
   fireEvent.click(screen.getByRole("button", { name: "Save 1 change" }));
   await waitFor(() => expect(writes).toHaveLength(1));
   expect(writes[0].fields).toEqual([{ path: ["blocking"], reset: true }]);
@@ -395,16 +426,20 @@ it("promotes a legacy identity and follows the new stable detail instead of relo
     { name: "Tablet", address: "192.0.2.10" } as any,
     promoted,
   );
-  fireEvent.change(
-    await screen.findByLabelText("Stable device ID (required to save policy)"),
-    { target: { value: "stable-tablet" } },
-  );
+  fireEvent.change(await screen.findByLabelText("Name"), {
+    target: { value: "Study tablet" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Save 1 change" }));
-  await waitFor(() => expect(promoted).toHaveBeenCalledWith("stable-tablet"));
+  await waitFor(() =>
+    expect(promoted).toHaveBeenCalledWith(
+      expect.stringMatching(/^device-[0-9a-f]{24}$/),
+    ),
+  );
   expect(writes[0]).toEqual({
     revision: "r1",
     scope: "client",
     id: "tablet",
-    promote_id: "stable-tablet",
+    promote_id: expect.stringMatching(/^device-[0-9a-f]{24}$/),
+    name: "Study tablet",
   });
 });

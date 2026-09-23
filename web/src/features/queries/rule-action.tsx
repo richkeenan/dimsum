@@ -18,6 +18,13 @@ import { Ban, ShieldCheck } from "lucide-react";
 import { api, normalizeSettings, type Settings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/data";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 type RuleResult = {
   action: string;
@@ -66,7 +73,7 @@ function useRuleSave(name: string, address?: string) {
           clientID = (await resolveAddress(address!)).client_id;
           if (!clientID)
             throw new Error(
-              "This address has no matched configured identity. Configure the device first, or explicitly select network scope.",
+              "Choose a profile for this device on the Devices page before adding device-only rules, or apply this rule to the network.",
             );
         }
         const scope = target === "device" ? "client" : "profile";
@@ -175,19 +182,12 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
   });
   const id = resolution.data?.client_id;
   return (
-    <details className="max-w-60 whitespace-normal text-xs">
-      <summary className="cursor-pointer py-2">
-        {value === "device"
-          ? "This device"
-          : value === "network"
-            ? "Network defaults"
-            : `Profile: ${value.slice(8)}`}
-      </summary>
+    <div className="space-y-2 text-xs">
       <label className="text-xs">
         Apply rule to
         <select
           aria-label={`Rule target for ${address}`}
-          className={`${selectClass} block max-w-60`}
+          className={`${selectClass} mt-1 block w-full`}
           value={value}
           disabled={disabled}
           onChange={(e) => change(e.target.value)}
@@ -198,7 +198,7 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
               Profile: {p.name || p.id}
             </option>
           ))}
-          <option value="network">Network · all inheriting devices</option>
+          <option value="network">Network defaults</option>
         </select>
       </label>
       {profiles.error && <ErrorNotice error={profiles.error} />}
@@ -213,10 +213,10 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
           className="inline-block py-2 text-xs underline"
           href={id ? `/clients?device=${encodeURIComponent(id)}` : "/clients"}
         >
-          {id ? "Edit device policy" : "Configure device identity"}
+          {id ? "Device settings" : "Go to devices"}
         </a>
       )}
-    </details>
+    </div>
   );
 }
 
@@ -260,42 +260,31 @@ export function InlineRuleAction({
   outcome: string;
   address?: string;
 }) {
-  const state = useRuleSave(name, address);
   if (!name || !["blocked", "forwarded", "cache", "stale"].includes(outcome))
     return null;
   const action = outcome === "blocked" ? "allow" : "deny";
   const label = action === "deny" ? "Block" : "Allow";
   const Icon = action === "deny" ? Ban : ShieldCheck;
   return (
-    <div className="space-y-1">
-      <RuleTarget
-        address={address}
-        value={state.target}
-        change={state.setTarget}
-        disabled={state.busy || !!state.result}
-      />
-      <Button
-        variant="ghost"
-        size="sm"
-        className="text-[12px]"
-        aria-label={`${label} ${name}`}
-        title={`${label} this exact domain for the selected scope`}
-        disabled={state.busy || !!state.result}
-        onClick={() => state.save(action, "exact")}
-      >
-        <Icon className="size-3.5" strokeWidth={1.5} />
-        {state.busy ? "Saving…" : label}
-      </Button>
-      {state.error && (
-        <div className="max-w-60 whitespace-normal">
-          <ErrorNotice error={state.error} />
-        </div>
-      )}
-      {state.result &&
-        (!isActive(state.result.settings) || state.result.notice) && (
-          <RuleSaved result={state.result} />
-        )}
-    </div>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-xs"
+          aria-label={`${label} ${name}`}
+          title={`${label} this domain`}
+        >
+          <Icon className="size-3.5" strokeWidth={1.5} />
+          {label}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogTitle>{label} domain</DialogTitle>
+        <DialogDescription className="break-all">{name}</DialogDescription>
+        <QueryRuleForm name={name} outcome={outcome} address={address} />
+      </DialogContent>
+    </Dialog>
   );
 }
 

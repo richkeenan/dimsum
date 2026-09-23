@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import {
   ownerPolicy,
   policyRuleID,
+  policyID,
   panelClass,
   selectClass,
   sourceLabel,
@@ -18,13 +19,25 @@ import {
   type Schema,
 } from "./model";
 
-export function ActivationStatus({ status }: { status: Activation }) {
+export function ActivationStatus({
+  status,
+  showSaved = true,
+}: {
+  status: Activation;
+  showSaved?: boolean;
+}) {
   const active =
     !status.pending &&
     !status.error &&
     !status.recovered &&
     !status.restart_required &&
     status.saved_revision === status.active_revision;
+  if (
+    active &&
+    !showSaved &&
+    !status.sources.some((s) => s.enabled && (!s.usable || s.error))
+  )
+    return null;
   return (
     <div
       role={status.error ? "alert" : "status"}
@@ -36,12 +49,12 @@ export function ActivationStatus({ status }: { status: Activation }) {
     >
       <p>
         {active
-          ? `Saved and active · generation ${status.active_generation}`
+          ? "Saved"
           : status.error
             ? `Saved · activation failed: ${status.error}`
             : status.restart_required
               ? "Saved · restart required"
-              : "Saved · not yet active"}
+              : "Applying changes…"}
       </p>
       {status.sources
         .filter((s) => s.enabled && (!s.usable || s.error))
@@ -171,7 +184,6 @@ function PolicyForm({
   const [subscriptions, setSubscriptions] = useState<
     Schema["PolicySubscription"][]
   >([]);
-  const [only, setOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   const [status, setStatus] = useState<Activation>();
@@ -180,7 +192,7 @@ function PolicyForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const desiredClient = read.desired as Schema["PolicyClient"];
   const [name, setName] = useState(desiredClient.name ?? "");
-  const [promote, setPromote] = useState("");
+  const [promotionID] = useState(() => policyID("device"));
   const [addresses, setAddresses] = useState(
     (
       desiredClient.selectors?.addresses ??
@@ -251,11 +263,29 @@ function PolicyForm({
     ]);
     if (path[0] === "lists" && value !== true)
       setSubscriptions((old) => old.filter((s) => s.id !== path[1]));
+    if (path[0] === "lists" && value === true) {
+      const list = lists.data?.items.find(
+        (s) => s.id === path[1] && !s.enabled,
+      );
+      if (list)
+        setSubscriptions((old) => [
+          ...old.filter((s) => s.id !== list.id),
+          {
+            id: list.id,
+            url: list.url,
+            dialect: list.dialect,
+            domain_kind: list.domain_kind,
+            enabled: true,
+          },
+        ]);
+    }
   };
   const changed =
     fields.length +
     Object.keys(extra).filter((k) => k !== "promote_id").length +
-    (promote ? 1 : 0);
+    subscriptions.filter(
+      (s) => !fields.some((f) => f.path[0] === "lists" && f.path[1] === s.id),
+    ).length;
   const unstaged =
     rulePattern.trim() !== "" ||
     addresses !==
@@ -276,7 +306,9 @@ function PolicyForm({
     ...extra,
     ...(fields.length ? { fields } : {}),
     ...(subscriptions.length ? { subscribe: subscriptions } : {}),
-    ...(promote ? { promote_id: promote } : {}),
+    ...(read.scope === "client" && !desiredClient.id
+      ? { promote_id: promotionID }
+      : {}),
   };
   const serialized = JSON.stringify(mutation);
   useEffect(() => {
@@ -353,7 +385,6 @@ function PolicyForm({
     health?: string,
   ) => {
     const edit = field(path);
-    if (only && !edit && !(extra.reset_all && saved !== undefined)) return null;
     const selected = edit
       ? edit.reset
         ? "inherit"
@@ -370,21 +401,42 @@ function PolicyForm({
     return (
       <div
         key={keyOf(path)}
-        className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-border py-3 sm:grid-cols-[minmax(0,1fr)_12rem_4rem] sm:items-center"
+        className="grid gap-2 border-b border-border py-3 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-center"
       >
-        <div className="col-span-2 min-w-0 wrap-anywhere sm:col-span-1">
+        <div className="min-w-0 wrap-anywhere">
           <label htmlFor={keyOf(path)} className="text-sm font-medium">
             {label}
           </label>
           <p className="text-xs text-muted-foreground">
-            {value.value ? "On" : "Off"} · {sourceLabel(value.source)}
-            {health ? ` · ${health}` : ""}
+            {read.scope !== "network"
+              ? `${value.value ? "On" : "Off"} — ${value.source.kind === "client" ? "Device setting" : value.source.kind === "profile" ? `Profile: ${profiles.data?.items.find((p) => p.id === value.source.id)?.name || value.source.id}` : "Network default"}`
+              : ""}
+            {health ? `${read.scope !== "network" ? " · " : ""}${health}` : ""}
           </p>
+          {path[0] === "lists" &&
+            lists.data?.items.some((s) => s.id === path[1] && !s.enabled) &&
+            !subscriptions.some((s) => s.id === path[1]) && (
+              <Button
+                variant="link"
+                size="sm"
+                className="px-0"
+                onClick={() => setField(path, true)}
+              >
+                Activate list
+              </Button>
+            )}
         </div>
         <select
           id={keyOf(path)}
           className={selectClass}
-          value={selected}
+          disabled={path[0] === "lists" && !lists.data}
+          value={
+            read.scope === "network" && selected === "inherit"
+              ? value.value
+                ? "on"
+                : "off"
+              : selected
+          }
           onChange={(e) =>
             setField(
               path,
@@ -394,22 +446,17 @@ function PolicyForm({
             )
           }
         >
-          <option value="inherit">
-            {read.scope === "network" ? "Built-in default" : "Inherit"}
-          </option>
-          <option value="on">On (explicit)</option>
-          <option value="off">Off (explicit)</option>
+          {read.scope !== "network" && (
+            <option value="inherit">
+              {read.scope === "client" &&
+              (extra.profile ?? desiredClient.profile)
+                ? "Use profile setting"
+                : "Use network default"}
+            </option>
+          )}
+          <option value="on">On</option>
+          <option value="off">Off</option>
         </select>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`Reset ${label}`}
-          className="min-h-10"
-          disabled={selected === "inherit"}
-          onClick={() => setField(path, undefined)}
-        >
-          Reset
-        </Button>
       </div>
     );
   };
@@ -431,7 +478,6 @@ function PolicyForm({
     setSubscriptions([]);
     setError(undefined);
     setPreview(undefined);
-    setPromote("");
     setName(desiredClient.name ?? "");
     setPrimary((own.upstream ?? read.effective.upstream).upstreams.join("\n"));
     setFallback(
@@ -452,20 +498,25 @@ function PolicyForm({
   }
   return (
     <div className="space-y-4">
-      <fieldset disabled={busy || !!status} className="min-w-0 space-y-4">
+      <fieldset
+        disabled={busy || !!status}
+        className="flex min-w-0 flex-col gap-4"
+      >
         <section className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-medium">{scopeName}</h2>
-            <label className="flex min-h-10 items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={only}
-                onChange={(e) => setOnly(e.target.checked)}
-              />
-              Changes only
-            </label>
           </div>
-          <ActivationStatus status={status ?? liveStatus ?? read.status} />
+          <p className="text-xs text-muted-foreground">
+            {read.scope === "network"
+              ? "Used by devices unless their profile or device settings override them."
+              : read.scope === "profile"
+                ? "Applies to devices assigned to this profile. Other settings follow network defaults."
+                : "Choose a profile or customize settings for this device."}
+          </p>
+          <ActivationStatus
+            status={status ?? liveStatus ?? read.status}
+            showSaved={false}
+          />
           {changed > 0 && (
             <p className="text-xs font-medium text-primary" role="status">
               Unsaved changes · save to apply.
@@ -488,106 +539,96 @@ function PolicyForm({
             )}
           {!read.active && (
             <p className="text-xs text-muted-foreground">
-              This identity is not in the active policy.
+              These settings are not active yet.
             </p>
           )}
-          {read.scope !== "network" &&
-            (!only ||
-              extra.profile !== undefined ||
-              extra.name !== undefined) && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {(!only || extra.name !== undefined) && (
-                  <label className="space-y-1 text-sm">
-                    Name
-                    <Input
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value);
-                        setExtra((x) => {
-                          const next = { ...x };
-                          if (e.target.value === (desiredClient.name ?? ""))
-                            delete next.name;
-                          else next.name = e.target.value;
-                          return next;
-                        });
-                      }}
-                    />
-                  </label>
-                )}
-                {read.scope === "client" &&
-                  (!only || extra.profile !== undefined) && (
-                    <label className="space-y-1 text-sm">
-                      Profile
-                      <select
-                        className={`${selectClass} w-full`}
-                        aria-label="Profile"
-                        value={extra.profile ?? desiredClient.profile ?? ""}
-                        onChange={(e) =>
-                          setExtra((x) => {
-                            const next = { ...x };
-                            if (
-                              e.target.value === (desiredClient.profile ?? "")
-                            )
-                              delete next.profile;
-                            else next.profile = e.target.value;
-                            return next;
-                          })
-                        }
-                      >
-                        <option value="">No profile · network defaults</option>
-                        {profiles.data?.items.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name || p.id}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-              </div>
-            )}
-          {profiles.error && <ErrorNotice error={profiles.error} />}
-          {read.scope === "client" && !desiredClient.id && (
-            <label className="block space-y-1 text-sm">
-              Stable device ID (required to save policy)
-              <Input
-                required
-                value={promote}
-                onChange={(e) => setPromote(e.target.value)}
-                placeholder="tablet"
-              />
-            </label>
+          {read.scope !== "network" && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {
+                <label className="space-y-1 text-sm">
+                  Name
+                  <Input
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setExtra((x) => {
+                        const next = { ...x };
+                        if (e.target.value === (desiredClient.name ?? ""))
+                          delete next.name;
+                        else next.name = e.target.value;
+                        return next;
+                      });
+                    }}
+                  />
+                </label>
+              }
+              {read.scope === "client" && (
+                <label className="space-y-1 text-sm">
+                  Profile
+                  <select
+                    className={`${selectClass} w-full`}
+                    aria-label="Profile"
+                    value={extra.profile ?? desiredClient.profile ?? ""}
+                    onChange={(e) =>
+                      setExtra((x) => {
+                        const next = { ...x };
+                        if (e.target.value === (desiredClient.profile ?? ""))
+                          delete next.profile;
+                        else next.profile = e.target.value;
+                        return next;
+                      })
+                    }
+                  >
+                    <option value="">No profile · network defaults</option>
+                    {profiles.data?.items.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name || p.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
           )}
+          {profiles.error && <ErrorNotice error={profiles.error} />}
           {boolRow(
-            "Blocking",
+            "DNS filtering",
             ["blocking"],
             own.blocking,
             effective?.blocking ?? read.effective.blocking,
           )}
-          {(!only ||
-            (extra.reset_all && Object.keys(own.lists ?? {}).length > 0) ||
-            fields.some((f) => f.path[0] === "lists")) && (
+          <p className="text-xs text-muted-foreground">
+            When on, DNS filtering blocks domains using the filter lists and
+            custom rules below.
+          </p>
+          {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Filter lists</h3>
-              <Button
-                variant="ghost"
-                disabled={
-                  !!extra.reset_all || !Object.keys(own.lists ?? {}).length
-                }
-                onClick={() => {
-                  setSubscriptions([]);
-                  setFields((old) => [
-                    ...old.filter((f) => f.path[0] !== "lists"),
-                    ...Object.keys(own.lists ?? {}).map((id) => ({
-                      path: ["lists", id],
-                      reset: true as const,
-                    })),
-                  ]);
-                }}
-              >
-                Reset list overrides
-              </Button>
+              {read.scope !== "network" && (
+                <Button
+                  variant="ghost"
+                  disabled={
+                    !!extra.reset_all || !Object.keys(own.lists ?? {}).length
+                  }
+                  onClick={() => {
+                    setSubscriptions([]);
+                    setFields((old) => [
+                      ...old.filter((f) => f.path[0] !== "lists"),
+                      ...Object.keys(own.lists ?? {}).map((id) => ({
+                        path: ["lists", id],
+                        reset: true as const,
+                      })),
+                    ]);
+                  }}
+                >
+                  Use defaults for all lists
+                </Button>
+              )}
             </div>
-          )}
+          }
+          <p className="text-xs text-muted-foreground">
+            Choose which lists of domains to block.
+          </p>
           {Object.entries({
             ...Object.fromEntries(
               subscriptions.map((s) => [
@@ -612,7 +653,7 @@ function PolicyForm({
               subscriptions.some((s) => s.id === id)
                 ? "Downloads on save"
                 : !source?.enabled
-                  ? "Subscription disabled"
+                  ? "Not downloaded"
                   : !source.usable
                     ? "Source not active"
                     : source.error
@@ -620,7 +661,7 @@ function PolicyForm({
                       : `${source.rules.toLocaleString()} loaded rules`,
             );
           })}
-          {!only && (
+          {
             <details>
               <summary className="min-h-10 cursor-pointer py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring">
                 Add an available list
@@ -684,78 +725,16 @@ function PolicyForm({
                   ))}
               </div>
             </details>
-          )}
+          }
           {subscriptions.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              New subscriptions download on save. Applied only to this{" "}
+              New lists download on save. Applied only to this{" "}
               {read.scope === "client" ? "device" : read.scope}; existing
               network application is retained.
             </p>
           )}
         </section>
-        {(!only ||
-          field(["upstream"]) ||
-          (extra.reset_all && own.upstream)) && (
-          <section className={panelClass}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-medium">Upstream servers</h3>
-              {extra.reset_all && own.upstream && (
-                <p className="text-xs">
-                  Resetting override: {own.upstream.upstreams.join(", ")}
-                  {own.upstream.fallback_upstreams?.length
-                    ? `; fallback ${own.upstream.fallback_upstreams.join(", ")}`
-                    : ""}
-                </p>
-              )}
-              <Button
-                variant="ghost"
-                onClick={() => setField(["upstream"], undefined)}
-              >
-                Reset upstream
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {(effective?.upstream.upstreams ?? []).join(", ") ||
-                "No configured upstream"}{" "}
-              · {sourceLabel(effective?.upstream_source ?? {})}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="space-y-1 text-sm">
-                Primary servers
-                <textarea
-                  aria-label="Primary servers"
-                  className={`${selectClass} w-full`}
-                  value={primary}
-                  onChange={(e) => {
-                    setPrimary(e.target.value);
-                    setField(["upstream"], {
-                      upstreams: words(e.target.value),
-                      fallback_upstreams: words(fallback),
-                    });
-                  }}
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                Fallback servers
-                <textarea
-                  aria-label="Fallback servers"
-                  className={`${selectClass} w-full`}
-                  value={fallback}
-                  onChange={(e) => {
-                    setFallback(e.target.value);
-                    setField(["upstream"], {
-                      upstreams: words(primary),
-                      fallback_upstreams: words(e.target.value),
-                    });
-                  }}
-                />
-              </label>
-            </div>
-          </section>
-        )}
-        {(!only ||
-          field(["rules"]) ||
-          (extra.reset_all && own.rules !== undefined)) && (
+        {
           <section className={panelClass}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Custom rules</h3>
@@ -766,189 +745,199 @@ function PolicyForm({
                     "empty explicit collection"}
                 </p>
               )}
-              <Button
-                variant="ghost"
-                onClick={() => setField(["rules"], undefined)}
-              >
-                Reset rules
-              </Button>
-            </div>
-            {(effective?.rules ?? [])
-              .filter(
-                (r) =>
-                  r.source.kind !==
-                    (read.scope === "network" ? undefined : read.scope) ||
-                  r.source.id !==
-                    (read.scope === "network" ? undefined : read.id),
-              )
-              .map(({ rule, source }) => (
-                <p
-                  key={`${source.kind}:${source.id}:${rule.id}`}
-                  className="wrap-anywhere text-xs text-muted-foreground"
-                >
-                  {rule.action === "allow" ? "Allow" : "Block"} {rule.pattern} ·{" "}
-                  {sourceLabel(source)}
-                </p>
-              ))}
-            {ownRules.map((rule) => (
-              <div
-                key={rule.id}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm"
-              >
-                <span className="min-w-0 flex-1 basis-48 wrap-anywhere">
-                  {rule.action === "allow" ? "Allow" : "Block"} {rule.pattern} (
-                  {rule.kind}){!rule.enabled ? " · disabled" : ""}
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="min-h-10"
-                    aria-label={`${rule.enabled ? "Disable" : "Enable"} ${rule.pattern}`}
-                    onClick={() =>
-                      setField(
-                        ["rules"],
-                        ownRules.map((r) =>
-                          r.id === rule.id ? { ...r, enabled: !r.enabled } : r,
-                        ),
-                      )
-                    }
-                  >
-                    {rule.enabled ? "Disable" : "Enable"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="min-h-10"
-                    aria-label={`Remove ${rule.pattern}`}
-                    onClick={() =>
-                      setField(
-                        ["rules"],
-                        ownRules.filter((r) => r.id !== rule.id),
-                      )
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              </div>
-            ))}
-            <div className="flex flex-wrap gap-2">
-              <Input
-                aria-label="Rule domain or pattern"
-                className="min-w-40 flex-1"
-                value={rulePattern}
-                onChange={(e) => setRulePattern(e.target.value)}
-                placeholder="ads.example.com"
-              />
-              <select
-                aria-label="Rule action"
-                className={selectClass}
-                value={ruleAction}
-                onChange={(e) =>
-                  setRuleAction(e.target.value as typeof ruleAction)
-                }
-              >
-                <option value="deny">Block</option>
-                <option value="allow">Allow</option>
-              </select>
-              <select
-                aria-label="Rule match"
-                className={selectClass}
-                value={ruleKind}
-                onChange={(e) => setRuleKind(e.target.value as typeof ruleKind)}
-              >
-                {["exact", "suffix", "wildcard", "glob", "regex"].map((k) => (
-                  <option key={k}>{k}</option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                disabled={!rulePattern.trim()}
-                onClick={() => {
-                  setField(
-                    ["rules"],
-                    [
-                      ...ownRules,
-                      {
-                        id: policyRuleID(),
-                        kind: ruleKind,
-                        action: ruleAction,
-                        pattern: rulePattern.trim(),
-                        enabled: true,
-                      },
-                    ],
-                  );
-                  setRulePattern("");
-                }}
-              >
-                Add rule
-              </Button>
-            </div>
-          </section>
-        )}
-        {read.scope === "client" &&
-          (!only || extra.paused_until || extra.reset_pause) && (
-            <section className={panelClass}>
-              <h3 className="text-sm font-medium">Device pause</h3>
-              <p className="text-xs text-muted-foreground">
-                {effective?.global_paused
-                  ? "Global pause is active"
-                  : effective?.filtering
-                    ? "Filtering enabled (list availability shown above)"
-                    : "Filtering is off or paused"}
-                {desiredClient.paused_until
-                  ? ` · device pause until ${new Date(desiredClient.paused_until).toLocaleString()}`
-                  : ""}
-              </p>
-              {extra.paused_until && (
-                <p role="status" className="text-sm font-medium text-primary">
-                  Pending pause until{" "}
-                  {new Date(extra.paused_until).toLocaleString()} · applies on
-                  save.
-                </p>
-              )}
-              {extra.reset_pause && (
-                <p role="status" className="text-sm font-medium text-primary">
-                  Pending: resume device on save.
-                </p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {[5, 30, 60].map((minutes) => (
-                  <Button
-                    key={minutes}
-                    variant="outline"
-                    onClick={() =>
-                      setExtra((x) => {
-                        const n = {
-                          ...x,
-                          paused_until: new Date(
-                            Date.now() + minutes * 60000,
-                          ).toISOString(),
-                        };
-                        delete n.reset_pause;
-                        return n;
-                      })
-                    }
-                  >
-                    Pause {minutes} min
-                  </Button>
-                ))}
+              {read.scope !== "network" && (
                 <Button
                   variant="ghost"
+                  onClick={() => setField(["rules"], undefined)}
+                >
+                  Reset rules
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {(effective?.rules ?? []).filter((r) => !r.source.kind).length}{" "}
+              network rules apply automatically.{" "}
+              <a href="/rules" className="underline underline-offset-4">
+                View network rules
+              </a>
+            </p>
+            {read.scope === "client" && desiredClient.profile && (
+              <p className="text-xs text-muted-foreground">
+                Rules from the assigned profile also apply.{" "}
+                <a href="/profiles" className="underline underline-offset-4">
+                  View profiles
+                </a>
+              </p>
+            )}
+            {read.scope !== "network" && (
+              <>
+                {ownRules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 basis-48 wrap-anywhere">
+                      {rule.action === "allow" ? "Allow" : "Block"}{" "}
+                      {rule.pattern} ({rule.kind})
+                      {!rule.enabled ? " · disabled" : ""}
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-10"
+                        aria-label={`${rule.enabled ? "Disable" : "Enable"} ${rule.pattern}`}
+                        onClick={() =>
+                          setField(
+                            ["rules"],
+                            ownRules.map((r) =>
+                              r.id === rule.id
+                                ? { ...r, enabled: !r.enabled }
+                                : r,
+                            ),
+                          )
+                        }
+                      >
+                        {rule.enabled ? "Disable" : "Enable"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="min-h-10"
+                        aria-label={`Remove ${rule.pattern}`}
+                        onClick={() =>
+                          setField(
+                            ["rules"],
+                            ownRules.filter((r) => r.id !== rule.id),
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    aria-label="Rule domain or pattern"
+                    className="min-w-40 flex-1"
+                    value={rulePattern}
+                    onChange={(e) => setRulePattern(e.target.value)}
+                    placeholder="ads.example.com"
+                  />
+                  <select
+                    aria-label="Rule action"
+                    className={selectClass}
+                    value={ruleAction}
+                    onChange={(e) =>
+                      setRuleAction(e.target.value as typeof ruleAction)
+                    }
+                  >
+                    <option value="deny">Block</option>
+                    <option value="allow">Allow</option>
+                  </select>
+                  <select
+                    aria-label="Rule match"
+                    className={selectClass}
+                    value={ruleKind}
+                    onChange={(e) =>
+                      setRuleKind(e.target.value as typeof ruleKind)
+                    }
+                  >
+                    {["exact", "suffix", "wildcard", "glob", "regex"].map(
+                      (k) => (
+                        <option key={k}>{k}</option>
+                      ),
+                    )}
+                  </select>
+                  <Button
+                    variant="outline"
+                    disabled={!rulePattern.trim()}
+                    onClick={() => {
+                      setField(
+                        ["rules"],
+                        [
+                          ...ownRules,
+                          {
+                            id: policyRuleID(),
+                            kind: ruleKind,
+                            action: ruleAction,
+                            pattern: rulePattern.trim(),
+                            enabled: true,
+                          },
+                        ],
+                      );
+                      setRulePattern("");
+                    }}
+                  >
+                    Add rule
+                  </Button>
+                </div>
+              </>
+            )}
+          </section>
+        }
+        {read.scope === "client" && (
+          <section className={panelClass}>
+            <h3 className="text-sm font-medium">Device pause</h3>
+            <p className="text-xs text-muted-foreground">
+              {effective?.global_paused
+                ? "Global pause is active"
+                : effective?.filtering
+                  ? "Filtering enabled (list availability shown above)"
+                  : "Filtering is off or paused"}
+              {desiredClient.paused_until
+                ? ` · device pause until ${new Date(desiredClient.paused_until).toLocaleString()}`
+                : ""}
+            </p>
+            {extra.paused_until && (
+              <p role="status" className="text-sm font-medium text-primary">
+                Pending pause until{" "}
+                {new Date(extra.paused_until).toLocaleString()} · applies on
+                save.
+              </p>
+            )}
+            {extra.reset_pause && (
+              <p role="status" className="text-sm font-medium text-primary">
+                Pending: resume device on save.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {[5, 30, 60].map((minutes) => (
+                <Button
+                  key={minutes}
+                  variant="outline"
                   onClick={() =>
                     setExtra((x) => {
-                      const n = { ...x, reset_pause: true };
-                      delete n.paused_until;
+                      const n = {
+                        ...x,
+                        paused_until: new Date(
+                          Date.now() + minutes * 60000,
+                        ).toISOString(),
+                      };
+                      delete n.reset_pause;
                       return n;
                     })
                   }
                 >
-                  Resume device
+                  Pause {minutes} min
                 </Button>
-              </div>
-            </section>
-          )}
+              ))}
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  setExtra((x) => {
+                    const n = { ...x, reset_pause: true };
+                    delete n.paused_until;
+                    return n;
+                  })
+                }
+              >
+                Resume device
+              </Button>
+            </div>
+          </section>
+        )}
         {read.scope === "client" &&
           (extra.selectors || extra.lease_address) && (
             <section
@@ -981,7 +970,7 @@ function PolicyForm({
               </div>
             </section>
           )}
-        {read.scope === "client" && !only && (
+        {read.scope === "client" && (
           <section className={panelClass}>
             <details>
               <summary className="min-h-10 cursor-pointer content-center wrap-anywhere text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">
@@ -1066,6 +1055,62 @@ function PolicyForm({
             </details>
           </section>
         )}
+        <details className={panelClass}>
+          <summary className="cursor-pointer text-sm font-medium">
+            Advanced: upstream servers
+          </summary>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">Upstream servers</h3>
+            <Button
+              variant="ghost"
+              onClick={() => setField(["upstream"], undefined)}
+            >
+              Reset upstream
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {(effective?.upstream.upstreams ?? []).join(", ") ||
+              "No configured upstream"}{" "}
+            · {sourceLabel(effective?.upstream_source ?? {})}
+          </p>
+          {extra.reset_all && own.upstream && (
+            <p className="text-xs">
+              Using inherited upstream servers after saving.
+            </p>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              Primary servers
+              <textarea
+                aria-label="Primary servers"
+                className={`${selectClass} w-full`}
+                value={primary}
+                onChange={(e) => {
+                  setPrimary(e.target.value);
+                  setField(["upstream"], {
+                    upstreams: words(e.target.value),
+                    fallback_upstreams: words(fallback),
+                  });
+                }}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              Fallback servers
+              <textarea
+                aria-label="Fallback servers"
+                className={`${selectClass} w-full`}
+                value={fallback}
+                onChange={(e) => {
+                  setFallback(e.target.value);
+                  setField(["upstream"], {
+                    upstreams: words(primary),
+                    fallback_upstreams: words(e.target.value),
+                  });
+                }}
+              />
+            </label>
+          </div>
+        </details>
         <section
           className={`space-y-2 rounded-lg border border-border bg-background p-3 sm:p-4 ${changed ? "sticky bottom-2 z-10 shadow-sm" : ""}`}
         >
@@ -1098,14 +1143,7 @@ function PolicyForm({
                   Discard
                 </Button>
               )}
-              <Button
-                disabled={
-                  !changed ||
-                  busy ||
-                  (read.scope === "client" && !desiredClient.id && !promote)
-                }
-                onClick={() => void save()}
-              >
+              <Button disabled={!changed || busy} onClick={() => void save()}>
                 {busy
                   ? "Saving…"
                   : `Save ${changed} ${changed === 1 ? "change" : "changes"}`}
@@ -1125,20 +1163,23 @@ function PolicyForm({
             </Button>
           )}
         </section>
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() => {
-            setFields([]);
-            setSubscriptions([]);
-            setExtra({
-              reset_all: true,
-              ...(read.scope === "client" ? { reset_pause: true } : {}),
-            });
-          }}
-        >
-          Reset all overrides
-        </Button>
+        {read.scope !== "network" && (
+          <Button
+            variant="ghost"
+            disabled={busy}
+            className="self-start"
+            onClick={() => {
+              setFields([]);
+              setSubscriptions([]);
+              setExtra({
+                reset_all: true,
+                ...(read.scope === "client" ? { reset_pause: true } : {}),
+              });
+            }}
+          >
+            Reset all overrides
+          </Button>
+        )}
         {read.scope !== "network" && onDeleted && (
           <div className="flex flex-wrap items-center gap-3">
             <Button

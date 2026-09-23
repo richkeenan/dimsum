@@ -60,6 +60,8 @@ it.each(["matched", "unmatched", "unavailable"])(
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Allow ads.example" }));
+    expect(writes).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Create allow rule" }));
     if (mode === "matched")
       await waitFor(() =>
         expect(writes[0]).toMatchObject({ scope: "client", id: "stable" }),
@@ -67,7 +69,7 @@ it.each(["matched", "unmatched", "unavailable"])(
     else {
       expect(await screen.findByRole("alert")).toHaveTextContent(
         mode === "unmatched"
-          ? "no matched configured identity"
+          ? "Choose a profile for this device"
           : "Identity service unavailable",
       );
       expect(writes).toHaveLength(0);
@@ -113,17 +115,21 @@ it.each([
     fireEvent.click(
       screen.getByRole("button", { name: `${label} ads.example` }),
     );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Create ${label.toLowerCase()} rule`,
+      }),
+    );
     if (notice) {
       expect(await screen.findByRole("status")).toHaveTextContent(notice);
     } else {
       await waitFor(() => {
         const button = screen.getByRole("button", {
-          name: `${label} ads.example`,
+          name: `Create ${label.toLowerCase()} rule`,
         });
         expect(button).toBeDisabled();
-        expect(button).toHaveTextContent(label);
       });
-      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("rule active");
     }
   },
 );

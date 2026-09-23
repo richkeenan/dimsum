@@ -102,7 +102,9 @@ it("waits for scope before sending an advanced identity filter", () => {
   });
   act(() => vi.advanceTimersByTime(350));
   expect(onFilterChange).not.toHaveBeenCalled();
-  expect(screen.getByText(/Add a boot ID and generation/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/Select a query’s rule or upstream/),
+  ).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Filter boot_id"), {
     target: { value: "boot-a" },
   });

@@ -161,11 +161,19 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 	var fields []config.PolicyField
 	for _, sub := range m.Subscribe {
 		found := false
-		for _, existing := range c.Lists {
+		for i, existing := range c.Lists {
 			if existing.ID == sub.ID {
 				found = true
 				if existing.URL != sub.URL || existing.Dialect != sub.Dialect || existing.DomainKind != sub.DomainKind {
 					return nil, "", fmt.Errorf("subscription %q already exists with different source", sub.ID)
+				}
+				if sub.Enabled && !existing.Enabled {
+					// Selecting a disabled source can resume its downloads without
+					// changing which devices inherit it, including legacy defaults.
+					fields = append(fields, config.PolicyField{Path: []string{"lists", strconv.Itoa(i), "enabled"}, Value: true})
+					if existing.DefaultApply == nil {
+						fields = append(fields, config.PolicyField{Path: []string{"lists", strconv.Itoa(i), "default_apply"}, Value: false})
+					}
 				}
 			}
 		}

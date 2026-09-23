@@ -190,7 +190,7 @@ export default function Queries({
               rule_id: "Rule ID",
               upstream_id: "Upstream ID",
               boot_id: "Boot ID",
-              generation: "Generation",
+              generation: "Configuration version",
             }).map(([key, label]) => (
               <label
                 className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
@@ -206,13 +206,14 @@ export default function Queries({
             ))}
           </div>
           <p className="my-2.5 max-w-[75ch] text-xs leading-relaxed text-muted-foreground">
-            Rule and upstream IDs need a boot ID and generation. Use query
-            details to capture that scope. Source IDs match archived identities.
+            Rule and upstream IDs need a server run and configuration version.
+            Use query details to capture that scope. Source IDs match archived
+            identities.
           </p>
           {missingScope(draft) && (
             <p className="mt-2 text-xs text-destructive" role="alert">
-              Add a boot ID and generation to update these filters. Results
-              still show the previous selection.
+              Select a query’s rule or upstream in its details to filter by the
+              correct configuration. Results still show the previous selection.
             </p>
           )}
         </details>
@@ -383,7 +384,11 @@ export default function Queries({
                   </button>
                 ),
               },
-              { key: "generation", label: "Generation", hidden: !technical },
+              {
+                key: "generation",
+                label: "Configuration version",
+                hidden: !technical,
+              },
             ]}
           />
         </section>

@@ -60,7 +60,6 @@ const fields: Record<string, Field[]> = {
       options: ["domains", "hosts", "dns-adblock"],
     },
     { key: "domain_kind", label: "Domain scope", options: ["exact", "suffix"] },
-    { key: "enabled", label: "Enabled", type: "boolean" },
     {
       key: "default_apply",
       label: "Apply by default on the network",
@@ -141,7 +140,8 @@ export function editorDefaults(kind: string): Row {
     defaults.id = `${kind.slice(0, -1)}-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
   if (kind === "records")
     Object.assign(defaults, { ttl: 300, auto_ptr: false });
-  if (kind === "lists") defaults.default_apply = false;
+  if (kind === "lists")
+    Object.assign(defaults, { default_apply: true, enabled: true });
   return defaults;
 }
 export default function Configuration({
@@ -229,6 +229,15 @@ export default function Configuration({
           "The configuration revision is unavailable. Reload and retry.",
         );
       const body: Mutation = { revision: editRevision };
+      if (kind === "lists" && row && method !== "DELETE") {
+        row = {
+          ...row,
+          enabled:
+            row.default_apply === true || method === "POST"
+              ? true
+              : original?.enabled === true,
+        };
+      }
       if (method === "POST")
         body.item = kind === "upstreams" ? row?.address : row;
       else if (method === "DELETE") body.index = Number(original?.__index);
@@ -318,7 +327,7 @@ export default function Configuration({
             ? {
                 item: {
                   ...editorDefaults("lists"),
-                  default_apply: false,
+                  default_apply: enabled,
                   url: row.url,
                   dialect: row.dialect,
                   domain_kind: row.domain_kind,
@@ -327,7 +336,13 @@ export default function Configuration({
               }
             : {
                 edits: [
-                  { path: [String(row.__index), "enabled"], value: enabled },
+                  {
+                    path: [String(row.__index), "default_apply"],
+                    value: enabled,
+                  },
+                  ...(enabled
+                    ? [{ path: [String(row.__index), "enabled"], value: true }]
+                    : []),
                 ],
               }),
         },
@@ -457,7 +472,7 @@ export default function Configuration({
           <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border px-[18px] py-[13px]">
             <h2 className="text-sm font-medium">
               {kind === "lists"
-                ? "Blocklist subscriptions"
+                ? "Filter lists"
                 : kind === "clients"
                   ? "Configured friendly names"
                   : "Configured " + kind}
@@ -728,9 +743,8 @@ export default function Configuration({
               )}
               {kind === "lists" && Number(original?.__references) > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  This subscription has {String(original?.__references)}{" "}
-                  explicit device or profile assignments. Reset those list
-                  choices in{" "}
+                  This list has {String(original?.__references)} explicit device
+                  or profile assignments. Reset those list choices in{" "}
                   <a href="/clients" className="underline">
                     Devices
                   </a>{" "}

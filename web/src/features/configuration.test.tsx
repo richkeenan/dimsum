@@ -187,7 +187,7 @@ it("subscribes directly from the catalog with its parser settings", async () => 
       revision: "original-revision",
       item: {
         id: expect.stringMatching(/^list-/),
-        default_apply: false,
+        default_apply: true,
         url: "https://example.com/domains",
         dialect: "dns-adblock",
         domain_kind: "suffix",
@@ -216,14 +216,17 @@ it.each([true, false])(
     };
     const send = vi.spyOn(api, "send").mockResolvedValue({});
     render(<Configuration kind="lists" range="" />);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Recommended domains" }),
     );
     await waitFor(() =>
       expect(send).toHaveBeenCalledWith("lists", "PATCH", {
         revision: "original-revision",
-        edits: [{ path: ["0", "enabled"], value: !enabled }],
+        edits: [
+          { path: ["0", "default_apply"], value: !enabled },
+          ...(!enabled ? [{ path: ["0", "enabled"], value: true }] : []),
+        ],
       }),
     );
   },
@@ -305,7 +308,7 @@ it("adds a custom URL with the chosen format", async () => {
         dialect: "hosts",
         domain_kind: "exact",
         enabled: true,
-        default_apply: false,
+        default_apply: true,
       },
     }),
   );

@@ -111,20 +111,32 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   expect(edited.split("\n").filter((l) => l.trim().startsWith("#"))).toEqual(
     original.split("\n").filter((l) => l.trim().startsWith("#")),
   );
+  // This fixture has no DNS observation store. Seed an existing configured
+  // device through the real shared API, then exercise its UI settings.
+  const seeded = await page.evaluate(async () => {
+    const current = await (await fetch("/api/v1/clients")).json();
+    const result = await fetch("/api/v1/client-policy", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": sessionStorage.getItem("dimsum-csrf")!,
+      },
+      body: JSON.stringify({
+        revision: current.status.saved_revision,
+        scope: "client",
+        id: "browser-workstation",
+        create: true,
+        name: "Browser workstation",
+        selectors: { addresses: ["192.0.2.12"] },
+      }),
+    });
+    return result.status;
+  });
+  expect(seeded).toBe(200);
   await page.getByRole("link", { name: "Devices", exact: true }).click();
-  await page.getByRole("button", { name: "Add device", exact: true }).click();
-  await page
-    .getByLabel("Stable ID", { exact: true })
-    .fill("browser-workstation");
-  await page
-    .getByLabel("Matching addresses", { exact: true })
-    .fill("192.0.2.12");
-  await page.getByLabel("Name", { exact: true }).fill("Browser workstation");
-  await page
-    .getByRole("button", { name: "Create device", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/device=browser-workstation/);
-  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -142,8 +154,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     source: { kind: "client", id: "browser-workstation" },
   });
   await page
-    .getByRole("button", { name: "Reset Blocking", exact: true })
-    .click();
+    .getByLabel("DNS filtering", { exact: true })
+    .selectOption("inherit");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -166,6 +178,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await page
     .getByRole("button", { name: "Create profile", exact: true })
     .click();
+  await page.getByText("Advanced identification", { exact: true }).click();
   await page.getByLabel("Stable ID", { exact: true }).fill("browser-profile");
   await page.getByLabel("Name", { exact: true }).fill("Browser profile");
   await page
@@ -178,7 +191,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
       exact: true,
     }),
   ).toBeVisible();
-  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -210,7 +223,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     fullPage: true,
   });
   await page.goto("/profiles");
-  await page.getByLabel("Policy to edit").selectOption("browser-profile");
+  await page.getByRole("button", { name: "Profiles", exact: true }).click();
+  await page.getByLabel("Profile to edit").selectOption("browser-profile");
   await page
     .getByRole("button", { name: "Delete profile", exact: true })
     .click();
@@ -228,6 +242,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(
     page.getByRole("button", { name: "Save 0 changes", exact: true }),
   ).toBeVisible();
+  await page.getByText("Advanced: upstream servers", { exact: true }).click();
   await page
     .getByLabel("Primary servers", { exact: true })
     .fill("192.0.2.53:53");
@@ -262,7 +277,8 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   expect(devicePolicy.active.filtering).toBe(true);
   expect(devicePolicy.desired.overrides?.upstream).toBeUndefined();
   await page.goto("/profiles");
-  await page.getByLabel("Policy to edit").selectOption("browser-profile");
+  await page.getByRole("button", { name: "Profiles", exact: true }).click();
+  await page.getByLabel("Profile to edit").selectOption("browser-profile");
   await page
     .getByRole("button", { name: "Delete profile", exact: true })
     .click();
@@ -270,9 +286,15 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     .getByRole("button", { name: "Confirm delete", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Network defaults", exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+    page.getByRole("heading", {
+      name: "Profile: Browser profile",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Network defaults", exact: true })
+    .click();
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -285,9 +307,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     ).json(),
   );
   expect(devicePolicy.active.blocking).toEqual({ value: false, source: {} });
-  await page
-    .getByRole("button", { name: "Reset Blocking", exact: true })
-    .click();
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("on");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();

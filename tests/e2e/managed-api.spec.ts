@@ -72,7 +72,9 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   await expect(
     page.getByRole("heading", { name: "Devices", exact: true, level: 1 }),
   ).toBeVisible();
-  await expect(page.getByText(/122 queries/)).toBeVisible();
+  await expect(
+    page.getByRole("cell", { name: "122", exact: true }),
+  ).toBeVisible();
   expect(failures).toEqual([]);
   await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page

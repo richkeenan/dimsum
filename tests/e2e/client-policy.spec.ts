@@ -161,19 +161,20 @@ test("device policy: atomic list, sparse reset, profile, relink and narrow-scree
   );
   await page.goto("/clients");
   await expect(
-    page.getByText("Authoritative DHCP MAC", { exact: false }),
+    page.getByRole("columnheader", { name: "Profile", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Study tablet", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(/device=tablet/);
-  await page.getByLabel("Blocking", { exact: true }).selectOption("on");
-  await page.getByLabel("Changes only").check();
-  await expect(page.getByLabel("Primary servers")).toHaveCount(0);
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("on");
+  await expect(page.getByLabel("Primary servers")).not.toBeVisible();
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].fields).toEqual([{ path: ["blocking"], value: true }]);
-  await page.getByRole("button", { name: "Reset Blocking" }).click();
+  await page
+    .getByLabel("DNS filtering", { exact: true })
+    .selectOption("inherit");
   await page
     .getByRole("button", { name: "Save 1 change", exact: true })
     .click();
@@ -223,7 +224,7 @@ test("device policy: atomic list, sparse reset, profile, relink and narrow-scree
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(page.getByLabel("Blocking", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("DNS filtering", { exact: true })).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -239,14 +240,19 @@ test("device policy: atomic list, sparse reset, profile, relink and narrow-scree
   await expect(
     page.getByRole("button", { name: "Save 1 change", exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Changes only").focus();
-  await page.keyboard.press("Space");
-  await expect(page.getByLabel("Primary servers", { exact: true })).toHaveCount(
-    0,
-  );
-  await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
-  await page.getByRole('button', { name: 'Dark appearance', exact: true }).click();
-  await page.getByRole('button', { name: 'Close navigation', exact: true }).last().click();
+  await expect(
+    page.getByLabel("Primary servers", { exact: true }),
+  ).not.toBeVisible();
+  await page
+    .getByRole("button", { name: "Open navigation", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Dark appearance", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Close navigation", exact: true })
+    .last()
+    .click();
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: testInfo.outputPath("device-policy-mobile-dark-changes.png"),

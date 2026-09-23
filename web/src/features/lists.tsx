@@ -6,7 +6,6 @@ import { DataTable, Details, ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { Schema } from "./clients/model";
-import { ActivationStatus } from "./clients/policy";
 
 export type ListToggle = { id: unknown; enabled: boolean };
 
@@ -38,10 +37,6 @@ export function ListSubscriptions({
   const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
     "profiles",
   );
-  const [applicationError, setApplicationError] = useState<Error>();
-  const [applicationBusy, setApplicationBusy] = useState(false);
-  const [applicationStatus, setApplicationStatus] =
-    useState<Schema["Activation"]>();
   const configured = collectionRows(data);
   const presets = rows(catalog.data);
   // Match by URL rather than ID: existing/custom subscriptions may use any ID.
@@ -67,12 +62,10 @@ export function ListSubscriptions({
   return (
     <>
       {catalog.error && <ErrorNotice error={catalog.error} />}
-      {applicationError && <ErrorNotice error={applicationError} />}
-      {applicationStatus && <ActivationStatus status={applicationStatus} />}
       <p className="px-4 py-3 text-xs text-muted-foreground">
-        Subscriptions control downloads. Network defaults control application;
-        device and profile exceptions take precedence. New subscriptions are not
-        applied until selected.
+        Choose lists to use across your network. Lists download and update
+        automatically. You can choose different lists in a profile or a device’s
+        settings.
       </p>
       {catalog.loading && (
         <p className="px-4 py-3 text-xs text-muted-foreground">
@@ -84,7 +77,7 @@ export function ListSubscriptions({
         columns={[
           {
             key: "enabled",
-            label: "Subscribed",
+            label: "Use by default",
             render: (row) => (
               <label className="flex min-h-9 min-w-9 cursor-pointer items-center justify-center has-disabled:cursor-default">
                 <input
@@ -94,7 +87,7 @@ export function ListSubscriptions({
                   checked={
                     pending && pending.id === row.id
                       ? pending.enabled
-                      : row.enabled === true
+                      : (row.default_apply ?? row.enabled) === true
                   }
                   disabled={
                     disabled ||
@@ -138,13 +131,13 @@ export function ListSubscriptions({
               const status = changing
                 ? pending.enabled
                   ? "Downloading…"
-                  : "Disabling…"
+                  : "Saving…"
                 : row.enabled !== true
                   ? row.__index === undefined
                     ? row.available === false
                       ? "Unavailable"
-                      : "Not subscribed"
-                    : "Disabled"
+                      : "Available"
+                    : "Not downloaded"
                   : source?.error
                     ? source.usable === true
                       ? "Downloaded · update failed"
@@ -165,58 +158,8 @@ export function ListSubscriptions({
             },
           },
           {
-            key: "application",
-            label: "Network default",
-            render: (row) =>
-              row.__index === undefined ? (
-                <span className="text-xs text-muted-foreground">
-                  Not subscribed
-                </span>
-              ) : (
-                <label className="flex min-h-10 items-center gap-2">
-                  <input
-                    type="checkbox"
-                    aria-label={`Apply ${listLabel(row)} by default`}
-                    checked={
-                      row.default_apply === undefined
-                        ? row.enabled === true
-                        : row.default_apply === true
-                    }
-                    disabled={disabled || applicationBusy}
-                    onChange={async (e) => {
-                      const apply = e.target.checked;
-                      setApplicationBusy(true);
-                      setApplicationError(undefined);
-                      try {
-                        const current = await api.get<
-                          Schema["ClientPolicyRead"]
-                        >("client-policy?scope=network");
-                        setApplicationStatus(
-                          await api.send("client-policy", "PATCH", {
-                            revision: current.status.saved_revision,
-                            scope: "network",
-                            fields: [
-                              {
-                                path: ["lists", String(row.sourceID)],
-                                value: apply,
-                              },
-                            ],
-                          }),
-                        );
-                      } catch (e) {
-                        setApplicationError(e as Error);
-                      } finally {
-                        setApplicationBusy(false);
-                      }
-                    }}
-                  />
-                  Apply
-                </label>
-              ),
-          },
-          {
             key: "exceptions",
-            label: "Explicit assignments",
+            label: "Device & profile settings",
             render: (row) => {
               const id = String(row.sourceID);
               const devices =
@@ -227,6 +170,8 @@ export function ListSubscriptions({
                 profiles.data?.items?.filter(
                   (p) => p.policy?.lists?.[id] !== undefined,
                 ) ?? [];
+              if (!devices.length && !owners.length)
+                return <span className="text-muted-foreground">—</span>;
               return (
                 <details className="max-w-64 whitespace-normal text-xs">
                   <summary className="cursor-pointer py-2">

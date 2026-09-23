@@ -63,7 +63,7 @@ test("device drafts survive cancelled navigation and warn on browser unload", as
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Back to devices" }).click();
   await expect(
-    page.getByRole("button", { name: "Add device", exact: true }),
+    page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
 });
 
@@ -89,28 +89,38 @@ test("profile switching protects drafts and create form manages focus", async ({
     });
   });
   await page.goto("/profiles");
-  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
+  // Clicking the current tab must not clear protection for the still-visible draft.
+  await page
+    .getByRole("button", { name: "Network defaults", exact: true })
+    .click();
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByLabel("Policy to edit").selectOption("family");
-  await expect(page.getByLabel("Policy to edit")).toHaveValue("");
-  await expect(page.getByLabel("Blocking", { exact: true })).toHaveValue("off");
+  await page.getByRole("button", { name: "Profiles", exact: true }).click();
+  await expect(page.getByLabel("Profile to edit")).toHaveCount(0);
+  await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveValue(
+    "off",
+  );
   page.once("dialog", (dialog) => dialog.accept());
-  await page.getByLabel("Policy to edit").selectOption("family");
+  await page.getByRole("button", { name: "Profiles", exact: true }).click();
+  await page.getByLabel("Profile to edit").selectOption("family");
   await expect(
     page.getByRole("heading", { name: "Profile: Family" }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Create profile", exact: true })
     .click();
-  await expect(page.getByLabel("Stable ID", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("Name", { exact: true }).first()).toBeFocused();
+  await page.getByText("Advanced identification", { exact: true }).click();
   await page.getByLabel("Stable ID", { exact: true }).fill("new-profile");
-  await expect(page.getByLabel("Blocking", { exact: true })).toBeDisabled();
+  await expect(
+    page.getByLabel("DNS filtering", { exact: true }),
+  ).toBeDisabled();
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByLabel("Policy to edit").selectOption("");
+  await page.getByLabel("Profile to edit").selectOption("");
   await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
     "new-profile",
   );
-  await expect(page.getByLabel("Policy to edit")).toHaveValue("family");
+  await expect(page.getByLabel("Profile to edit")).toHaveValue("family");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(
@@ -118,7 +128,7 @@ test("profile switching protects drafts and create form manages focus", async ({
   ).toBeFocused();
 });
 
-test("changes-only shows pending pause and matching identity", async ({
+test("shows pending pause and matching identity before saving", async ({
   page,
 }) => {
   await fixtureAPI(page);
@@ -132,7 +142,6 @@ test("changes-only shows pending pause and matching identity", async ({
   await page
     .getByRole("button", { name: "Stage selector replacement" })
     .click();
-  await page.getByLabel("Changes only").check();
   await expect(page.getByText(/Pending pause until/)).toBeVisible();
   await expect(
     page.getByText("Addresses: 192.0.2.44", { exact: true }),
@@ -145,14 +154,29 @@ test("changes-only shows pending pause and matching identity", async ({
   ).toBeVisible();
 });
 
-test("new device drafts survive cancelled navigation", async ({ page }) => {
+test("observed device settings survive cancelled navigation", async ({
+  page,
+}) => {
   await fixtureAPI(page);
+  await page.route("**/api/v1/clients*", (route) =>
+    route.fulfill({
+      json: {
+        status: activation,
+        items: [],
+        observed_available: true,
+        observed: { items: [{ address: "192.0.2.20", name: "Tablet" }] },
+      },
+    }),
+  );
   await page.goto("/clients");
-  await page.getByRole("button", { name: "Add device", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByText("Advanced identification", { exact: true }).click();
   await page.getByLabel("Stable ID", { exact: true }).fill("new-tablet");
   await page.getByLabel("Name", { exact: true }).fill("New tablet");
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("button", { name: "Study laptop", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Profiles & defaults", exact: true })
+    .click();
   await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
     "new-tablet",
   );
@@ -164,7 +188,7 @@ test("new device drafts survive cancelled navigation", async ({ page }) => {
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Add device", exact: true }),
+    page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeFocused();
 });
 
@@ -191,7 +215,7 @@ test("successful saves and explicit discard clear navigation protection", async 
     .click();
   await page.getByRole("button", { name: "Back to devices" }).click();
   await expect(
-    page.getByRole("button", { name: "Add device", exact: true }),
+    page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
   expect(prompts).toBe(0);
 });

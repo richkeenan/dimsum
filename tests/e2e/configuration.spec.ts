@@ -84,7 +84,7 @@ test("list toggle shows pending activation and failed refresh preserves configur
     page.getByRole("checkbox", { name: "Fixture privacy", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("cell", { name: "Disabled", exact: true }),
+    page.getByRole("cell", { name: "Not downloaded", exact: true }),
   ).toBeVisible();
 });
 test("timed pause sends an absolute expiry and the saved revision", async ({
@@ -289,7 +289,7 @@ test("custom list editor waits for its revision and fits desktop and mobile", as
   await expect(dialog).not.toBeVisible();
 });
 
-test("checkbox subscriptions activate, persist, disable and re-enable without duplicates", async ({
+test("network list selection persists without disabling downloads used by profiles", async ({
   page,
 }) => {
   let items: Record<string, unknown>[] = [];
@@ -309,8 +309,8 @@ test("checkbox subscriptions activate, persist, disable and re-enable without du
         await downloading;
         items.push(body.item);
       } else {
-        const edit = body.edits[0];
-        items[Number(edit.path[0])][edit.path[1]] = edit.value;
+        for (const edit of body.edits)
+          items[Number(edit.path[0])][edit.path[1]] = edit.value;
       }
       revision++;
     }
@@ -345,8 +345,10 @@ test("checkbox subscriptions activate, persist, disable and re-enable without du
   ).toBeVisible();
   await expect(checkbox).toBeEnabled();
   await checkbox.uncheck();
-  await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
+  await expect(checkbox).not.toBeChecked();
   await expect(checkbox).toBeEnabled();
+  expect(items[0].enabled).toBe(true);
+  expect(items[0].default_apply).toBe(false);
   await checkbox.check();
   await expect(page.getByText("Downloaded", { exact: true })).toBeVisible();
   await page.reload();

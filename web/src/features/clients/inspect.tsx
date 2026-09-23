@@ -83,8 +83,8 @@ export function DomainInspector({ clientID = "" }: { clientID?: string }) {
             {result.handling}
           </p>
           <p className="text-xs text-muted-foreground">
-            {result.client_id || "Network defaults"} · {result.matching_method}{" "}
-            · generation {result.generation}
+            {clients.data?.items?.find((c) => c.policy_id === result.client_id)
+              ?.name || "Network defaults"}
           </p>
           {result.decision.rule_id && (
             <p className="break-all text-xs">

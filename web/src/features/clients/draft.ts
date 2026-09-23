@@ -24,5 +24,5 @@ export function usePolicyDraft() {
     shouldBlockFn: () => !confirmLeave(),
     enableBeforeUnload: dirty,
   });
-  return { onDirty, onCreateDirty, confirmLeave };
+  return { onDirty, onCreateDirty, confirmLeave, dirty };
 }

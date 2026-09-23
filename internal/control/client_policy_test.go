@@ -63,6 +63,30 @@ func TestClientPolicyAtomicSubscribePreviewAndConflict(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestClientPolicyReenableListPreservesNetworkApplication(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy-default", true: "explicit-off"}[explicit], func(t *testing.T) {
+			s, store := dhcpFixture(t)
+			item := map[string]any{"id": "adult", "url": "https://example.test/adult", "dialect": "domains", "domain_kind": "exact", "enabled": false}
+			if explicit {
+				item["default_apply"] = false
+			}
+			_, err := s.Mutate(t.Context(), "lists", "POST", Mutation{Revision: store.Inspect().SavedRevision, Item: item})
+			require.NoError(t, err)
+			m := ClientPolicyMutation{Revision: store.Inspect().SavedRevision, Scope: "profile", ID: "kids", Create: true, Subscribe: []PolicySubscription{{ID: "adult", URL: "https://example.test/adult", Dialect: "domains", DomainKind: "exact", Enabled: true}}, Fields: []config.PolicyField{{Path: []string{"lists", "adult"}, Value: true}}}
+			_, err = s.MutateClientPolicy(t.Context(), m)
+			require.NoError(t, err)
+			c := store.Snapshot().Config()
+			require.Len(t, c.Lists, 1)
+			assert.True(t, c.Lists[0].Enabled)
+			require.NotNil(t, c.Lists[0].DefaultApply)
+			assert.False(t, *c.Lists[0].DefaultApply)
+			enabled, _ := store.Snapshot().ClientPolicies().Network().List("adult")
+			assert.False(t, enabled)
+		})
+	}
+}
+
 func TestClientPolicyLeaseCreateRelinkAndLegacyName(t *testing.T) {
 	s, store := dhcpFixture(t)
 	s.options.DHCPInspect = func() dhcp.LeaseSnapshot {
