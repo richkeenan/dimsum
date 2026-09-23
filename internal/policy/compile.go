@@ -30,17 +30,19 @@ type SnapshotMemory struct {
 	Rules                                                               int
 }
 type PolicySnapshot struct {
-	selection   *Selection
-	scopes      map[string]Scope // sparse owner metadata; subscription entries stay 32 bytes
-	generation  uint64
-	rules       []ruleMeta
-	provenance  string
-	sharedText  []textRef
-	exact       exactIndex
-	suffix      suffixIndex
-	fallback    []compiledRule
-	fallbackIDs []uint32
-	memory      SnapshotMemory
+	// Selection views retain constant-size fallback availability summaries.
+	noFallback, noBaseFallback bool
+	selection                  *Selection
+	scopes                     map[string]Scope // sparse owner metadata; subscription entries stay 32 bytes
+	generation                 uint64
+	rules                      []ruleMeta
+	provenance                 string
+	sharedText                 []textRef
+	exact                      exactIndex
+	suffix                     suffixIndex
+	fallback                   []compiledRule
+	fallbackIDs                []uint32
+	memory                     SnapshotMemory
 	// A non-nil base marks a two-layer root; all indexes above belong to owners.
 	base      *PolicySnapshot
 	resources snapshotResources
@@ -265,10 +267,10 @@ func (s *PolicySnapshot) matchNumber(n Name, explain bool) (Decision, uint32) {
 }
 
 func (s *PolicySnapshot) matchOwnNumber(n Name, explain bool) (Decision, uint32) {
-	return s.matchSelectedNumber(n, explain, s.selection)
+	return s.matchSelectedNumber(n, explain, s.selection, s.noFallback)
 }
 
-func (s *PolicySnapshot) matchSelectedNumber(n Name, explain bool, selection *Selection) (Decision, uint32) {
+func (s *PolicySnapshot) matchSelectedNumber(n Name, explain bool, selection *Selection, noFallback bool) (Decision, uint32) {
 	d := Decision{Result: Forward, Generation: s.generation}
 	var winner uint32
 	visit := func(head uint32) {
@@ -302,9 +304,17 @@ func (s *PolicySnapshot) matchSelectedNumber(n Name, explain bool, selection *Se
 			visit(s.suffix.find(rev[:end]))
 		}
 	}
-	if len(s.fallback) > 0 {
-		labels, display := n.labels(), n.Display()
+	if !noFallback && len(s.fallback) > 0 {
+		var labels []string
+		var display string
 		for i := range s.fallback {
+			r := s.rules[s.fallbackIDs[i]-1]
+			if !selection.eligible(s.scope(r), snapshotClasses[r.class], s.text(s.sharedText[r.source])) {
+				continue
+			}
+			if labels == nil {
+				labels, display = n.labels(), n.Display()
+			}
 			if s.fallback[i].matches(n, labels, display) {
 				visit(s.fallbackIDs[i])
 			}

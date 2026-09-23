@@ -42,7 +42,21 @@ func NewSelection(profile, client string, sources []string) *Selection {
 func (s *PolicySnapshot) WithSelection(selection *Selection) *PolicySnapshot {
 	v := *s
 	v.selection = selection
+	v.noFallback = !s.hasEligibleFallback(selection)
+	if s.base != nil {
+		v.noBaseFallback = !s.base.hasEligibleFallback(selection)
+	}
 	return &v
+}
+
+func (s *PolicySnapshot) hasEligibleFallback(selection *Selection) bool {
+	for _, number := range s.fallbackIDs {
+		r := s.rules[number-1]
+		if selection.eligible(s.scope(r), snapshotClasses[r.class], s.text(s.sharedText[r.source])) {
+			return true
+		}
+	}
+	return false
 }
 
 func scopeRank(s ScopeKind) int {

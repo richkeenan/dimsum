@@ -90,7 +90,7 @@ func compileOverlay(generation uint64, ownerRules []Rule, base *PolicySnapshot, 
 
 func (s *PolicySnapshot) matchOverlay(n Name, explain bool) (Decision, uint32) {
 	owner, ownNumber := s.matchOwnNumber(n, explain)
-	base, baseNumber := s.base.matchSelectedNumber(n, explain, s.selection)
+	base, baseNumber := s.base.matchSelectedNumber(n, explain, s.selection, s.noBaseFallback)
 	winner, number := owner, ownNumber
 	if baseNumber != 0 {
 		better := ownNumber == 0
