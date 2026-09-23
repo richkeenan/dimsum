@@ -29,7 +29,12 @@ export function ClientFilter({
     ...(clients.data?.observed?.items ?? []),
     ...(clients.data?.items ?? []),
   ]) {
-    byAddress.set(client.address, client);
+    if (client.address) {
+      byAddress.set(client.address, {
+        address: client.address,
+        name: client.name ?? "",
+      });
+    }
   }
   const known = [...byAddress.values()].sort((a, b) =>
     (a.name || a.address).localeCompare(b.name || b.address),

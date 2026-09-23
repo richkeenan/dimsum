@@ -18,6 +18,7 @@ const Help = `dimsum control [--socket PATH] COMMAND
 Read operations (JSON):
   summary | timeseries | performance | queries | rankings [--query 'from=...&to=...']
   settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
+  client-policy [--query 'scope=client&id=stable-id'] | profiles
   query ID
   dhcp | dhcp-status | dhcp-leases | dhcp-reservations
   get dhcp|dhcp-status|dhcp-leases|dhcp-reservations
@@ -34,6 +35,8 @@ Mutation operations:
   delete RESOURCE JSON      {"revision":"...","index":0}
   blocking JSON             {"revision":"...","enabled":false,"pause_until":"RFC3339"}
   rules-test JSON            {"name":"example.org","generation":"1"}
+  client-policy-preview JSON revision, scope, id and changes; no save or download
+  patch client-policy JSON   same transaction; sparse fields/reset, selectors, profile, subscribe
   stage JSON                 revision and grouped scalar edits
   commit ID
   job JSON                   {"kind":"refresh|backup|restore|upstream-probe|support-bundle|dhcp-check","input":{...}}
@@ -121,12 +124,12 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		} else if len(args) != 1 {
 			return bad()
 		}
-	case "rules-test", "stage", "job", "password", "token-create":
+	case "rules-test", "client-policy-preview", "stage", "job", "password", "token-create":
 		if len(args) != 2 {
 			return bad()
 		}
 		method = "POST"
-		path = map[string]string{"rules-test": "/api/v1/rules/test", "stage": "/api/v1/config/transactions", "job": "/api/v1/jobs", "password": "/api/v1/password", "token-create": "/api/v1/tokens"}[args[0]]
+		path = map[string]string{"client-policy-preview": "/api/v1/client-policy/preview", "rules-test": "/api/v1/rules/test", "stage": "/api/v1/config/transactions", "job": "/api/v1/jobs", "password": "/api/v1/password", "token-create": "/api/v1/tokens"}[args[0]]
 		body = args[1]
 	case "token-revoke":
 		if len(args) != 2 || args[1] == "" {
@@ -153,7 +156,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if len(args) == 4 {
 			body = args[3]
 		}
-	case "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
+	case "client-policy", "profiles", "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
 		if len(args) != 1 {
 			return bad()
 		}

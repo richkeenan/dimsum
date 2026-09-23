@@ -15,6 +15,33 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resource := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if resource == "client-policy" || resource == "client-policy/preview" {
+		if resource == "client-policy" && r.Method == "GET" {
+			scope := r.URL.Query().Get("scope")
+			if scope == "" {
+				scope = "network"
+			}
+			v, e := s.service.ReadClientPolicy(scope, r.URL.Query().Get("id"))
+			s.result(w, r, v, e)
+			return
+		}
+		if resource == "client-policy" && r.Method == "PATCH" || resource == "client-policy/preview" && r.Method == "POST" {
+			var b control.ClientPolicyMutation
+			if !decode(w, r, &b) {
+				return
+			}
+			if resource == "client-policy/preview" {
+				v, e := s.service.PreviewClientPolicy(b)
+				s.result(w, r, v, e)
+			} else {
+				v, e := s.service.MutateClientPolicy(r.Context(), b)
+				s.result(w, r, v, e)
+			}
+			return
+		}
+		s.fail(w, r, 405, "method_not_allowed", "unsupported client policy operation")
+		return
+	}
 	if resource == "dhcp" || strings.HasPrefix(resource, "dhcp/") {
 		s.dhcpRoute(w, r, resource)
 		return
@@ -34,7 +61,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 			v = s.service.Catalog()
 		case "clients":
 			v, e = s.service.Clients(r.Context(), r.URL.Query())
-		case "settings", "lists", "rules", "records", "upstreams", "blocking":
+		case "settings", "lists", "rules", "records", "upstreams", "blocking", "profiles":
 			v, e = s.service.Inspect(resource)
 		case "summary", "queries", "rankings", "timeseries", "performance":
 			v, e = s.service.Data(r.Context(), resource, r.URL.Query())
@@ -73,15 +100,11 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resource == "rules/test" && r.Method == "POST" {
-		var b struct {
-			Name       string `json:"name"`
-			QType      string `json:"qtype"`
-			Generation string `json:"generation"`
-		}
+		var b control.ClientPolicyExplain
 		if !decode(w, r, &b) {
 			return
 		}
-		v, e := s.service.TestRule(b.Name, b.Generation)
+		v, e := s.service.ExplainClientPolicy(b)
 		s.result(w, r, v, e)
 		return
 	}

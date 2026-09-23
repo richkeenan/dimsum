@@ -27,6 +27,71 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/v1/client-policy:
+    x-mcp-tools:
+      get: {name: get_client_policy, description: Read desired and active effective policy with inherited field sources and subscription health for an explicit client ID or profile ID or the network}
+      patch: {name: update_client_policy, description: 'Atomically save revision-checked sparse policy, identity relinking, or subscription plus device assignment in authoritative YAML. Select an explicit ID from list_clients; unknown or ambiguous names require user selection. New subscriptions default to network application off. Read back status and source usability; application is not proof of a successful download.'}
+    get:
+      parameters:
+        - {name: scope, in: query, schema: {type: string, enum: [network, profile, client], default: network}}
+        - {name: id, in: query, schema: {type: string}, description: 'Required for client/profile. Legacy naming-only identity is address:<canonical IP>.'}
+      responses:
+        '200':
+          description: Saved desired policy and compiled effective values; active is null for a not-yet-active identity. Sources report download health separately.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientPolicyRead'}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      requestBody: &clientPolicyBody
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ClientPolicyMutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/client-policy/preview:
+    x-mcp-tools:
+      post: {name: preview_client_policy, description: Compile a revision-checked policy candidate without saving or downloading; report changed client IDs and pending downloads, readOnly: true}
+    post:
+      requestBody: *clientPolicyBody
+      responses:
+        '200':
+          description: Impact relative to saved desired configuration, using currently loaded subscription membership. No DNS lookup or download.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, id, effective, changed_clients, network_changed, downloads_pending]
+                properties:
+                  revision: {type: string}
+                  id: {type: string}
+                  effective:
+                    anyOf:
+                      - {$ref: '#/components/schemas/EffectiveClientPolicy'}
+                      - {type: 'null'}
+                  changed_clients: {type: array, items: {type: string}}
+                  network_changed: {type: boolean}
+                  downloads_pending: {type: array, items: {type: string}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/profiles:
+    x-mcp-tools:
+      get: {name: list_profiles, description: List saved reusable policy profiles; use update_client_policy with scope profile to create edit or delete by stable ID}
+    get:
+      responses:
+        '200':
+          description: Saved profiles and activation status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {$ref: '#/components/schemas/Activation'}
+                  configuration_error: {type: string}
+                  items: {type: array, items: {$ref: '#/components/schemas/PolicyProfile'}}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/dhcp:
     x-mcp-tools:
       get: {name: get_dhcp, description: Inspect saved DHCP settings and configuration revision before editing}
@@ -603,10 +668,16 @@ paths:
               required: [name]
               properties:
                 name: {type: string}
-                qtype: {type: string, description: Name-policy matcher is QTYPE independent}
+                qtype: {type: string, description: 'DNS type name or numeric type, defaults to A; local routing is type-aware. No DNS lookup is performed.'}
                 generation: {type: string, pattern: '^[0-9]+$'}
+                client_id: {type: string, description: Explicit configured ID; mutually exclusive with address}
+                address: {type: string, description: Select by address and an authoritative unexpired DHCP MAC if available; mutually exclusive with client_id}
       responses:
-        '200': {description: 'name, normalized, generation, decision from active policy matcher; not a DNS lookup'}
+        '200':
+          description: Active selected policy with blocking and pause, local routing and private reverse precedence; no upstream lookup or alias-chain fetch
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClientPolicyExplanation'}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/config/transactions:
     x-mcp-tools:
@@ -708,6 +779,196 @@ components:
     session: {type: apiKey, in: cookie, name: dimsum_session, description: Browser-session authentication; mutations also require Origin and X-CSRF-Token}
     bearer: {type: http, scheme: bearer, description: Opaque full-administrator token with independent lifetime until explicit revocation; checked on every HTTP request including MCP requests; no browser Origin/CSRF credentials required}
   schemas:
+    PolicyScope:
+      type: object
+      description: Empty object means network; otherwise the owning profile or client ID
+      properties:
+        kind: {type: string, enum: [profile, client]}
+        id: {type: string}
+    PolicySelectors:
+      type: object
+      additionalProperties: false
+      properties:
+        addresses: {type: array, items: {type: string}}
+        cidrs: {type: array, items: {type: string}}
+        macs: {type: array, items: {type: string}}
+    PolicyUpstream:
+      type: object
+      additionalProperties: false
+      required: [upstreams]
+      properties:
+        upstreams: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
+        fallback_upstreams: {type: array, maxItems: 16, items: {type: string}}
+    PolicyRule:
+      type: object
+      required: [id, kind, action, pattern, enabled]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [exact, suffix, wildcard, glob, regex]}
+        action: {type: string, enum: [allow, deny]}
+        pattern: {type: string}
+        enabled: {type: boolean}
+    PolicyOverrides:
+      type: object
+      properties:
+        blocking: {type: boolean}
+        lists: {type: object, additionalProperties: {type: boolean}}
+        upstream: {$ref: '#/components/schemas/PolicyUpstream'}
+        rules: {type: array, items: {$ref: '#/components/schemas/PolicyRule'}}
+    PolicyClient:
+      type: object
+      properties:
+        policy_id: {type: string, readOnly: true, description: Present in list_clients items; exact selector for get/update_client_policy, including derived legacy IDs. Never stored in YAML.}
+        id: {type: string, description: 'Omitted for legacy naming entries; effective identity is address:<canonical IP> until an explicit policy save with promote_id.'}
+        address: {type: string}
+        name: {type: string}
+        selectors: {$ref: '#/components/schemas/PolicySelectors'}
+        profile: {type: string}
+        overrides: {$ref: '#/components/schemas/PolicyOverrides'}
+        paused_until: {type: string, format: date-time}
+    PolicyProfile:
+      type: object
+      required: [id]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        policy: {$ref: '#/components/schemas/PolicyOverrides'}
+    PolicyField:
+      type: object
+      additionalProperties: false
+      required: [path]
+      description: 'Relative policy path: [blocking], [lists, subscription-id], [upstream], or [rules]. Set value or reset:true, never null. Explicit equal-to-parent values remain overrides. Rules replace this owner’s small custom-rule collection only.'
+      properties:
+        path: {type: array, minItems: 1, maxItems: 2, items: {type: string}}
+        reset: {type: boolean}
+        value:
+          oneOf:
+            - {type: boolean}
+            - {$ref: '#/components/schemas/PolicyUpstream'}
+            - {type: array, items: {$ref: '#/components/schemas/PolicyRule'}}
+      oneOf:
+        - required: [value]
+          properties:
+            reset: {const: false}
+        - required: [reset]
+          properties:
+            reset: {const: true}
+          not: {required: [value]}
+    PolicySubscription:
+      type: object
+      additionalProperties: false
+      required: [id, url, dialect, domain_kind, enabled]
+      properties:
+        id: {type: string}
+        url: {type: string}
+        dialect: {type: string}
+        domain_kind: {type: string, enum: [exact, suffix]}
+        enabled: {type: boolean}
+    ClientPolicyMutation:
+      type: object
+      additionalProperties: false
+      required: [revision, scope]
+      properties:
+        revision: {type: string, minLength: 1}
+        scope: {type: string, enum: [network, profile, client]}
+        id: {type: string, description: Explicit stable ID or legacy address identity; names are never selectors}
+        create: {type: boolean}
+        delete: {type: boolean, description: Delete by stable ID without other changes; referenced profiles are rejected until assignments are resolved}
+        promote_id: {type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$', description: Required when explicitly saving policy on a legacy address identity}
+        name: {type: string}
+        selectors: {$ref: '#/components/schemas/PolicySelectors', description: Replace all selectors and remove legacy address while retaining stable ID and policy}
+        lease_address: {type: string, description: 'Create or relink using MAC-only selectors from a generation-compatible unexpired committed DHCP lease. Mutually exclusive with selectors. No sticky dynamic IP is added.'}
+        profile: {type: string, description: Assign one profile; empty string removes the assignment}
+        paused_until: {type: string, format: date-time}
+        reset_pause: {type: boolean}
+        reset_all: {type: boolean, description: Remove all owner policy overrides; keep profile assignment and identity. Reset pause separately. Cannot be combined with fields.}
+        fields: {type: array, maxItems: 128, items: {$ref: '#/components/schemas/PolicyField'}}
+        subscribe: {type: array, maxItems: 64, items: {$ref: '#/components/schemas/PolicySubscription'}, description: 'Subscribe if ID is absent, always with default_apply:false; existing matching sources retain availability and application settings. Combine with fields [lists,id]=true for target-only application.'}
+    EffectivePolicyBool:
+      type: object
+      required: [value, source]
+      properties:
+        value: {type: boolean}
+        source: {$ref: '#/components/schemas/PolicyScope'}
+    EffectiveClientPolicy:
+      type: object
+      required: [id, profile_id, blocking, filtering, paused_until, global_paused, lists, upstream_source, route_id, upstream, override_count, rules]
+      properties:
+        id: {type: string}
+        profile_id: {type: string}
+        blocking: {$ref: '#/components/schemas/EffectivePolicyBool'}
+        filtering: {type: boolean, description: Effective blocking enabled and neither global nor device pause active; does not assert list download usability}
+        paused_until: {type: string, format: date-time}
+        global_paused: {type: boolean}
+        lists: {type: object, additionalProperties: {$ref: '#/components/schemas/EffectivePolicyBool'}}
+        upstream_source: {$ref: '#/components/schemas/PolicyScope'}
+        route_id: {type: string}
+        upstream:
+          type: object
+          required: [upstreams]
+          properties:
+            upstreams: {type: array, items: {type: string}, description: Empty when the network has no configured upstream}
+            fallback_upstreams: {type: array, items: {type: string}}
+        override_count: {type: integer}
+        rules:
+          type: array
+          items:
+            type: object
+            required: [rule, source]
+            properties:
+              rule: {$ref: '#/components/schemas/PolicyRule'}
+              source: {$ref: '#/components/schemas/PolicyScope'}
+    ClientPolicyRead:
+      type: object
+      required: [status, scope, id, desired, effective, active]
+      properties:
+        status: {$ref: '#/components/schemas/Activation'}
+        scope: {type: string, enum: [network, profile, client]}
+        id: {type: string}
+        desired:
+          anyOf:
+            - {$ref: '#/components/schemas/PolicyClient'}
+            - {$ref: '#/components/schemas/PolicyProfile'}
+            - {$ref: '#/components/schemas/NetworkPolicyDesired'}
+        effective: {$ref: '#/components/schemas/EffectiveClientPolicy'}
+        active:
+          anyOf:
+            - {$ref: '#/components/schemas/EffectiveClientPolicy'}
+            - {type: 'null'}
+    ClientPolicyExplanation:
+      type: object
+      required: [name, normalized, generation, client_id, matching_method, handling, effective, decision]
+      properties:
+        name: {type: string}
+        normalized: {type: string}
+        generation: {type: string, pattern: '^[0-9]+$'}
+        client_id: {type: string}
+        matching_method: {type: string, enum: [network, configured_id, address, dhcp_mac, cidr]}
+        authoritative_mac: {type: string}
+        handling: {type: string, enum: [policy, local, private_reverse]}
+        effective: {$ref: '#/components/schemas/EffectiveClientPolicy'}
+        decision:
+          type: object
+          required: [result, generation, rule_id, source_ids, scope]
+          properties:
+            result: {type: string, enum: [forward, allow, block, local, paused]}
+            generation: {type: string, pattern: '^[0-9]+$'}
+            rule_id: {type: string}
+            source_ids: {type: array, items: {type: string}}
+            scope: {$ref: '#/components/schemas/PolicyScope'}
+    NetworkPolicyDesired:
+      type: object
+      required: [lists, upstream, rules]
+      properties:
+        blocking: {type: boolean, description: Omitted means the built-in network default true}
+        lists: {type: object, additionalProperties: {type: boolean}, description: Only explicit default_apply values; omitted list IDs retain legacy enabled-source application}
+        upstream:
+          type: object
+          required: [upstreams]
+          properties:
+            upstreams: {type: array, items: {type: string}}
+            fallback_upstreams: {type: array, items: {type: string}}
+        rules: {type: array, items: {$ref: '#/components/schemas/PolicyRule'}}
     Token:
       type: object
       required: [id, name, created_at]
@@ -1054,6 +1315,9 @@ components:
               name_source: {type: string}
               name_expires: {type: string, format: date-time, description: Expiry of the derived client name; omitted for authoritative configured names.}
               name_fresh: {type: boolean}
+              client_id: {type: string, description: Currently selected configured identity; empty means network}
+              matching_method: {type: string, enum: [network, address, dhcp_mac, cidr]}
+              authoritative_mac: {type: string, description: Only present from an unexpired committed generation-compatible DHCP lease; discovery and reservations alone are not authority}
               count: {$ref: '#/components/schemas/Decimal'}
               blocked: {$ref: '#/components/schemas/Decimal'}
               last_seen: {type: string, format: date-time}
@@ -1114,12 +1378,7 @@ components:
         status: {$ref: '#/components/schemas/Activation'}
         items:
           type: array
-          items:
-            type: object
-            required: [address, name]
-            properties:
-              address: {type: string}
-              name: {type: string}
+          items: {$ref: '#/components/schemas/PolicyClient'}
         configuration_error: {type: string}
         observed_available: {type: boolean}
         observed: {$ref: '#/components/schemas/ObservedClients'}
@@ -1134,7 +1393,18 @@ components:
         recovered: {type: boolean}
         restart_required: {type: boolean}
         error: {type: string}
-        sources: {type: array, items: {type: object}}
+        sources:
+          type: array
+          items:
+            type: object
+            required: [id, enabled, usable, rules]
+            properties:
+              id: {type: string}
+              enabled: {type: boolean}
+              usable: {type: boolean, description: Last usable source membership exists; may remain true alongside refresh error}
+              rules: {type: integer}
+              sha256: {type: string}
+              error: {type: string}
         dashboard_hosts:
           description: Unaccepted exact local A/AAAA names pointing to this admin listener; returned after saving records. Approval is a separate revision-checked records PATCH.
           type: array

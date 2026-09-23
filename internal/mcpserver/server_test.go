@@ -48,7 +48,7 @@ func TestToolsDerivedFromSpec(t *testing.T) {
 	for _, tool := range list.Tools {
 		tools[tool.Name] = tool
 	}
-	for _, name := range []string{"get_summary", "list_queries", "get_query", "get_rankings", "get_timeseries", "list_clients", "get_settings", "list_filter_lists", "get_catalog", "explain_domain", "update_settings", "create_job", "commit_configuration"} {
+	for _, name := range []string{"get_client_policy", "preview_client_policy", "update_client_policy", "list_profiles", "get_summary", "list_queries", "get_query", "get_rankings", "get_timeseries", "list_clients", "get_settings", "list_filter_lists", "get_catalog", "explain_domain", "update_settings", "create_job", "commit_configuration"} {
 		require.Contains(t, tools, name)
 		assert.NotEmpty(t, tools[name].Description)
 	}
