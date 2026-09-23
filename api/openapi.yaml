@@ -1239,11 +1239,12 @@ components:
           maxItems: 10
           items:
             type: object
-            required: [address, name, count]
+            required: [address, name, name_source, count]
             properties:
               device: {$ref: '#/components/schemas/DeviceEnrichment'}
               address: {type: string}
               name: {type: string}
+              name_source: {type: string, description: Source of the displayed name, independent of device classification clues}
               count: {$ref: '#/components/schemas/Decimal'}
         domains:
           type: array

@@ -78,7 +78,7 @@ export function ClientIdentity({
           >
             {name || address}
           </span>
-          {device?.dns_guess && (!source || source === "dns-guess") && (
+          {source === "dns-guess" && (
             <span
               className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground"
               title="Guessed from recent DNS queries, not a verified device name"

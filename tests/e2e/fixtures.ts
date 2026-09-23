@@ -251,6 +251,7 @@ export async function fixtureAPI(page: Page) {
           "Media player",
         ].map((name, i) => ({
           name,
+          name_source: "override",
           address: `192.0.2.${12 + i}`,
           count: String(9100 - i * 750),
         })),

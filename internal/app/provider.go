@@ -96,10 +96,11 @@ type historyDetail struct {
 	UpdatedAt                 time.Time `json:"updated_at"`
 }
 type rankedClient struct {
-	Device  *clients.Enrichment `json:"device,omitempty"`
-	Address string              `json:"address"`
-	Name    string              `json:"name"`
-	Count   string              `json:"count"`
+	Device     *clients.Enrichment `json:"device,omitempty"`
+	Address    string              `json:"address"`
+	Name       string              `json:"name"`
+	NameSource string              `json:"name_source"`
+	Count      string              `json:"count"`
 }
 type rankedDomain struct {
 	Name  string `json:"name"`
@@ -557,7 +558,7 @@ func (h *historyProvider) Rankings(ctx context.Context, q url.Values) (any, erro
 		}
 		address := netip.AddrFrom16([16]byte(b)).Unmap()
 		name := h.named(address)
-		result.Clients = append(result.Clients, rankedClient{Device: name.Device, Address: address.String(), Name: name.Name, Count: decimal(row.Count)})
+		result.Clients = append(result.Clients, rankedClient{Device: name.Device, Address: address.String(), Name: name.Name, NameSource: name.Source, Count: decimal(row.Count)})
 	}
 	for _, row := range rankings.BlockedDomains {
 		n, e := policy.NameFromWire([]byte(row.Key))

@@ -128,6 +128,7 @@ export default function Overview({
                       <ClientIdentity
                         address={text(r.address)}
                         name={r.name ? String(r.name) : undefined}
+                        source={r.name_source ? String(r.name_source) : undefined}
                         device={r.device as Device | undefined}
                       />
                     </button>

@@ -81,6 +81,15 @@ it("marks DNS guesses and explains their observed domains", () => {
     />,
   );
   expect(screen.queryByText("DNS guess")).not.toBeInTheDocument();
+  view.rerender(
+    <ClientIdentity
+      address="192.0.2.20"
+      name="Retained camera name"
+      device={device}
+    />,
+  );
+  expect(screen.getByText("Retained camera name")).toBeVisible();
+  expect(screen.queryByText("DNS guess")).not.toBeInTheDocument();
 });
 
 it("does not label hostname-based inference as a DNS query guess", () => {

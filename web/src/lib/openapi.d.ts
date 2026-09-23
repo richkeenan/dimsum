@@ -2462,6 +2462,8 @@ export interface components {
         device?: components["schemas"]["DeviceEnrichment"];
         address: string;
         name: string;
+        /** @description Source of the displayed name */
+        name_source: string;
         count: components["schemas"]["Decimal"];
       }[];
       domains: {
