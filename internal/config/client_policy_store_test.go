@@ -43,3 +43,42 @@ func TestClientPolicyActivationRecoveryAndSubscriptionSharing(t *testing.T) {
 	assert.Equal(t, "tablet", selected.ClientID())
 	assert.Equal(t, policy.Block, selected.Policy().Match(n).Result)
 }
+
+func TestClientRouteLifetimesPublication(t *testing.T) {
+	s, d := manifestFeedStore(t, 10)
+	c := d.Config()
+	c.Profiles = []Profile{{ID: "alternate", Policy: PolicyOverrides{Upstream: &UpstreamRoute{Upstreams: []string{"192.0.2.53:53"}}}}}
+	c.Clients = []ClientOverride{
+		{ID: "first", Profile: "alternate", Selectors: ClientSelectors{Addresses: []string{"192.0.2.1"}}},
+		{ID: "second", Selectors: ClientSelectors{Addresses: []string{"192.0.2.2"}}, Overrides: c.Profiles[0].Policy},
+	}
+	save := func() {
+		b, err := yaml.Marshal(c)
+		require.NoError(t, err)
+		d, err := Parse(b)
+		require.NoError(t, err)
+		_, err = s.Save(t.Context(), s.Inspect().SavedRevision, d)
+		require.NoError(t, err)
+	}
+	save()
+	old := s.Snapshot()
+	a, ok := old.ClientPolicies().Client("first")
+	require.True(t, ok)
+	b, ok := old.ClientPolicies().Client("second")
+	require.True(t, ok)
+	assert.Equal(t, a.RouteKey(), b.RouteKey(), "identical routes share transport and raw answers")
+	assert.NotEqual(t, old.ClientPolicies().Network().RouteKey(), a.RouteKey())
+	lifetime := old.RouteContext(a.RouteKey())
+	_, ok = old.ClientPolicies().RouteOptions(999)
+	assert.False(t, ok)
+	assert.ErrorIs(t, old.RouteContext(999).Err(), context.Canceled)
+	c.Clients[0].Overrides.Blocking = boolPtr(false)
+	save()
+	assert.Same(t, lifetime, s.Snapshot().RouteContext(a.RouteKey()))
+	assert.Same(t, old.UpstreamContext(), s.Snapshot().UpstreamContext())
+	c.Clients = nil
+	c.Profiles = nil
+	save()
+	assert.ErrorIs(t, lifetime.Err(), context.Canceled, "publication retires unused routes without queries")
+	assert.NoError(t, old.RouteContext(old.ClientPolicies().Network().RouteKey()).Err())
+}

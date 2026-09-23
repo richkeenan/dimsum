@@ -301,12 +301,30 @@ func (s *Store) publish(snap *Snapshot, sources []SourceStatus, recovered bool) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	old := s.active.Load()
+	snap.routeLifetimes = make(map[string]routeLifetime)
+	for _, route := range snap.clientPolicies.routes {
+		var lifetime routeLifetime
+		if old != nil {
+			lifetime = old.routeLifetimes[route.id]
+		}
+		if lifetime.ctx == nil {
+			lifetime.ctx, lifetime.cancel = context.WithCancel(context.Background())
+		}
+		snap.routeLifetimes[route.id] = lifetime
+	}
 	if old != nil && old.upstreamContext != nil && reflect.DeepEqual(old.UpstreamOptions(), snap.UpstreamOptions()) {
 		snap.upstreamContext, snap.upstreamCancel = old.upstreamContext, old.upstreamCancel
 	} else {
 		snap.upstreamContext, snap.upstreamCancel = context.WithCancel(context.Background())
 	}
 	s.active.Store(snap)
+	if old != nil {
+		for id, lifetime := range old.routeLifetimes {
+			if _, retained := snap.routeLifetimes[id]; !retained {
+				lifetime.cancel()
+			}
+		}
+	}
 	if old != nil && old.upstreamContext != snap.upstreamContext && old.upstreamCancel != nil {
 		old.upstreamCancel()
 	}

@@ -20,6 +20,27 @@ type Snapshot struct {
 	subscriptions   *subscriptionState
 	upstreamContext context.Context
 	upstreamCancel  context.CancelFunc
+	routeLifetimes  map[string]routeLifetime
+}
+
+type routeLifetime struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+// RouteContext survives policy-only generations and is cancelled on removal of
+// this exact route. A removed/restored route gets a fresh lifetime.
+func (s *Snapshot) RouteContext(key upstream.RouteKey) context.Context {
+	if s.clientPolicies != nil {
+		if r := s.clientPolicies.routes[key]; r != nil {
+			if lifetime, ok := s.routeLifetimes[r.id]; ok {
+				return lifetime.ctx
+			}
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx
 }
 
 func (s *Snapshot) Config() Config                  { return s.document.Config() }

@@ -33,6 +33,7 @@ type EffectivePolicy struct {
 type effectiveRoute struct {
 	id  string
 	dns DNS
+	key upstream.RouteKey
 }
 
 func (p *EffectivePolicy) ClientID() string               { return p.clientID }
@@ -42,9 +43,12 @@ func (p *EffectivePolicy) List(id string) (bool, policy.Scope) {
 	v := p.lists[id]
 	return v.value, v.source
 }
-func (p *EffectivePolicy) PausedUntil() time.Time            { return p.pausedUntil }
-func (p *EffectivePolicy) Policy() *policy.PolicySnapshot    { return p.matcher }
-func (p *EffectivePolicy) RouteID() string                   { return p.route.id }
+func (p *EffectivePolicy) PausedUntil() time.Time         { return p.pausedUntil }
+func (p *EffectivePolicy) Policy() *policy.PolicySnapshot { return p.matcher }
+func (p *EffectivePolicy) RouteID() string                { return p.route.id }
+
+// RouteKey is generation-local; pair it with Snapshot.Generation in caches.
+func (p *EffectivePolicy) RouteKey() upstream.RouteKey       { return p.route.key }
 func (p *EffectivePolicy) UpstreamSource() policy.Scope      { return p.routeSource }
 func (p *EffectivePolicy) UpstreamOptions() upstream.Options { return p.route.dns.UpstreamOptions() }
 
@@ -57,6 +61,16 @@ type ClientPolicies struct {
 	macs              map[[6]byte]*EffectivePolicy
 	prefixes          map[netip.Prefix]*EffectivePolicy
 	bits4, bits6      []int
+	routes            map[upstream.RouteKey]*effectiveRoute
+}
+
+// RouteOptions is a cold-path accessor returning owned transport options.
+func (v *ClientPolicies) RouteOptions(key upstream.RouteKey) (upstream.Options, bool) {
+	r := v.routes[key]
+	if r == nil {
+		return upstream.Options{}, false
+	}
+	return r.dns.UpstreamOptions(), true
 }
 
 func (v *ClientPolicies) Network() *EffectivePolicy { return v.network }
@@ -142,6 +156,7 @@ func (c Config) compileClientPolicies(generation uint64, subscriptions *policy.P
 	}
 	v := &ClientPolicies{clients: map[string]*EffectivePolicy{}, profiles: map[string]*EffectivePolicy{}, addresses: map[netip.Addr]*EffectivePolicy{}, macs: map[[6]byte]*EffectivePolicy{}, prefixes: map[netip.Prefix]*EffectivePolicy{}}
 	routes := map[string]*effectiveRoute{}
+	v.routes = map[upstream.RouteKey]*effectiveRoute{}
 	internRoute := func(d DNS) *effectiveRoute {
 		b, _ := json.Marshal(d.UpstreamOptions())
 		id := fmt.Sprintf("%x", sha256.Sum256(b))
@@ -152,8 +167,9 @@ func (c Config) compileClientPolicies(generation uint64, subscriptions *policy.P
 		d.Upstreams = slices.Clone(d.Upstreams)
 		d.Fallback = slices.Clone(d.Fallback)
 		d.BootstrapDNS = slices.Clone(d.BootstrapDNS)
-		r := &effectiveRoute{id: id, dns: d}
+		r := &effectiveRoute{id: id, dns: d, key: upstream.RouteKey(len(routes) + 1)}
 		routes[id] = r
+		v.routes[r.key] = r
 		return r
 	}
 	network := &EffectivePolicy{blocking: effectiveBool{value: true}, lists: map[string]effectiveBool{}, route: internRoute(c.DNS)}
