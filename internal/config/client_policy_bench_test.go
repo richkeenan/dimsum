@@ -60,6 +60,7 @@ func BenchmarkClientPolicyScaling(b *testing.B) {
 				}
 				b.StopTimer()
 				b.ReportMetric(float64(len(matchers)), "matchers")
+				b.ReportMetric(float64(base.Memory().TotalBytes), "subscription-B")
 				b.ReportMetric(float64(retained), "view-retained-B")
 				runtime.KeepAlive(view)
 				runtime.KeepAlive(c)

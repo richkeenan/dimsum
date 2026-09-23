@@ -66,6 +66,32 @@ For policy lookup and index-build benchmarks, follow the
 [rules README](rules/README.md). Those fixtures include up to one million rule
 memberships and need more memory than the small examples above.
 
+### Device policy selection and sharing
+
+```sh
+go test ./internal/config -run '^$' -bench 'BenchmarkClient(Selection|PolicyScaling)$' -benchmem -count=5
+go test ./internal/resolve -run '^$' -bench 'BenchmarkWarm.*Pipeline$' -benchmem -count=5
+```
+
+The scaling fixture uses one synthetic 100,000-rule subscription with 1, 256 or
+4,096 devices. Common policies share one matcher; distinct policies add one
+custom rule per device and retain separate small matching views. The timed
+operation selects the final device by IPv6 address and matches one subscribed
+suffix. Compilation, normalization and GC are outside the timed loop.
+
+`subscription-B` is the subscription index's structural memory accounting;
+`view-retained-B` is the post-GC heap delta for compiling the owner views, with
+the subscription and input configuration already resident. Small heap deltas
+are noisy; these are neither peak allocation nor process RSS measurements.
+`matchers` verifies the expected sharing count. Resolver warm benchmarks include
+cache reconstruction and per-device filtering, but exclude sockets and statistics.
+
+For a before/after comparison, run identical benchmark names and fixed inputs
+from recorded clean source trees, sequentially without other qualification jobs.
+Use several samples and report both latency and allocation changes. Features
+absent in an older revision have no direct baseline; label their measurements
+separately rather than substituting another workload.
+
 ## Run the dashboard soak test
 
 Build a binary for the machine running the test using the
