@@ -122,6 +122,41 @@ If you keep instructions for your agent, you can include:
 > and activation status. Check background jobs for completion. Report what
 > changed and whether it is active.
 
+### Edit paths
+
+Collection tools use paths **relative to the collection**, starting with the
+zero-based index from the latest read. For example, enabling the second filter
+subscription with `update_filter_lists` uses:
+
+```json
+{"body":{"revision":"<saved_revision>","edits":[{"path":["1","enabled"],"value":true}]}}
+```
+
+Do not include `lists` in that path. Likewise, `update_clients` uses
+`["0","name"]`, `update_rules` uses `["0","enabled"]`, and
+`update_upstreams` uses `["0"]` to replace the first endpoint. Settings edits
+through `update_settings` and `stage_configuration` instead start at the
+configuration root, such as `["lists","1","enabled"]`.
+
+A duplicated collection prefix returns `bad_request` with a correction in
+`field_errors`. Each field error contains a `path` relative to the request body
+and a `message`. Rejected edits do not save or activate configuration.
+
+### Explaining names from query logs
+
+Pass a query's displayed `name` directly to `explain_domain`. Query filtering and
+explanation accept the same byte-safe DNS presentation, including labels such as
+`r1---edge.example` and three-digit decimal escapes for arbitrary label bytes.
+In JSON, escape the backslash: `{"body":{"name":"a\\046b.example"}}` denotes a
+label containing a literal dot. An empty name or `.` denotes the DNS root.
+Unicode hostnames are also accepted through IDNA normalization, but cannot be
+mixed with byte escapes. Configuration hostname validation remains stricter.
+
+Explanation evaluates the active selected policy without making a DNS lookup;
+it does not fetch a CNAME chain or reconstruct historical policy. When running
+independent diagnostic calls in parallel, collect each success or error rather
+than letting one rejected name hide the other results.
+
 ## Connection troubleshooting
 
 - **Cannot connect:** check that the agent client can reach the MCP URL from

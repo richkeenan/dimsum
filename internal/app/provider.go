@@ -327,73 +327,13 @@ func parseQType(value string) (uint16, error) {
 // presentationWire accepts the byte-safe Display representation, including
 // decimal escapes, so a displayed binary label can be used for an exact filter.
 func presentationWire(value string) ([]byte, error) {
-	if value == "." {
-		return []byte{0}, nil
+	n, err := policy.ParseObservedName(value)
+	if err != nil {
+		return nil, invalid("invalid exact name filter: " + err.Error())
 	}
-	if !strings.Contains(value, "\\") {
-		n, e := policy.NormalizeName(value)
-		if e != nil {
-			return nil, invalid("invalid exact name filter")
-		}
-		value = n.Display()
-	}
-	value = strings.TrimSuffix(value, ".")
-	var wire, label []byte
-	appendLabel := func() error {
-		if len(label) == 0 || len(label) > 63 {
-			return invalid("invalid exact name label")
-		}
-		wire = append(wire, byte(len(label)))
-		wire = append(wire, label...)
-		label = nil
-		return nil
-	}
-	for i := 0; i < len(value); i++ {
-		switch value[i] {
-		case '.':
-			if e := appendLabel(); e != nil {
-				return nil, e
-			}
-		case '\\':
-			if i+3 >= len(value) {
-				return nil, invalid("name escapes require three decimal digits")
-			}
-			digits := value[i+1 : i+4]
-			for _, digit := range digits {
-				if digit < '0' || digit > '9' {
-					return nil, invalid("name escapes require three decimal digits")
-				}
-			}
-			n, e := strconv.ParseUint(digits, 10, 8)
-			if e != nil {
-				return nil, invalid("invalid name escape")
-			}
-			label = append(label, byte(n))
-			i += 3
-		default:
-			label = append(label, value[i])
-		}
-	}
-	if e := appendLabel(); e != nil {
-		return nil, e
-	}
-	wire = append(wire, 0)
-	if _, e := policy.NameFromWire(wire); e != nil {
-		return nil, invalid("invalid exact name wire length")
-	}
-	for i := 0; i < len(wire); {
-		size := int(wire[i])
-		if size == 0 {
-			break
-		}
-		for j := i + 1; j < i+1+size; j++ {
-			if wire[j] >= 'A' && wire[j] <= 'Z' {
-				wire[j] += 'a' - 'A'
-			}
-		}
-		i += size + 1
-	}
-	return wire, nil
+	var wire [255]byte
+	length := n.CopyWire(wire[:])
+	return wire[:length], nil
 }
 func (h *historyProvider) queryOptions(q url.Values) (storage.QueryOptions, error) {
 	var o storage.QueryOptions

@@ -82,9 +82,9 @@ func (s *Service) ExplainClientPolicy(m ClientPolicyExplain) (ClientPolicyExplan
 	if m.ClientID != "" && m.Address != "" {
 		return result, fmt.Errorf("select client_id or address, not both")
 	}
-	n, err := policy.NormalizeName(m.Name)
+	n, err := policy.ParseObservedName(m.Name)
 	if err != nil {
-		return result, err
+		return result, &FieldError{Path: []string{"name"}, Message: err.Error()}
 	}
 	now := time.Now()
 	p := snap.ClientPolicies().Network()
@@ -123,11 +123,10 @@ func (s *Service) ExplainClientPolicy(m ClientPolicyExplain) (ClientPolicyExplan
 	wire := make([]byte, 12)
 	wire[2] = 1
 	wire[5] = 1
-	for _, label := range strings.Split(n.Display(), ".") {
-		wire = append(wire, byte(len(label)))
-		wire = append(wire, label...)
-	}
-	wire = append(wire, 0, 0, 0, 0, 1)
+	var nameWire [255]byte
+	length := n.CopyWire(nameWire[:])
+	wire = append(wire, nameWire[:length]...)
+	wire = append(wire, 0, 0, 0, 1)
 	binary.BigEndian.PutUint16(wire[len(wire)-4:], typ)
 	var q dnswire.Message
 	if err = dnswire.ParseRequest(wire, &q); err != nil {

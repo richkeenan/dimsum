@@ -231,10 +231,16 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, messag
 	id, _ := r.Context().Value(requestKey{}).(string)
 	writeJSON(w, status, map[string]any{"error": map[string]any{"code": code, "message": message, "request_id": id, "field_errors": []any{}}})
 }
-func (s *Server) fail(w http.ResponseWriter, r *http.Request, status int, code, message string) {
+func (s *Server) fail(w http.ResponseWriter, r *http.Request, status int, code, message string, fields ...control.FieldError) {
 	message = control.RedactMessage(message)
 	id, _ := r.Context().Value(requestKey{}).(string)
 	detail := map[string]any{"code": code, "message": message, "request_id": id, "field_errors": []any{}}
+	if len(fields) > 0 {
+		for i := range fields {
+			fields[i].Message = control.RedactMessage(fields[i].Message)
+		}
+		detail["field_errors"] = fields
+	}
 	if status == 409 || status == 422 {
 		if a, e := s.service.Status(); e == nil {
 			detail["active_generation"] = a.ActiveGeneration
@@ -263,6 +269,11 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, v any, e error) 
 		code, status = "capacity", 429
 	case errors.Is(e, context.DeadlineExceeded):
 		code, status = "deadline_exceeded", 503
+	}
+	var field *control.FieldError
+	if errors.As(e, &field) {
+		s.fail(w, r, status, code, e.Error(), *field)
+		return
 	}
 	s.fail(w, r, status, code, e.Error())
 }

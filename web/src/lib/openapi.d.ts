@@ -1082,7 +1082,7 @@ export interface paths {
           to?: components["parameters"]["To"];
           limit?: components["parameters"]["Limit"];
           cursor?: string;
-          /** @description Exact name; accepts canonical DNS decimal escapes from displayed names, or dot for root. */
+          /** @description Exact DNS name copied from query logs, including three-digit decimal escapes, or a Unicode hostname (IDNA). Unicode and escapes cannot be mixed. Empty string or dot denotes root. */
           name?: string;
           /** @description Literal observed IPv4 or IPv6 address without zone */
           client?: string;
@@ -1791,6 +1791,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
+            /** @description DNS name copied from query logs, including ASCII labels and three-digit decimal escapes for arbitrary bytes, or a Unicode hostname (IDNA). Unicode and escapes cannot be mixed. Empty string or dot denotes root. No DNS lookup is performed. */
             name: string;
             /** @description DNS type name or numeric type, defaults to A; local routing is type-aware. No DNS lookup is performed. */
             qtype?: string;
@@ -2811,6 +2812,7 @@ export interface components {
       /** @description For PATCH /records only, without edits/item/index: accept this saved local A/AAAA name for dashboard access. Rechecks local interface and admin listener, persists admin.allowed_hosts, and activates without restart. */
       accept_admin_host?: string;
       edits?: {
+        /** @description Collection PATCH paths are relative to the collection and start with a zero-based index string: ["1","enabled"] for lists, ["0","name"] for clients, ["0"] for upstreams. Omit the collection prefix. Settings PATCH and staged configuration paths start at the configuration root, for example ["lists","1","enabled"] or ["dns","bootstrap_dns"]. Read the current collection and saved_revision before editing. */
         path: string[];
         /** @description String arrays are accepted only for naming.mdns.interfaces (up to 8 names, 64 characters each) and dns.bootstrap_dns (1–16 literal IP:port resolvers). Set bootstrap_dns to ["1.1.1.1:53","9.9.9.9:53"] to reset to defaults. An empty bootstrap list is invalid; other paths require scalars. */
         value: (string | number | boolean) | string[];
@@ -2836,7 +2838,12 @@ export interface components {
         message: string;
         request_id: string;
         active_generation?: string;
-        field_errors: Record<string, never>[];
+        field_errors: {
+          /** @description Path relative to the JSON request body, for example ["edits","0","path"] or ["name"]. */
+          path: string[];
+          /** @description Explanation and correction for this field */
+          message: string;
+        }[];
       };
     };
   };

@@ -300,6 +300,18 @@ func (s *Service) candidate(resource, method string, m Mutation) (*config.Docume
 		}
 		if resource != "settings" {
 			for i := range m.Edits {
+				p := m.Edits[i].Path
+				if len(p) > 0 && (p[0] == resource || p[0] == path(resource)[0]) {
+					relative := p[1:]
+					if resource == "upstreams" && p[0] == "dns" && len(relative) > 0 && relative[0] == "upstreams" {
+						relative = relative[1:]
+					}
+					suggested, _ := json.Marshal(relative)
+					return nil, &FieldError{
+						Path:    []string{"edits", strconv.Itoa(i), "path"},
+						Message: fmt.Sprintf("edits[%d].path is relative to %s; omit the collection prefix and use %s", i, resource, suggested),
+					}
+				}
 				m.Edits[i].Path = append(path(resource), m.Edits[i].Path...)
 			}
 		}
