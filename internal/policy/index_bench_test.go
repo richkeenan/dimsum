@@ -130,7 +130,7 @@ func BenchmarkIndexCandidates(b *testing.B) {
 						b.ResetTimer()
 						for i := 0; i < b.N; i++ {
 							var buf [255]byte
-							benchmarkHead = x.find(string(reverseName(name, &buf)))
+							benchmarkHead = x.find(reverseName(name, &buf))
 						}
 						b.ReportMetric(float64(cap(x.entries)*8+cap(x.keys))/float64(n), "index-B/rule")
 					})
@@ -279,7 +279,7 @@ func BenchmarkSuffixCandidates(b *testing.B) {
 					var head uint32
 					for end := 0; end < len(rev); {
 						end += 1 + int(rev[end])
-						head += x.find(string(rev[:end]))
+						head += x.find(rev[:end])
 					}
 					benchmarkHead = head
 				}

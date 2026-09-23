@@ -1873,6 +1873,11 @@ export interface components {
       id: string;
       label: string;
       description: string;
+      /**
+       * @description Optional list-purpose classification. Parental-control lists block adult content and are opt-in.
+       * @enum {string}
+       */
+      category?: "parental-control";
       /** Format: uri */
       url: string;
       /** @enum {string} */

@@ -40,14 +40,14 @@ func TestSuffixIndexBuildReservation(t *testing.T) {
 			assert.Equal(t, keyBytes, cap(x.keys), "reserve only unique key bytes")
 			for key, heads := range want {
 				var got []uint32
-				for head := x.find(key); head != 0; head = rules[head-1].next {
+				for head := x.find([]byte(key)); head != 0; head = rules[head-1].next {
 					require.LessOrEqual(t, int(head), len(rules))
 					require.Less(t, len(got), len(heads), "duplicate chain must terminate")
 					got = append(got, head)
 				}
 				assert.ElementsMatch(t, heads, got, "every duplicate rule remains reachable")
 			}
-			assert.Zero(t, x.find("\x07missing\x04test"))
+			assert.Zero(t, x.find([]byte("\x07missing\x04test")))
 		})
 	}
 }
@@ -56,6 +56,30 @@ func TestReverseNameBinaryLabels(t *testing.T) {
 	var buf [255]byte
 	assert.Equal(t, "\x04test\x03a.b\x03x\x00y", string(reverseName(Name{wire: "\x03x\x00y\x03a.b\x04test"}, &buf)))
 	assert.Equal(t, "\x04test\x01b\x01a", string(reverseName(Name{wire: "\x01a\x01b\x04test"}, &buf)))
+}
+
+func TestSuffixLookupNoAllocations(t *testing.T) {
+	// Keys longer than the runtime's small string buffer expose accidental
+	// byte-to-string copies in binary-search comparisons.
+	name, err := NormalizeName(strings.Repeat("a", 50) + ".example.test")
+	require.NoError(t, err)
+	var buf [255]byte
+	key := string(reverseName(name, &buf))
+	var in suffixBuild
+	in.add([]byte(key), 1)
+	var x suffixIndex
+	x.build(in, make([]ruleMeta, 1))
+	for _, query := range []string{key, key + "\x05child", "\x04test\x07missing"} {
+		var head uint32
+		queryBytes := []byte(query)
+		allocs := testing.AllocsPerRun(100, func() { head = x.find(queryBytes) })
+		assert.Zero(t, allocs)
+		if query == key {
+			assert.Equal(t, uint32(1), head)
+		} else {
+			assert.Zero(t, head)
+		}
+	}
 }
 
 func TestSuffixBuildArenaOwnershipAndGrowth(t *testing.T) {
@@ -71,8 +95,8 @@ func TestSuffixBuildArenaOwnershipAndGrowth(t *testing.T) {
 	x.build(in, rules)
 	clear(in.keys)
 	clear(in.entries)
-	assert.Equal(t, uint32(1), x.find("\x04test\x03a.b"))
-	head := x.find("\x04test\x03x\x00y")
+	assert.Equal(t, uint32(1), x.find([]byte("\x04test\x03a.b")))
+	head := x.find([]byte("\x04test\x03x\x00y"))
 	var got []uint32
 	for head != 0 {
 		require.LessOrEqual(t, head, uint32(len(rules)))

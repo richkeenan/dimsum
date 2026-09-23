@@ -12,6 +12,7 @@ import (
 
 type Entry struct {
 	ID, Label, Description, Homepage, URL, Attribution, Family string
+	Category                                                   string
 	Dialect                                                    lists.Dialect
 	DefaultEnabled, Available                                  bool
 	UnavailableReason                                          string
@@ -49,6 +50,8 @@ func Entries() []Entry {
 		{ID: "hagezi-tif-mini", Label: "HaGeZi Threat Intelligence Mini", Description: "Optional threats feed", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt"},
 		{ID: "oisd-small", Label: "OISD Small", Description: "Small DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://small.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
 		{ID: "oisd-big", Label: "OISD Big", Description: "Expanded DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://big.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
+		{ID: "hagezi-nsfw", Label: "HaGeZi NSFW", Description: "Parental control: blocks adult-content domains", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nsfw.txt", Category: "parental-control"},
+		{ID: "oisd-nsfw", Label: "OISD NSFW", Description: "Parental control: blocks pornographic, shock, and adult-content domains", Homepage: "https://oisd.nl/", URL: "https://nsfw.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Category: "parental-control", Dialect: lists.Adblock, Available: true},
 	}
 	for i := range entries {
 		e := &entries[i]

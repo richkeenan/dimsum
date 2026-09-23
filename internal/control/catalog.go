@@ -6,6 +6,7 @@ type CatalogItem struct {
 	ID                string `json:"id"`
 	Label             string `json:"label"`
 	Description       string `json:"description"`
+	Category          string `json:"category,omitempty"`
 	URL               string `json:"url"`
 	Dialect           string `json:"dialect"`
 	DomainKind        string `json:"domain_kind"`
@@ -19,7 +20,11 @@ func (s *Service) Catalog() any {
 	items := make([]CatalogItem, 0, len(entries))
 	for _, e := range entries {
 		kind := string(e.Source().DomainKind)
-		items = append(items, CatalogItem{e.ID, e.Label, e.Description, e.URL, string(e.Dialect), kind, e.Available, e.UnavailableReason, e.DefaultEnabled})
+		items = append(items, CatalogItem{
+			ID: e.ID, Label: e.Label, Description: e.Description, Category: e.Category,
+			URL: e.URL, Dialect: string(e.Dialect), DomainKind: kind,
+			Available: e.Available, UnavailableReason: e.UnavailableReason, DefaultEnabled: e.DefaultEnabled,
+		})
 	}
 	return struct {
 		Items []CatalogItem `json:"items"`

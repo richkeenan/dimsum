@@ -4,6 +4,7 @@ import { api, collectionRows, count, rows, text, type Row } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export type ListToggle = { id: unknown; enabled: boolean };
 
@@ -92,7 +93,12 @@ export function ListSubscriptions({
             label: "List",
             render: (row) => (
               <div className="min-w-48 max-w-96 whitespace-normal">
-                <div className="font-medium">{listLabel(row)}</div>
+                <div className="flex flex-wrap items-center gap-2 font-medium">
+                  {listLabel(row)}
+                  {row.category === "parental-control" && (
+                    <Badge variant="destructive">Adult content</Badge>
+                  )}
+                </div>
                 {!!row.description && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     {text(row.description)}

@@ -1,0 +1,4 @@
+[Adblock Plus]
+! Synthetic adult-content domain fixture, authored for dimsum under MIT.
+||adult.hagezi.example.test^
+||explicit.hagezi.example.test^

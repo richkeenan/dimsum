@@ -42,9 +42,6 @@ func reverseName(n Name, buf *[255]byte) []byte {
 	}
 	return buf[:end]
 }
-func (x *suffixIndex) key(off uint32) string {
-	return string(suffixKey(x.keys, off))
-}
 func (x *suffixIndex) build(in suffixBuild, rules []ruleMeta) {
 	sort.Slice(in.entries, func(i, j int) bool {
 		return bytes.Compare(suffixKey(in.keys, in.entries[i].off), suffixKey(in.keys, in.entries[j].off)) < 0
@@ -74,9 +71,13 @@ func (x *suffixIndex) build(in suffixBuild, rules []ruleMeta) {
 		}
 	}
 }
-func (x *suffixIndex) find(key string) uint32 {
-	i := sort.Search(len(x.entries), func(i int) bool { return x.key(x.entries[i].off) >= key })
-	if i < len(x.entries) && x.key(x.entries[i].off) == key {
+func (x *suffixIndex) find(key []byte) uint32 {
+	// Compare arena bytes directly: converting each candidate to a string
+	// copies long keys and allocates during the DNS lookup hot path.
+	i := sort.Search(len(x.entries), func(i int) bool {
+		return bytes.Compare(suffixKey(x.keys, x.entries[i].off), key) >= 0
+	})
+	if i < len(x.entries) && bytes.Equal(suffixKey(x.keys, x.entries[i].off), key) {
 		return x.entries[i].head
 	}
 	return 0

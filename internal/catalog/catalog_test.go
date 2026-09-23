@@ -36,7 +36,7 @@ func TestSyntheticCatalogDialectFixtures(t *testing.T) {
 
 func TestCatalog(t *testing.T) {
 	entries := Entries()
-	require.Len(t, entries, 7)
+	require.Len(t, entries, 9)
 	seen := map[string]bool{}
 	enabled := 0
 	for _, e := range entries {

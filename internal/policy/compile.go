@@ -275,7 +275,7 @@ func (s *PolicySnapshot) matchOwnNumber(n Name, explain bool) (Decision, uint32)
 		rev := reverseName(n, &buf)
 		for end := 0; end < len(rev); {
 			end += 1 + int(rev[end])
-			visit(s.suffix.find(string(rev[:end])))
+			visit(s.suffix.find(rev[:end]))
 		}
 	}
 	if len(s.fallback) > 0 {

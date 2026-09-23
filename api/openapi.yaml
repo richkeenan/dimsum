@@ -740,6 +740,10 @@ components:
         id: {type: string}
         label: {type: string}
         description: {type: string}
+        category:
+          type: string
+          enum: [parental-control]
+          description: Optional list-purpose classification. Parental-control lists block adult content and are opt-in.
         url: {type: string, format: uri}
         dialect: {type: string, enum: [hosts, domains, dns-adblock]}
         domain_kind: {type: string, enum: [exact, suffix]}
