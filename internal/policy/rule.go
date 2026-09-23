@@ -28,7 +28,7 @@ const (
 // means Go for Regex; other forms do not accept a dialect. Only enabled source
 // rules (including explicitly enabled special rules) should be supplied.
 type Rule struct {
-	Scope                    Scope
+	Scope                    Scope `json:"Scope,omitzero"`
 	ID, SourceID, SourceText string
 	Kind                     Kind
 	Class                    Class

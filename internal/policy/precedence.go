@@ -85,11 +85,13 @@ func (m *Matcher) Evaluate(q Query) Decision {
 	if q.Local {
 		d.Result = Local
 		d.RuleID = ""
+		d.Scope = Scope{}
 		return d
 	}
 	if q.Paused {
 		d.Result = Paused
 		d.RuleID = ""
+		d.Scope = Scope{}
 		return d
 	}
 	if q.Name != q.Original {

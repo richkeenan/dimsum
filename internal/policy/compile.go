@@ -338,11 +338,13 @@ func (s *PolicySnapshot) EvaluateNumber(q Query) (Decision, uint32) {
 	if q.Local {
 		d.Result = Local
 		d.RuleID = ""
+		d.Scope = Scope{}
 		return d, 0
 	}
 	if q.Paused {
 		d.Result = Paused
 		d.RuleID = ""
+		d.Scope = Scope{}
 		return d, 0
 	}
 	if q.Name != q.Original {

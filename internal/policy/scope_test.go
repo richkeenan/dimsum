@@ -75,3 +75,16 @@ func BenchmarkScopedMatch(b *testing.B) {
 		s.Match(n)
 	}
 }
+
+func TestScopedLocalAndPauseHaveNoWinningRule(t *testing.T) {
+	s, err := CompileSnapshot(1, []Rule{{ID: "custom:device", Scope: Scope{Kind: ClientScope, ID: "tablet"}, Kind: Exact, Class: CustomDeny, Pattern: "ads.example"}}, DefaultLimits())
+	require.NoError(t, err)
+	s = s.WithSelection(NewSelection("", "tablet", nil))
+	n, _ := NormalizeName("ads.example")
+	for _, q := range []Query{{Original: n, Name: n, Local: true}, {Original: n, Name: n, Paused: true}} {
+		d, number := s.EvaluateNumber(q)
+		assert.Empty(t, d.RuleID)
+		assert.Zero(t, number)
+		assert.Equal(t, Scope{}, d.Scope)
+	}
+}
