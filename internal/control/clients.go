@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"net/netip"
 	"net/url"
+	"strconv"
 	"time"
+
+	"github.com/richkeenan/dimsum/internal/config"
 )
 
 // ClientProvider is an optional extension; existing history providers need not
@@ -15,11 +18,42 @@ type ClientProvider interface {
 }
 
 func (s *Service) Clients(ctx context.Context, q url.Values) (any, error) {
-	configured, e := s.Inspect("clients")
+	status, e := s.Status()
 	if e != nil {
 		return nil, e
 	}
-	result := configured.(map[string]any)
+	d, e := s.documentAt(status.SavedRevision)
+	if e != nil {
+		return map[string]any{"status": status, "configuration_error": RedactMessage(e.Error()), "observed_available": false}, nil
+	}
+	c := d.Config()
+	configured, e := shape(c.Clients)
+	if e != nil {
+		return nil, e
+	}
+	if configured == nil {
+		configured = []any{}
+	}
+	result := map[string]any{"status": status, "items": configured}
+	snap := s.options.Store.Snapshot()
+	if snap == nil {
+		return nil, ErrUnavailable
+	}
+	if snap.Revision() != status.ActiveRevision || strconv.FormatUint(snap.Generation(), 10) != status.ActiveGeneration {
+		return nil, config.ErrConflict
+	}
+	view, e := snap.PreviewClientPolicies(c)
+	if e != nil {
+		return nil, e
+	}
+	now := time.Now()
+	saved := compactClientSummaries(c, view, status, now)
+	active := compactClientSummaries(snap.Config(), snap.ClientPolicies(), status, now)
+	summaries := make(map[string]ClientInventoryPolicy, len(saved))
+	for id, desired := range saved {
+		summaries[id] = ClientInventoryPolicy{Desired: desired, Active: active[id]}
+	}
+	result["policy_summaries"] = summaries
 	items, _ := result["items"].([]any)
 	for _, item := range items {
 		row, ok := item.(map[string]any)
@@ -50,6 +84,48 @@ func (s *Service) Clients(ctx context.Context, q url.Values) (any, error) {
 		return nil, e
 	}
 	return result, nil
+}
+
+// Compact inventory descriptors deliberately omit rules, routes and list maps.
+// Each configuration is compiled once per request, never once per device.
+type ClientPolicySummary struct {
+	ProfileID         string `json:"profile_id"`
+	OverrideCount     int    `json:"override_count"`
+	Blocking          bool   `json:"blocking"`
+	Filtering         bool   `json:"filtering"`
+	GlobalPaused      bool   `json:"global_paused"`
+	SourceUnavailable bool   `json:"source_unavailable"`
+}
+type ClientInventoryPolicy struct {
+	Desired *ClientPolicySummary `json:"desired"`
+	Active  *ClientPolicySummary `json:"active"`
+}
+
+func compactClientSummaries(c config.Config, view *config.ClientPolicies, status Activation, now time.Time) map[string]*ClientPolicySummary {
+	result := make(map[string]*ClientPolicySummary, len(c.Clients))
+	for _, client := range c.Clients {
+		id := policyClientID(client)
+		p, ok := view.Client(id)
+		if !ok {
+			continue
+		}
+		blocking, _ := p.Blocking()
+		n := overrideCount(client.Overrides)
+		if client.PausedUntil != nil {
+			n++
+		}
+		v := &ClientPolicySummary{ProfileID: p.ProfileID(), OverrideCount: n, Blocking: blocking, GlobalPaused: c.Filtering.Paused(now)}
+		v.Filtering = blocking && !v.GlobalPaused && !now.Before(p.PausedUntil())
+		for _, source := range status.Sources {
+			enabled, _ := p.List(source.ID)
+			if enabled && source.Enabled && !source.Usable {
+				v.SourceUnavailable = true
+				break
+			}
+		}
+		result[id] = v
+	}
+	return result
 }
 
 func (s *Service) observedPolicyIdentity(observed any) (map[string]any, error) {

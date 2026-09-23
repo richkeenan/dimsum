@@ -2596,6 +2596,21 @@ export interface components {
       configuration_error?: string;
       observed_available: boolean;
       observed?: components["schemas"]["ObservedClients"];
+      /** @description Compact saved and active summaries keyed by authoritative policy_id, compiled in bounded work per inventory request. No inherited rules or routes are serialized here. */
+      policy_summaries?: {
+        [key: string]: {
+          desired: components["schemas"]["ClientPolicySummary"];
+          active: components["schemas"]["ClientPolicySummary"] | null;
+        };
+      };
+    };
+    ClientPolicySummary: {
+      profile_id: string;
+      override_count: number;
+      blocking: boolean;
+      filtering: boolean;
+      global_paused: boolean;
+      source_unavailable: boolean;
     };
     Activation: {
       saved_revision: string;

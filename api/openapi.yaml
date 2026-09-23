@@ -1382,6 +1382,28 @@ components:
         configuration_error: {type: string}
         observed_available: {type: boolean}
         observed: {$ref: '#/components/schemas/ObservedClients'}
+        policy_summaries:
+          type: object
+          description: Compact saved and active summaries keyed by authoritative policy_id, compiled in bounded work per inventory request. No inherited rules or routes are serialized here.
+          additionalProperties:
+            type: object
+            required: [desired, active]
+            properties:
+              desired: {$ref: '#/components/schemas/ClientPolicySummary'}
+              active:
+                oneOf:
+                  - {$ref: '#/components/schemas/ClientPolicySummary'}
+                  - {type: 'null'}
+    ClientPolicySummary:
+      type: object
+      required: [profile_id, override_count, blocking, filtering, global_paused, source_unavailable]
+      properties:
+        profile_id: {type: string}
+        override_count: {type: integer, minimum: 0}
+        blocking: {type: boolean}
+        filtering: {type: boolean}
+        global_paused: {type: boolean}
+        source_unavailable: {type: boolean}
     Activation:
       type: object
       required: [saved_revision, active_revision, active_generation, pending, recovered, restart_required, sources]

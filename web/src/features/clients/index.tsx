@@ -13,7 +13,6 @@ import {
   type ClientRow,
   type Schema,
   type PolicyScope,
-  type PolicyRead,
 } from "./model";
 import { DomainInspector } from "./inspect";
 import {
@@ -101,6 +100,7 @@ export default function Clients({
             <DeviceRow
               key={row.key}
               row={row}
+              summary={state.data?.policy_summaries?.[row.key]}
               select={() =>
                 row.configured ? onSelect(row.key) : setCreating(row)
               }
@@ -122,7 +122,18 @@ export default function Clients({
     </div>
   );
 }
-function DeviceRow({ row, select }: { row: ClientRow; select: () => void }) {
+type InventorySummary = NonNullable<
+  Schema["ClientsResponse"]["policy_summaries"]
+>[string];
+function DeviceRow({
+  row,
+  select,
+  summary,
+}: {
+  row: ClientRow;
+  select: () => void;
+  summary?: InventorySummary;
+}) {
   const observation = row.observed[0];
   const name = row.configured?.name || observation?.name || row.configured?.id;
   const identity = {
@@ -173,7 +184,7 @@ function DeviceRow({ row, select }: { row: ClientRow; select: () => void }) {
         )}
       </div>
       {row.configured ? (
-        <DeviceSummary id={row.key} />
+        <DeviceSummary summary={summary} />
       ) : (
         <p className="text-xs text-muted-foreground">No configured identity</p>
       )}
@@ -199,32 +210,32 @@ function DeviceRow({ row, select }: { row: ClientRow; select: () => void }) {
     </div>
   );
 }
-function DeviceSummary({ id }: { id: string }) {
-  const policy = useResource<PolicyRead>(
-    `client-policy?scope=client&id=${encodeURIComponent(id)}`,
-  );
-  if (policy.error) return <ErrorNotice error={policy.error} />;
-  const effective = policy.data?.active;
+function DeviceSummary({ summary }: { summary?: InventorySummary }) {
+  if (!summary)
+    return (
+      <p className="text-xs text-muted-foreground">
+        Policy summary unavailable
+      </p>
+    );
+  const effective = summary.active;
   return (
     <div className="space-y-1 text-xs text-muted-foreground">
       <p>
-        {policy.loading
-          ? "Loading policy…"
-          : !effective
-            ? "Policy not active"
-            : effective.filtering
-              ? "Filtering enabled"
-              : effective.global_paused
-                ? "Globally paused"
-                : "Filtering off or paused"}
+        {!effective
+          ? "Policy not active"
+          : effective.filtering
+            ? "Filtering enabled"
+            : effective.global_paused
+              ? "Globally paused"
+              : "Filtering off or paused"}
       </p>
       <p>
-        Profile: {policy.data?.effective.profile_id || "None"} ·{" "}
-        {policy.data?.effective.override_count ?? "—"} overrides
+        Profile: {summary.desired.profile_id || "None"} ·{" "}
+        {summary.desired.override_count} overrides
       </p>
-      {policy.data?.status.sources.some(
-        (s) => s.enabled && !s.usable && effective?.lists[s.id]?.value,
-      ) && <p className="text-destructive">Assigned source not active</p>}
+      {effective?.source_unavailable && (
+        <p className="text-destructive">Assigned source not active</p>
+      )}
     </div>
   );
 }
