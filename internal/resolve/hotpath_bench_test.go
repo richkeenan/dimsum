@@ -2,6 +2,7 @@ package resolve
 
 import (
 	"context"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/dnswire"
+	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/transport"
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +33,76 @@ func BenchmarkWarmPipeline(b *testing.B) {
 	require.NoError(b, err)
 	require.Greater(b, n, 12)
 	require.Equal(b, transport.FreshAnswer, r.Result.Outcome)
+}
+
+func warmClientPipeline(t testing.TB, selection string) (*Pipeline, *transport.Request, []byte) {
+	t.Helper()
+	p, r, out := warmPipeline(t, true)
+	c := p.store.Snapshot().Config()
+	client := config.ClientOverride{ID: "fixture", Overrides: config.PolicyOverrides{Rules: c.Rules}}
+	switch selection {
+	case "MAC":
+		client.Selectors.MACs = []string{"02:00:00:00:00:01"}
+	case "CIDR":
+		client.Selectors.CIDRs = []string{"192.0.2.0/24"}
+	default:
+		client.Selectors.Addresses = []string{"192.0.2.1"}
+	}
+	if selection == "route" {
+		client.Overrides.Upstream = &config.UpstreamRoute{Upstreams: []string{"192.0.2.53:53"}}
+	}
+	c.Clients = []config.ClientOverride{client}
+	saveClientConfig(t, p, c)
+	s := p.store.Snapshot()
+	r.Peer = netip.MustParseAddrPort("192.0.2.1:12345")
+	mac := ""
+	if selection == "MAC" {
+		mac = "02:00:00:00:00:01"
+		v := localdns.BuildLeases(s.Generation(), "home.arpa", []localdns.Lease{{Address: r.Peer.Addr(), MAC: mac, Hostname: "fixture", Expiry: time.Now().Add(time.Hour)}}, nil, nil)
+		p.SetLeases(func(*config.Snapshot) *localdns.Leases { return v })
+	}
+	key, ok := cacheKeyRoute(r, s, s.ClientPolicies().Select(r.Peer.Addr(), mac).RouteKey())
+	require.True(t, ok)
+	n, err := dnswire.BuildReply(out, &r.Message, dnswire.Reply{Null: true, TTL: 3600, RecursionAvailable: true}, 1232)
+	require.NoError(t, err)
+	require.True(t, p.cache.cache.Put(key, out[:n], time.Now()))
+	return p, r, out
+}
+
+func BenchmarkWarmClientPipeline(b *testing.B) {
+	for _, selection := range []string{"exact", "MAC", "CIDR", "route"} {
+		b.Run(selection, func(b *testing.B) {
+			p, r, out := warmClientPipeline(b, selection)
+			var n int
+			var err error
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				n, err = p.Resolve(context.Background(), r, out)
+				if err != nil {
+					break
+				}
+			}
+			b.StopTimer()
+			require.NoError(b, err)
+			require.Greater(b, n, 12)
+			require.Equal(b, transport.FreshAnswer, r.Result.Outcome)
+		})
+	}
+}
+
+func TestWarmClientPipelineAllocationBudget(t *testing.T) {
+	for _, selection := range []string{"exact", "MAC", "CIDR", "route"} {
+		t.Run(selection, func(t *testing.T) {
+			p, r, out := warmClientPipeline(t, selection)
+			var n int
+			var err error
+			allocs := testing.AllocsPerRun(100, func() { n, err = p.Resolve(context.Background(), r, out) })
+			require.NoError(t, err)
+			require.Greater(t, n, 12)
+			require.LessOrEqual(t, allocs, float64(1))
+		})
+	}
 }
 
 func warmPipeline(b testing.TB, managed ...bool) (*Pipeline, *transport.Request, []byte) {

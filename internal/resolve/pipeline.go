@@ -60,6 +60,8 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		return 0, err
 	}
 	var settings policy.Settings
+	var effective *config.EffectivePolicy
+	route := upstream.DefaultRoute
 	paused := false
 	if p.store != nil {
 		// One immutable generation for local data, pause, pre- and post-resolution policy.
@@ -81,32 +83,38 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		now = time.Now()
 	}
 	if snapshot != nil {
+		mac := ""
+		if leases != nil {
+			mac = leases.AuthoritativeMAC(r.Peer.Addr(), now)
+		}
+		effective = snapshot.ClientPolicies().Select(r.Peer.Addr(), mac)
+		route = effective.RouteKey()
+		settings = snapshot.Filtering()
+		if now.IsZero() {
+			now = time.Now()
+		}
+		blocking, _ := effective.Blocking()
+		paused = settings.Paused(now) || !blocking || now.Before(effective.PausedUntil())
 		if !snapshot.Local().Empty() || leases != nil {
 			if n, handled, err := snapshot.Local().AnswerWithLeases(out, &r.Message, leases, now); handled || err != nil {
 				r.Result.Outcome = transport.LocalAnswer
 				if err == nil && q.Header.Flags&dnswire.FlagRD != 0 {
 					if target := snapshot.Local().ContinuationWithLeases(&r.Message, leases, now); target != nil {
-						return p.completeLocal(ctx, r, out, n, target, snapshot)
+						return p.completeLocal(ctx, r, out, n, target, snapshot, effective)
 					}
 				}
 				return n, err
 			}
 		}
-		settings = snapshot.Filtering()
-		if leases != nil {
-			paused = settings.Paused(now)
-		} else {
-			paused = settings.Paused(time.Now())
-		}
 		if policy.PrivateReverse(name) {
 			r.Result.Outcome = transport.PolicyBlock
 			return policy.BuildBlocked(out, &r.Message, policy.Settings{Mode: "nxdomain"})
 		}
-		decision, number := snapshot.Policy().EvaluateNumber(policy.Query{Original: name, Name: name, Paused: paused})
+		decision, number := effective.Policy().EvaluateNumber(policy.Query{Original: name, Name: name, Paused: paused})
 		if decision.Result == policy.Block {
 			r.Result.Outcome = transport.PolicyBlock
 			r.Result.RuleNumber = number
-			r.Result.Rule, _ = snapshot.Policy().RuleAt(number)
+			r.Result.Rule, _ = effective.Policy().RuleAt(number)
 			return buildBlock(out, &r.Message, settings, decision)
 		}
 	}
@@ -124,7 +132,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 	if err != nil {
 		return 0, err
 	}
-	k, eligible := cacheKey(r, snapshot)
+	k, eligible := cacheKeyRoute(r, snapshot, route)
 	if eligible {
 		hit := c.Lookup(k, &r.Message, out, time.Now(), staleLimit(cfg), uint32(cfg.StaleTTLSeconds))
 		if hit.Hit && (!hit.Stale || cfg.StaleMode == "immediate") {
@@ -134,12 +142,12 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 				p.cache.stale.Add(1)
 				p.cache.staleAgeSeconds.Add(hit.StaleAge)
 				if q.Header.Flags&dnswire.FlagRD != 0 {
-					_, _ = p.shared(ctx, snapshot, c, k, r, true)
+					_, _ = p.shared(ctx, snapshot, route, c, k, r, true)
 				}
 			} else {
 				p.cache.hits.Add(1)
 			}
-			return p.finish(r, out, hit.Length, snapshot, name, settings, paused, true)
+			return p.finish(r, out, hit.Length, effective, name, settings, paused, true)
 		}
 		p.cache.misses.Add(1)
 	} else {
@@ -154,7 +162,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 	}
 	n := 0
 	if eligible {
-		wire, exchangeErr := p.shared(ctx, snapshot, c, k, r, false)
+		wire, exchangeErr := p.shared(ctx, snapshot, route, c, k, r, false)
 		if ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
@@ -164,7 +172,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 				r.Result.Outcome = transport.StaleAnswer
 				p.cache.stale.Add(1)
 				p.cache.staleAgeSeconds.Add(hit.StaleAge)
-				return p.finish(r, out, hit.Length, snapshot, name, settings, paused, true)
+				return p.finish(r, out, hit.Length, effective, name, settings, paused, true)
 			}
 		}
 		if exchangeErr != nil {
@@ -175,7 +183,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		}
 		n = copy(out, wire)
 	} else {
-		result, err := p.exchange(ctx, snapshot, upstream.DefaultRoute, r.Wire, out)
+		result, err := p.exchange(ctx, snapshot, route, r.Wire, out)
 		if err != nil {
 			return 0, err
 		}
@@ -183,15 +191,15 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		r.Result.UpstreamID = result.EndpointID
 		r.Result.Fallback = result.Fallback
 	}
-	return p.finish(r, out, n, snapshot, name, settings, paused, false)
+	return p.finish(r, out, n, effective, name, settings, paused, false)
 }
 
-func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *config.Snapshot, name policy.Name, settings policy.Settings, paused, personalized bool) (int, error) {
+func (p *Pipeline) finish(r *transport.Request, out []byte, n int, effective *config.EffectivePolicy, name policy.Name, settings policy.Settings, paused, personalized bool) (int, error) {
 	if n >= 12 && (out[3]&15 == 2 || out[3]&15 == 5) {
 		r.Result.Outcome = transport.ResolutionError
 	}
-	if snapshot != nil {
-		decision, err := snapshot.Policy().InspectResponse(out[:n], name, paused)
+	if effective != nil {
+		decision, err := effective.Policy().InspectResponse(out[:n], name, paused)
 		if err != nil {
 			r.Result.Outcome = transport.ResolutionError
 			return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2, RecursionAvailable: true}, 1232)
@@ -200,7 +208,7 @@ func (p *Pipeline) finish(r *transport.Request, out []byte, n int, snapshot *con
 			r.Result.Outcome = transport.PolicyBlock
 			r.Result.ResponsePolicy = true
 			r.Result.RuleNumber = decision.RuleNumber
-			r.Result.Rule, _ = snapshot.Policy().RuleAt(decision.RuleNumber)
+			r.Result.Rule, _ = effective.Policy().RuleAt(decision.RuleNumber)
 			r.Result.AliasLength = uint8(decision.BlockedAlias.CopyWire(r.Result.Alias[:]))
 			return buildBlock(out, &r.Message, settings, decision.Decision)
 		}

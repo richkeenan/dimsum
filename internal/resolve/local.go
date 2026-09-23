@@ -9,13 +9,12 @@ import (
 	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/richkeenan/dimsum/internal/transport"
-	"github.com/richkeenan/dimsum/internal/upstream"
 )
 
 // completeLocal follows an external target under the same captured generation.
 // Local routing wins over name filtering, but combined-chain validation still
 // applies. No upstream signature or AD assertion survives the synthesis.
-func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out []byte, n int, target []byte, snapshot *config.Snapshot) (int, error) {
+func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out []byte, n int, target []byte, snapshot *config.Snapshot, effective *config.EffectivePolicy) (int, error) {
 	answers, _, err := dnswire.SyntheticSections(out[:n])
 	if err != nil {
 		return 0, err
@@ -56,7 +55,7 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 			binary.BigEndian.PutUint16(query[len(query)-2:], uint16(len(r.Message.EDNS.Options)))
 			query = append(query, r.Message.EDNS.Options...)
 		}
-		result, e := p.exchange(ctx, snapshot, upstream.DefaultRoute, query, out)
+		result, e := p.exchange(ctx, snapshot, effective.RouteKey(), query, out)
 		if e != nil {
 			return 0, e
 		}
@@ -85,7 +84,7 @@ func (p *Pipeline) completeLocal(ctx context.Context, r *transport.Request, out 
 	if err != nil {
 		return 0, err
 	}
-	if _, err = snapshot.Policy().InspectResponse(out[:n], original, true); err != nil {
+	if _, err = effective.Policy().InspectResponse(out[:n], original, true); err != nil {
 		r.Result.Outcome = transport.ResolutionError
 		return dnswire.BuildReply(out, &r.Message, dnswire.Reply{RCode: 2, RecursionAvailable: true}, 1232)
 	}

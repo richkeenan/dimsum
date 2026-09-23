@@ -47,6 +47,10 @@ func (p *Pipeline) cacheFor(s *config.Snapshot) (*dnscache.Cache, config.Cache, 
 }
 
 func cacheKey(r *transport.Request, s *config.Snapshot) (dnscache.Key, bool) {
+	return cacheKeyRoute(r, s, upstream.DefaultRoute)
+}
+
+func cacheKeyRoute(r *transport.Request, s *config.Snapshot, route upstream.RouteKey) (dnscache.Key, bool) {
 	// Forwarding normalizes EDNS to 1232. Preserve OPT only when that is
 	// already the client's variant; options and other shapes bypass NewKey.
 	if r.Message.EDNS.Present && r.Message.EDNS.UDPSize != 1232 {
@@ -56,10 +60,10 @@ func cacheKey(r *transport.Request, s *config.Snapshot) (dnscache.Key, bool) {
 	if s != nil {
 		generation = s.Generation()
 	}
-	return dnscache.NewKey(&r.Message, uint64(upstream.DefaultRoute), generation, 0)
+	return dnscache.NewKey(&r.Message, uint64(route), generation, 0)
 }
 
-func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.Cache, k dnscache.Key, r *transport.Request, refresh bool) ([]byte, error) {
+func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, route upstream.RouteKey, c *dnscache.Cache, k dnscache.Key, r *transport.Request, refresh bool) ([]byte, error) {
 	// Copy before returning to a stale client or sharing work past its deadline.
 	wire := append([]byte(nil), r.Wire...)
 	var metadata upstream.ExchangeResult
@@ -68,7 +72,7 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, c *dnscache.C
 			workCtx = context.WithValue(workCtx, backgroundExchangeKey{}, true)
 		}
 		out := make([]byte, 65535)
-		result, err := p.exchange(workCtx, s, upstream.DefaultRoute, wire, out)
+		result, err := p.exchange(workCtx, s, route, wire, out)
 		metadata = result
 		if err == nil {
 			out = out[:result.N]

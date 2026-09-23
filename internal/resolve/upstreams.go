@@ -3,7 +3,6 @@ package resolve
 import (
 	"context"
 	"net"
-	"reflect"
 	"sync"
 
 	"github.com/richkeenan/dimsum/internal/config"
@@ -11,17 +10,14 @@ import (
 )
 
 type upstreamLease struct {
-	client   *upstream.Client
-	snapshot *config.Snapshot
-	options  upstream.Options
-	refs     int
-	retired  bool
-	stop     func() bool
+	client *upstream.Client
+	stop   func() bool
 }
 type upstreams struct {
 	mu         sync.Mutex
 	current    *upstreamLease
 	generation uint64
+	routes     map[context.Context]*upstreamLease
 	closed     bool
 }
 
@@ -39,8 +35,8 @@ func (p *Pipeline) UpstreamHealth() []upstream.Health {
 	return nil
 }
 
-// exchange uses the same snapshot as policy/local resolution. Changed transport
-// settings retire the previous client and cancel its active work immediately.
+// exchange uses the selected route in the captured generation. At most 64 live
+// route transports are retained, shared across devices and policy-only reloads.
 func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, route upstream.RouteKey, wire, out []byte) (result upstream.ExchangeResult, err error) {
 	if p.observeExchange != nil {
 		defer func() {
@@ -51,7 +47,8 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 	if snapshot == nil {
 		return p.upstream.ExchangeRoute(ctx, route, wire, out)
 	}
-	if err := snapshot.UpstreamContext().Err(); err != nil {
+	lifetime := snapshot.RouteContext(route)
+	if err := lifetime.Err(); err != nil {
 		return result, err
 	}
 	m := &p.upstreams
@@ -60,61 +57,80 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 		m.mu.Unlock()
 		return upstream.ExchangeResult{}, net.ErrClosed
 	}
-	entry := m.current
-	if entry == nil || entry.snapshot != snapshot {
-		options := snapshot.UpstreamOptions()
-		if entry == nil || entry.snapshot.UpstreamContext() != snapshot.UpstreamContext() || !reflect.DeepEqual(entry.options, options) {
-			client, err := upstream.New(options)
-			if err != nil {
-				m.mu.Unlock()
-				return upstream.ExchangeResult{}, err
+	// Prune synchronously too: retirement callbacks may be waiting on this lock.
+	for key, old := range m.routes {
+		if key.Err() != nil {
+			old.stop()
+			old.client.Close()
+			delete(m.routes, key)
+			if m.current == old {
+				m.current = nil
 			}
-			entry = &upstreamLease{client: client, snapshot: snapshot, options: options}
-			entry.stop = context.AfterFunc(snapshot.UpstreamContext(), func() { client.Close() })
-			if snapshot.Generation() >= m.generation {
-				if old := m.current; old != nil {
-					old.retired = true
-					old.stop()
-					old.client.Close()
-				}
-				m.current = entry
-			} else {
-				entry.retired = true
-			}
-		}
-		if snapshot.Generation() >= m.generation {
-			m.generation = snapshot.Generation()
-			entry.snapshot = snapshot
 		}
 	}
-	entry.refs++
-	m.mu.Unlock()
-	defer func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		entry.refs--
-		if entry.retired && entry.refs == 0 {
-			entry.stop()
-			entry.client.Close()
+	entry := m.routes[lifetime]
+	if entry == nil {
+		if err := lifetime.Err(); err != nil {
+			m.mu.Unlock()
+			return result, err
 		}
-	}()
-	return entry.client.ExchangeRoute(ctx, route, wire, out)
+		if len(m.routes) >= 64 {
+			m.mu.Unlock()
+			return result, upstream.ErrRoute
+		}
+		options, ok := snapshot.ClientPolicies().RouteOptions(route)
+		if !ok {
+			m.mu.Unlock()
+			return result, upstream.ErrRoute
+		}
+		client, err := upstream.New(options)
+		if err != nil {
+			m.mu.Unlock()
+			return result, err
+		}
+		entry = &upstreamLease{client: client}
+		if m.routes == nil {
+			m.routes = make(map[context.Context]*upstreamLease)
+		}
+		m.routes[lifetime] = entry
+		entry.stop = context.AfterFunc(lifetime, func() {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+			client.Close()
+			delete(m.routes, lifetime)
+			if m.current == entry {
+				m.current = nil
+			}
+		})
+	}
+	if route == upstream.DefaultRoute && snapshot.Generation() >= m.generation {
+		m.current = entry
+		m.generation = snapshot.Generation()
+	}
+	m.mu.Unlock()
+	result, err = entry.client.Exchange(ctx, wire, out)
+	result.Route = route
+	// History keys are generation-local. Each route has at most 16 primary and
+	// 16 fallback endpoints; preserve legacy network IDs while avoiding collisions.
+	if result.EndpointID != 0 {
+		result.EndpointID += uint32(route-1) * 32
+	}
+	return result, err
 }
 
-// Close is called after transport workers have stopped; active leases still
-// release normally if an owner closes earlier.
+// Close cancels and joins shared workers, then closes all route transports.
 func (p *Pipeline) Close() error {
 	p.cache.flights.close()
 	m := &p.upstreams
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.closed = true
-	if m.current != nil {
-		m.current.retired = true
-		m.current.stop()
-		m.current.client.Close()
-		m.current = nil
+	for key, entry := range m.routes {
+		entry.stop()
+		entry.client.Close()
+		delete(m.routes, key)
 	}
+	m.current = nil
 	if p.upstream != nil {
 		return p.upstream.Close()
 	}
