@@ -48,6 +48,44 @@ func TestDNSGuessCorroborationAndExpiry(t *testing.T) {
 	}
 }
 
+func TestDNSGuessReolink(t *testing.T) {
+	now := time.Now()
+	ip := netip.MustParseAddr("192.0.2.20")
+	for _, tc := range []struct {
+		name, domain string
+		span         time.Duration
+		count        uint64
+		want         bool
+	}{
+		{"repeated push queries", "pushx.reolink.com", 83 * time.Second, 4, true},
+		{"single query", "pushx.reolink.com", 0, 1, false},
+		{"A AAAA burst", "pushx.reolink.com", 0, 2, false},
+		{"website", "reolink.com", 83 * time.Second, 4, false},
+		{"suffix spoof", "pushx.reolink.com.example.org", 83 * time.Second, 4, false},
+		{"unrecognised subdomain", "www.reolink.com", 83 * time.Second, 4, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := dnsGuess(ip, []DNSActivity{{Domain: tc.domain, First: now.Add(-tc.span), Last: now, Count: tc.count}}, now)
+			if !tc.want {
+				assert.Empty(t, got.Name)
+				return
+			}
+			assert.Equal(t, "Reolink device", got.Name)
+			assert.Equal(t, "dns-guess", got.Source)
+			require.NotNil(t, got.Device)
+			assert.Equal(t, "camera", got.Device.Category)
+			assert.True(t, got.Device.Inferred)
+			require.NotNil(t, got.Device.DNSGuess)
+			assert.Equal(t, "reolink", got.Device.DNSGuess.Rule)
+			require.Len(t, got.Device.DNSGuess.Domains, 1)
+			assert.Equal(t, "pushx.reolink.com", got.Device.DNSGuess.Domains[0].Domain)
+		})
+	}
+	// Retained history must select this endpoint before it can be attributed.
+	exact, _ := DNSGuessSelectors()
+	assert.Contains(t, exact, "pushx.reolink.com")
+}
+
 func TestDNSGuessRecentPairSurvivesOldestQueryExpiry(t *testing.T) {
 	now := time.Now()
 	pair := now.Add(-time.Minute)
