@@ -47,7 +47,7 @@ export function ownerPolicy(read: PolicyRead): Schema["PolicyOverrides"] {
 export const selectClass =
   "min-h-10 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 export const panelClass =
-  "space-y-4 rounded-lg border border-border bg-background p-4 sm:p-5";
+  "min-w-0 space-y-4 wrap-anywhere rounded-lg border border-border bg-background p-4 sm:p-5";
 export function words(value: string) {
   return value.split(/[\s,]+/).filter(Boolean);
 }

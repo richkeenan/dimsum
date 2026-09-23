@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, count, APIError } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
@@ -15,6 +15,7 @@ import {
   type PolicyScope,
 } from "./model";
 import { DomainInspector } from "./inspect";
+import { usePolicyDraft } from "./draft";
 import {
   ClientIdentity,
   ClientDeviceButton,
@@ -29,6 +30,8 @@ export default function Clients({
   selected?: string;
   onSelect: (id?: string) => void;
 }) {
+  const draft = usePolicyDraft();
+  const createTrigger = useRef<HTMLButtonElement>(null);
   const state = useResource<Schema["ClientsResponse"]>(
     `clients?${range}&limit=200`,
   );
@@ -46,6 +49,7 @@ export default function Clients({
         <PolicyEditor
           scope="client"
           id={selected}
+          onDirty={draft.onDirty}
           onPromoted={onSelect}
           onDeleted={() => {
             onSelect();
@@ -65,14 +69,27 @@ export default function Clients({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Button onClick={() => setCreating(true)}>Add device</Button>
+        <Button
+          ref={createTrigger}
+          disabled={!!creating}
+          onClick={() => setCreating(true)}
+        >
+          Add device
+        </Button>
       </div>
       {creating && (
         <CreateOwner
+          key={creating === true ? "new" : creating.key}
+          onDirty={draft.onCreateDirty}
           scope="client"
           observed={creating === true ? undefined : creating.observed[0]}
           revision={state.data?.status.saved_revision ?? ""}
-          cancel={() => setCreating(undefined)}
+          cancel={() => {
+            if (!draft.confirmLeave()) return;
+            setCreating(undefined);
+            // The trigger is disabled until React removes the creation form.
+            requestAnimationFrame(() => createTrigger.current?.focus());
+          }}
           saved={(id) => {
             setCreating(undefined);
             void state.reload();
@@ -101,14 +118,22 @@ export default function Clients({
               key={row.key}
               row={row}
               summary={state.data?.policy_summaries?.[row.key]}
-              select={() =>
-                row.configured ? onSelect(row.key) : setCreating(row)
-              }
+              select={() => {
+                if (row.configured) onSelect(row.key);
+                else if (draft.confirmLeave()) setCreating(row);
+              }}
             />
           ))}
           {!rows.length && (
             <p className="p-5 text-sm text-muted-foreground">
-              No devices found.
+              {search
+                ? "No devices match this search."
+                : "No devices yet. Add a device or wait for DNS activity."}
+              {search && (
+                <Button variant="link" onClick={() => setSearch("")}>
+                  Clear search
+                </Button>
+              )}
             </p>
           )}
         </div>
@@ -144,11 +169,11 @@ function DeviceRow({
     stale: observation?.name_fresh === false,
   };
   return (
-    <div className="grid gap-3 p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-center">
+    <div className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0 space-y-1">
         <button
           aria-label={name || identity.address}
-          className="min-h-10 text-left text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
+          className="min-h-10 max-w-full text-left text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
           onClick={select}
         >
           <ClientIdentity {...identity} compact />
@@ -240,6 +265,8 @@ function DeviceSummary({ summary }: { summary?: InventorySummary }) {
   );
 }
 export function Profiles() {
+  const draft = usePolicyDraft();
+  const createTrigger = useRef<HTMLButtonElement>(null);
   const profiles = useResource<{
     items: Schema["PolicyProfile"][];
     status: Schema["Activation"];
@@ -247,16 +274,24 @@ export function Profiles() {
   const clients = useResource<Schema["ClientsResponse"]>("clients");
   const [selected, setSelected] = useState<string>();
   const [creating, setCreating] = useState(false);
+  const [editorEpoch, setEditorEpoch] = useState(0);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm">
+        <label className="min-w-0 max-w-full text-sm">
           Policy
           <select
             aria-label="Policy to edit"
-            className={`${selectClass} ml-2`}
+            className={`${selectClass} ml-2 max-w-full`}
             value={selected ?? ""}
-            onChange={(e) => setSelected(e.target.value || undefined)}
+            onChange={(e) => {
+              if (draft.confirmLeave()) {
+                draft.onDirty(false);
+                draft.onCreateDirty(false);
+                setCreating(false);
+                setSelected(e.target.value || undefined);
+              }
+            }}
           >
             <option value="">Network defaults</option>
             {profiles.data?.items.map((p) => (
@@ -266,7 +301,18 @@ export function Profiles() {
             ))}
           </select>
         </label>
-        <Button variant="outline" onClick={() => setCreating(true)}>
+        <Button
+          ref={createTrigger}
+          variant="outline"
+          onClick={() => {
+            if (draft.confirmLeave()) {
+              draft.onDirty(false);
+              setEditorEpoch((x) => x + 1);
+              setCreating(true);
+            }
+          }}
+          disabled={creating}
+        >
           Create profile
         </Button>
       </div>
@@ -274,9 +320,15 @@ export function Profiles() {
       {creating && (
         <CreateOwner
           scope="profile"
+          onDirty={draft.onCreateDirty}
           revision={profiles.data?.status.saved_revision ?? ""}
-          cancel={() => setCreating(false)}
+          cancel={() => {
+            if (!draft.confirmLeave()) return;
+            setCreating(false);
+            requestAnimationFrame(() => createTrigger.current?.focus());
+          }}
           saved={(id) => {
+            draft.onDirty(false);
             setCreating(false);
             setSelected(id);
             void profiles.reload();
@@ -292,18 +344,22 @@ export function Profiles() {
             .join(", ") || "None"}
         </p>
       )}
-      <PolicyEditor
-        scope={selected ? "profile" : "network"}
-        id={selected}
-        onDeleted={
-          selected
-            ? () => {
-                setSelected(undefined);
-                void profiles.reload();
-              }
-            : undefined
-        }
-      />
+      <fieldset disabled={creating} className="min-w-0">
+        <PolicyEditor
+          key={editorEpoch}
+          scope={selected ? "profile" : "network"}
+          id={selected}
+          onDirty={draft.onDirty}
+          onDeleted={
+            selected
+              ? () => {
+                  setSelected(undefined);
+                  void profiles.reload();
+                }
+              : undefined
+          }
+        />
+      </fieldset>
     </div>
   );
 }
@@ -313,12 +369,14 @@ function CreateOwner({
   revision,
   cancel,
   saved,
+  onDirty,
 }: {
   scope: PolicyScope;
   observed?: Schema["ObservedClients"]["items"][number];
   revision: string;
   cancel: () => void;
   saved: (id: string) => void;
+  onDirty: (dirty: boolean) => void;
 }) {
   const [id, setID] = useState("");
   const [editRevision, setEditRevision] = useState(revision);
@@ -331,6 +389,20 @@ function CreateOwner({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   const [status, setStatus] = useState<Schema["Activation"]>();
+  useEffect(() => {
+    onDirty(
+      !status &&
+        (id !== "" ||
+          name !== (observed?.name ?? "") ||
+          address !== (observed?.address ?? "") ||
+          useMAC !== !!observed?.authoritative_mac),
+    );
+  }, [id, name, address, useMAC, observed, status, onDirty]);
+  useEffect(() => () => onDirty(false), [onDirty]);
+  const firstField = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    firstField.current?.focus();
+  }, []);
   return (
     <form
       className={panelClass}
@@ -356,6 +428,7 @@ function CreateOwner({
             },
           );
           setStatus(result);
+          onDirty(false);
           saved(id.trim());
         } catch (e) {
           setError(e as Error);
@@ -371,6 +444,7 @@ function CreateOwner({
         <label className="text-sm">
           Stable ID
           <Input
+            ref={firstField}
             required
             value={id}
             onChange={(e) => setID(e.target.value)}

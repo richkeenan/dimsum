@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, APIError, type Activation } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
@@ -26,7 +26,14 @@ export function ActivationStatus({ status }: { status: Activation }) {
     !status.restart_required &&
     status.saved_revision === status.active_revision;
   return (
-    <div role="status" className="space-y-1 text-xs text-muted-foreground">
+    <div
+      role={status.error ? "alert" : "status"}
+      className={`space-y-1 text-xs wrap-anywhere ${
+        active
+          ? "text-muted-foreground"
+          : `rounded-md border border-l-[3px] bg-muted px-3 py-2 text-foreground ${status.error ? "border-destructive" : "border-border border-l-primary"}`
+      }`}
+    >
       <p>
         {active
           ? `Saved and active · generation ${status.active_generation}`
@@ -56,11 +63,13 @@ export function PolicyEditor({
   id,
   onDeleted,
   onPromoted,
+  onDirty,
 }: {
   scope: PolicyScope;
   id?: string;
   onDeleted?: () => void;
   onPromoted?: (id: string) => void;
+  onDirty?: (dirty: boolean) => void;
 }) {
   const state = useResource<PolicyRead>(
     `client-policy?${new URLSearchParams({ scope, ...(id ? { id } : {}) })}`,
@@ -68,6 +77,14 @@ export function PolicyEditor({
   const [snapshot, setSnapshot] = useState<PolicyRead>();
   const [epoch, setEpoch] = useState(0);
   const [dirty, setDirty] = useState(false);
+  const reportDirty = useCallback(
+    (value: boolean) => {
+      setDirty(value);
+      onDirty?.(value);
+    },
+    [onDirty],
+  );
+  useEffect(() => () => onDirty?.(false), [onDirty]);
   useEffect(() => {
     if (
       state.data &&
@@ -97,7 +114,7 @@ export function PolicyEditor({
           key={`${scope}:${id}:${snapshot.status.saved_revision}:${epoch}`}
           read={snapshot}
           liveStatus={state.data?.status}
-          onDirty={setDirty}
+          onDirty={reportDirty}
           reload={async () => {
             const result = await state.reload();
             if (result.error || !result.data)
@@ -239,7 +256,19 @@ function PolicyForm({
     fields.length +
     Object.keys(extra).filter((k) => k !== "promote_id").length +
     (promote ? 1 : 0);
-  useEffect(() => onDirty(changed > 0), [changed, onDirty]);
+  const unstaged =
+    rulePattern.trim() !== "" ||
+    addresses !==
+      (
+        desiredClient.selectors?.addresses ??
+        (desiredClient.address ? [desiredClient.address] : [])
+      ).join("\n") ||
+    macs !== (desiredClient.selectors?.macs ?? []).join("\n") ||
+    cidrs !== (desiredClient.selectors?.cidrs ?? []).join("\n");
+  useEffect(
+    () => onDirty(!status && (changed > 0 || unstaged)),
+    [changed, unstaged, status, onDirty],
+  );
   const mutation: PolicyMutation = {
     revision: read.status.saved_revision,
     scope: read.scope,
@@ -281,6 +310,7 @@ function PolicyForm({
     try {
       const result = await api.send<Activation>("client-policy", "PATCH", body);
       setStatus(result);
+      onDirty(false);
       if (body.delete) onDeleted?.();
       else if (body.promote_id && onPromoted) onPromoted(body.promote_id);
       else await reload();
@@ -340,9 +370,9 @@ function PolicyForm({
     return (
       <div
         key={keyOf(path)}
-        className="grid gap-2 border-b border-border py-3 sm:grid-cols-[1fr_12rem_auto] sm:items-center"
+        className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-b border-border py-3 sm:grid-cols-[minmax(0,1fr)_12rem_4rem] sm:items-center"
       >
-        <div>
+        <div className="col-span-2 min-w-0 wrap-anywhere sm:col-span-1">
           <label htmlFor={keyOf(path)} className="text-sm font-medium">
             {label}
           </label>
@@ -373,10 +403,12 @@ function PolicyForm({
         <Button
           variant="ghost"
           size="sm"
+          aria-label={`Reset ${label}`}
+          className="min-h-10"
           disabled={selected === "inherit"}
           onClick={() => setField(path, undefined)}
         >
-          Reset {label}
+          Reset
         </Button>
       </div>
     );
@@ -393,6 +425,31 @@ function PolicyForm({
     read.scope === "network"
       ? "Network defaults"
       : `${read.scope === "client" ? "Device" : "Profile"}: ${desiredClient.name || read.id}`;
+  function discard() {
+    setFields([]);
+    setExtra({});
+    setSubscriptions([]);
+    setError(undefined);
+    setPreview(undefined);
+    setPromote("");
+    setName(desiredClient.name ?? "");
+    setPrimary((own.upstream ?? read.effective.upstream).upstreams.join("\n"));
+    setFallback(
+      (own.upstream ?? read.effective.upstream).fallback_upstreams?.join(
+        "\n",
+      ) ?? "",
+    );
+    setAddresses(
+      (
+        desiredClient.selectors?.addresses ??
+        (desiredClient.address ? [desiredClient.address] : [])
+      ).join("\n"),
+    );
+    setMacs(desiredClient.selectors?.macs?.join("\n") ?? "");
+    setCidrs(desiredClient.selectors?.cidrs?.join("\n") ?? "");
+    setLease("");
+    setRulePattern("");
+  }
   return (
     <div className="space-y-4">
       <fieldset disabled={busy || !!status} className="min-w-0 space-y-4">
@@ -409,6 +466,19 @@ function PolicyForm({
             </label>
           </div>
           <ActivationStatus status={status ?? liveStatus ?? read.status} />
+          {changed > 0 && (
+            <p className="text-xs font-medium text-primary" role="status">
+              Unsaved changes · save to apply.
+            </p>
+          )}
+          {!changed &&
+            read.active &&
+            (liveStatus ?? read.status).saved_revision !==
+              (liveStatus ?? read.status).active_revision && (
+              <p className="text-xs">
+                Showing saved settings. The active policy differs.
+              </p>
+            )}
           {liveStatus &&
             liveStatus.saved_revision !== read.status.saved_revision && (
               <p className="text-xs text-muted-foreground">
@@ -552,11 +622,24 @@ function PolicyForm({
           })}
           {!only && (
             <details>
-              <summary className="cursor-pointer py-2 text-sm">
+              <summary className="min-h-10 cursor-pointer py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring">
                 Add an available list
               </summary>
               <div className="space-y-2 pt-2">
                 {catalog.error && <ErrorNotice error={catalog.error} />}
+                {catalog.loading && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Loading available lists…
+                  </p>
+                )}
+                {availableLists &&
+                  !availableLists.some(
+                    (c) => !(c.id in read.effective.lists),
+                  ) && (
+                    <p className="text-xs text-muted-foreground">
+                      All available lists are already shown above.
+                    </p>
+                  )}
                 {availableLists
                   ?.filter((c) => !(c.id in read.effective.lists))
                   .map((c) => (
@@ -564,7 +647,7 @@ function PolicyForm({
                       key={c.id}
                       className="flex flex-wrap items-center justify-between gap-2"
                     >
-                      <div className="text-sm">
+                      <div className="min-w-0 flex-1 wrap-anywhere text-sm">
                         {c.label}
                         {!c.available && (
                           <p className="text-xs text-muted-foreground">
@@ -575,6 +658,8 @@ function PolicyForm({
                       <Button
                         variant="outline"
                         size="sm"
+                        aria-label={`Add ${c.label}`}
+                        className="min-h-10"
                         disabled={
                           !c.available ||
                           subscriptions.some((s) => s.id === c.id)
@@ -593,7 +678,7 @@ function PolicyForm({
                           setField(["lists", c.id], true);
                         }}
                       >
-                        Add {c.label}
+                        Add
                       </Button>
                     </div>
                   ))}
@@ -672,7 +757,7 @@ function PolicyForm({
           field(["rules"]) ||
           (extra.reset_all && own.rules !== undefined)) && (
           <section className={panelClass}>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Custom rules</h3>
               {extra.reset_all && own.rules && (
                 <p className="text-xs">
@@ -699,7 +784,7 @@ function PolicyForm({
               .map(({ rule, source }) => (
                 <p
                   key={`${source.kind}:${source.id}:${rule.id}`}
-                  className="text-xs text-muted-foreground"
+                  className="wrap-anywhere text-xs text-muted-foreground"
                 >
                   {rule.action === "allow" ? "Allow" : "Block"} {rule.pattern} ·{" "}
                   {sourceLabel(source)}
@@ -710,14 +795,16 @@ function PolicyForm({
                 key={rule.id}
                 className="flex flex-wrap items-center justify-between gap-2 text-sm"
               >
-                <span>
+                <span className="min-w-0 flex-1 basis-48 wrap-anywhere">
                   {rule.action === "allow" ? "Allow" : "Block"} {rule.pattern} (
                   {rule.kind}){!rule.enabled ? " · disabled" : ""}
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="min-h-10"
+                    aria-label={`${rule.enabled ? "Disable" : "Enable"} ${rule.pattern}`}
                     onClick={() =>
                       setField(
                         ["rules"],
@@ -732,6 +819,8 @@ function PolicyForm({
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="min-h-10"
+                    aria-label={`Remove ${rule.pattern}`}
                     onClick={() =>
                       setField(
                         ["rules"],
@@ -739,7 +828,7 @@ function PolicyForm({
                       )
                     }
                   >
-                    Remove {rule.pattern}
+                    Remove
                   </Button>
                 </div>
               </div>
@@ -799,9 +888,7 @@ function PolicyForm({
           </section>
         )}
         {read.scope === "client" &&
-          (!only ||
-            extra.paused_until ||
-            (extra.reset_pause && desiredClient.paused_until)) && (
+          (!only || extra.paused_until || extra.reset_pause) && (
             <section className={panelClass}>
               <h3 className="text-sm font-medium">Device pause</h3>
               <p className="text-xs text-muted-foreground">
@@ -814,6 +901,18 @@ function PolicyForm({
                   ? ` · device pause until ${new Date(desiredClient.paused_until).toLocaleString()}`
                   : ""}
               </p>
+              {extra.paused_until && (
+                <p role="status" className="text-sm font-medium text-primary">
+                  Pending pause until{" "}
+                  {new Date(extra.paused_until).toLocaleString()} · applies on
+                  save.
+                </p>
+              )}
+              {extra.reset_pause && (
+                <p role="status" className="text-sm font-medium text-primary">
+                  Pending: resume device on save.
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 {[5, 30, 60].map((minutes) => (
                   <Button
@@ -850,10 +949,42 @@ function PolicyForm({
               </div>
             </section>
           )}
+        {read.scope === "client" &&
+          (extra.selectors || extra.lease_address) && (
+            <section
+              className={panelClass}
+              aria-label="Pending matching identity"
+            >
+              <h3 className="text-sm font-medium">Pending matching identity</h3>
+              <div className="space-y-1 wrap-anywhere text-sm" role="status">
+                {extra.lease_address ? (
+                  <p>Use the lease MAC for {extra.lease_address}.</p>
+                ) : (
+                  <>
+                    <p>
+                      Addresses:{" "}
+                      {extra.selectors?.addresses?.join(", ") || "None"}
+                    </p>
+                    <p>
+                      MAC addresses:{" "}
+                      {extra.selectors?.macs?.join(", ") || "None"}
+                    </p>
+                    <p>
+                      Networks: {extra.selectors?.cidrs?.join(", ") || "None"}
+                    </p>
+                  </>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Replaces matching selectors on save; profile and policy are
+                  retained.
+                </p>
+              </div>
+            </section>
+          )}
         {read.scope === "client" && !only && (
           <section className={panelClass}>
             <details>
-              <summary className="cursor-pointer text-sm font-medium">
+              <summary className="min-h-10 cursor-pointer content-center wrap-anywhere text-sm font-medium focus-visible:outline-2 focus-visible:outline-ring">
                 Matching identity · {read.id}
               </summary>
               <p className="my-3 text-xs text-muted-foreground">
@@ -936,16 +1067,16 @@ function PolicyForm({
           </section>
         )}
         <section
-          className={`${panelClass} ${changed ? "sticky bottom-2 shadow-sm" : ""}`}
+          className={`space-y-2 rounded-lg border border-border bg-background p-3 sm:p-4 ${changed ? "sticky bottom-2 z-10 shadow-sm" : ""}`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm">
+            <div className="min-w-0 wrap-anywhere text-sm">
               <strong>
                 {changed} {changed === 1 ? "change" : "changes"}
               </strong>{" "}
               · {scopeName}
               {preview && (
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 max-h-16 overflow-y-auto wrap-anywhere text-xs text-muted-foreground">
                   {preview.changed_clients.length} affected devices
                   {preview.network_changed ? " · network changed" : ""}
                   {preview.changed_clients.length
@@ -957,21 +1088,16 @@ function PolicyForm({
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => {
-                  setFields([]);
-                  setSubscriptions([]);
-                  setExtra({
-                    reset_all: true,
-                    ...(read.scope === "client" ? { reset_pause: true } : {}),
-                  });
-                }}
-              >
-                Reset all overrides
-              </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {(changed > 0 || unstaged) && (
+                <Button
+                  variant="ghost"
+                  aria-label="Discard staged changes"
+                  onClick={discard}
+                >
+                  Discard
+                </Button>
+              )}
               <Button
                 disabled={
                   !changed ||
@@ -998,42 +1124,21 @@ function PolicyForm({
               Reload saved policy
             </Button>
           )}
-          {changed > 0 && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setFields([]);
-                setExtra({});
-                setSubscriptions([]);
-                setError(undefined);
-                setPreview(undefined);
-                setPromote("");
-                setName(desiredClient.name ?? "");
-                setPrimary(
-                  (own.upstream ?? read.effective.upstream).upstreams.join(
-                    "\n",
-                  ),
-                );
-                setFallback(
-                  (
-                    own.upstream ?? read.effective.upstream
-                  ).fallback_upstreams?.join("\n") ?? "",
-                );
-                setAddresses(
-                  (
-                    desiredClient.selectors?.addresses ??
-                    (desiredClient.address ? [desiredClient.address] : [])
-                  ).join("\n"),
-                );
-                setMacs(desiredClient.selectors?.macs?.join("\n") ?? "");
-                setCidrs(desiredClient.selectors?.cidrs?.join("\n") ?? "");
-                setLease("");
-              }}
-            >
-              Discard staged changes
-            </Button>
-          )}
         </section>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            setFields([]);
+            setSubscriptions([]);
+            setExtra({
+              reset_all: true,
+              ...(read.scope === "client" ? { reset_pause: true } : {}),
+            });
+          }}
+        >
+          Reset all overrides
+        </Button>
         {read.scope !== "network" && onDeleted && (
           <div className="flex flex-wrap items-center gap-3">
             <Button

@@ -48,10 +48,10 @@ export function DomainInspector({ clientID = "" }: { clientID?: string }) {
             placeholder="ads.example.com"
           />
         </label>
-        <label className="text-sm">
+        <label className="min-w-0 max-w-full text-sm">
           Device
           <select
-            className={`${selectClass} block`}
+            className={`${selectClass} block max-w-full`}
             aria-label="Device"
             value={client}
             onChange={(e) => {
