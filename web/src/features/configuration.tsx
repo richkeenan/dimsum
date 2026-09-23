@@ -19,6 +19,7 @@ import {
   type Row,
   type Settings,
   type Mutation,
+  type Edit,
 } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
@@ -36,6 +37,8 @@ import {
   UpstreamName,
   UpstreamConnectionTest,
   UpstreamPoolSummary,
+  UpstreamSelection,
+  UpstreamOrder,
 } from "./upstreams";
 type Field = {
   key: string;
@@ -179,7 +182,63 @@ export default function Configuration({
     !state.loading &&
     !state.error &&
     !busy &&
-    !(kind === "lists" && state.isFetching);
+    !((kind === "lists" || kind === "upstreams") && state.isFetching);
+  const upstreamMode = settings.data?.config
+    ? String(
+        (
+          (settings.data.config.dns as Row | undefined)?.upstream_policy as
+            Row | undefined
+        )?.mode || "ordered",
+      )
+    : undefined;
+  const upstreamReady =
+    ready &&
+    !editing &&
+    !settings.loading &&
+    !settings.error &&
+    !settings.isFetching &&
+    settings.data?.revision === revision &&
+    !!upstreamMode;
+
+  async function reloadUpstreamSelection() {
+    setBusy(true);
+    try {
+      await Promise.all([
+        state.reload({ cancelRefetch: false }),
+        settings.reload({ cancelRefetch: false }),
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveUpstreamSelection(resource: string, edits: Edit[]) {
+    if (!upstreamReady) return;
+    setBusy(true);
+    setError(undefined);
+    setNotice(undefined);
+    try {
+      const result = await api.send<Row>(resource, "PATCH", {
+        revision,
+        edits,
+      });
+      setNotice(result);
+    } catch (e) {
+      setError(e as Error);
+    } finally {
+      await reloadUpstreamSelection();
+    }
+  }
+
+  function moveUpstream(index: number, direction: number) {
+    const items = collectionRows(state.data);
+    const other = index + direction;
+    if (upstreamMode !== "ordered" || !items[index] || !items[other]) return;
+    void saveUpstreamSelection("upstreams", [
+      { path: [String(index)], value: items[other].address },
+      { path: [String(other)], value: items[index].address },
+    ]);
+  }
   const configuredClients = collectionRows(state.data);
   const observedClients = rows(state.data?.observed);
   const devices = [
@@ -504,68 +563,125 @@ export default function Configuration({
                 edit={open}
               />
             ) : (
-              <DataTable
-                items={collectionRows(state.data)}
-                columns={[
-                  ...columns[kind].map((key) => ({
-                    key,
-                    label:
-                      (
-                        {
-                          enabled: "Status",
-                          pattern: "Domain or pattern",
-                          kind: "Matches",
-                          action: "Action",
-                          ttl: "Lifetime (s)",
-                          name: "Name",
-                          address: "Address",
-                          type: "Type",
-                          value: "Target",
-                        } as Record<string, string>
-                      )[key] ?? key,
-                    render: (r: Row) =>
-                      kind === "upstreams" && key === "address" ? (
-                        <UpstreamName address={text(r.address)} />
-                      ) : key === "enabled" ? (
-                        r.enabled === true ? (
-                          "Enabled"
-                        ) : r.enabled === false ? (
-                          "Disabled"
-                        ) : (
-                          "Unknown"
-                        )
-                      ) : key === "ttl" ? (
-                        count(r[key])
-                      ) : (
-                        (optionLabels[String(r[key])] ?? text(r[key]))
-                      ),
-                  })),
-                  {
-                    key: "actions",
-                    label: "Actions",
-                    align: "right",
-                    render: (r) => (
-                      <div className="flex items-center justify-end gap-2 whitespace-nowrap">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!ready}
-                          onClick={() => open(r)}
+              <>
+                {kind === "upstreams" && (
+                  <>
+                    <UpstreamSelection
+                      mode={upstreamMode}
+                      disabled={!upstreamReady}
+                      saving={busy}
+                      change={(mode) =>
+                        void saveUpstreamSelection("settings", [
+                          {
+                            path: ["dns", "upstream_policy", "mode"],
+                            value: mode,
+                          },
+                        ])
+                      }
+                    />
+                    {!!revision &&
+                      !!settings.data?.revision &&
+                      settings.data.revision !== revision &&
+                      !busy &&
+                      !state.isFetching &&
+                      !settings.isFetching && (
+                        <div
+                          className="flex flex-wrap items-center gap-3 border-b border-border px-[18px] py-3 text-xs text-muted-foreground"
+                          role="status"
                         >
-                          Edit
-                        </Button>
-                        {kind === "upstreams" && (
-                          <UpstreamConnectionTest
-                            key={text(r.address)}
-                            address={text(r.address)}
-                          />
-                        )}
-                      </div>
-                    ),
-                  },
-                ]}
-                empty={"No " + kind + " returned by the service."}
-              />
+                          Configuration changed. Refresh before changing
+                          selection or priority.
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void reloadUpstreamSelection()}
+                          >
+                            Refresh upstream settings
+                          </Button>
+                        </div>
+                      )}
+                  </>
+                )}
+                <DataTable
+                  items={collectionRows(state.data)}
+                  columns={[
+                    ...(kind === "upstreams" && upstreamMode === "ordered"
+                      ? [
+                          {
+                            key: "priority",
+                            label: "Priority",
+                            render: (r: Row) => (
+                              <UpstreamOrder
+                                address={text(r.address)}
+                                index={Number(r.__index)}
+                                count={collectionRows(state.data).length}
+                                disabled={!upstreamReady}
+                                move={moveUpstream}
+                              />
+                            ),
+                          },
+                        ]
+                      : []),
+                    ...columns[kind].map((key) => ({
+                      key,
+                      label:
+                        (
+                          {
+                            enabled: "Status",
+                            pattern: "Domain or pattern",
+                            kind: "Matches",
+                            action: "Action",
+                            ttl: "Lifetime (s)",
+                            name: "Name",
+                            address: "Address",
+                            type: "Type",
+                            value: "Target",
+                          } as Record<string, string>
+                        )[key] ?? key,
+                      render: (r: Row) =>
+                        kind === "upstreams" && key === "address" ? (
+                          <UpstreamName address={text(r.address)} />
+                        ) : key === "enabled" ? (
+                          r.enabled === true ? (
+                            "Enabled"
+                          ) : r.enabled === false ? (
+                            "Disabled"
+                          ) : (
+                            "Unknown"
+                          )
+                        ) : key === "ttl" ? (
+                          count(r[key])
+                        ) : (
+                          (optionLabels[String(r[key])] ?? text(r[key]))
+                        ),
+                    })),
+                    {
+                      key: "actions",
+                      label: "Actions",
+                      align: "right",
+                      render: (r) => (
+                        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={!ready}
+                            onClick={() => open(r)}
+                          >
+                            Edit
+                          </Button>
+                          {kind === "upstreams" && (
+                            <UpstreamConnectionTest
+                              key={text(r.address)}
+                              address={text(r.address)}
+                            />
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                  empty={"No " + kind + " returned by the service."}
+                />
+              </>
             )}
             {kind === "lists" &&
               rows(state.data).some((r) => r.homepage || r.license) && (

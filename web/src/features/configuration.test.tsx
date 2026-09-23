@@ -16,14 +16,19 @@ import { api, APIError } from "@/lib/api";
 const resources = vi.hoisted(() => ({
   values: {} as Record<
     string,
-    { data?: unknown; loading: boolean; error?: Error }
+    {
+      data?: unknown;
+      loading: boolean;
+      error?: Error;
+      reload?: () => Promise<void>;
+    }
   >,
 }));
 vi.mock("@/lib/hooks", () => ({
   useResource: (path: string) => ({
     ...resources.values[path],
     loading: resources.values[path]?.loading ?? false,
-    reload: async () => {},
+    reload: resources.values[path]?.reload ?? (async () => {}),
   }),
 }));
 
@@ -143,6 +148,150 @@ it("adds a provider as one revision-checked mutation", async () => {
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
+});
+
+function upstreamResources(
+  mode?: string,
+  revision = "original-revision",
+  items = ["192.0.2.53:53", "192.0.2.54:53"],
+) {
+  resources.values.upstreams = { loading: false, data: { revision, items } };
+  resources.values.settings = {
+    loading: false,
+    data: {
+      revision,
+      config: { dns: { upstreams: items, upstream_policy: { mode } } },
+    },
+  };
+}
+
+it("switches upstream selection modes without losing the configured order", async () => {
+  upstreamResources();
+  const send = vi
+    .spyOn(api, "send")
+    .mockImplementation(async (_path, _method, body) => {
+      const mutation = body as { edits: { value: string }[] };
+      upstreamResources(mutation.edits[0].value, "saved-revision");
+      return {};
+    });
+  render(<Configuration kind="upstreams" range="" />);
+  expect(screen.getByLabelText("Selection mode")).toHaveValue("ordered");
+  expect(
+    screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
+  ).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Selection mode"), {
+    target: { value: "adaptive" },
+  });
+  await waitFor(() =>
+    expect(screen.getByLabelText("Selection mode")).toHaveValue("adaptive"),
+  );
+  expect(send).toHaveBeenCalledWith("settings", "PATCH", {
+    revision: "original-revision",
+    edits: [{ path: ["dns", "upstream_policy", "mode"], value: "adaptive" }],
+  });
+  expect(
+    screen.queryByRole("button", { name: /Move .* down/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Selection mode"), {
+    target: { value: "ordered" },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Move 192.0.2.54:53 down" }),
+    ).toBeDisabled(),
+  );
+  expect(send).toHaveBeenLastCalledWith("settings", "PATCH", {
+    revision: "saved-revision",
+    edits: [{ path: ["dns", "upstream_policy", "mode"], value: "ordered" }],
+  });
+  expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.53:53");
+});
+
+it("saves an upstream move atomically and displays the returned order", async () => {
+  upstreamResources();
+  const send = vi.spyOn(api, "send").mockImplementation(async () => {
+    upstreamResources("ordered", "saved-revision", [
+      "192.0.2.54:53",
+      "192.0.2.53:53",
+    ]);
+    return {};
+  });
+  render(<Configuration kind="upstreams" range="" />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
+  );
+  await waitFor(() =>
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.54:53"),
+  );
+  expect(send).toHaveBeenCalledWith("upstreams", "PATCH", {
+    revision: "original-revision",
+    edits: [
+      { path: ["0"], value: "192.0.2.54:53" },
+      { path: ["1"], value: "192.0.2.53:53" },
+    ],
+  });
+  expect(
+    screen.getByRole("button", { name: "Move 192.0.2.54:53 up" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
+  ).toBeEnabled();
+});
+
+it.each(["mode", "order"])(
+  "keeps saved upstream %s after a revision conflict",
+  async (operation) => {
+    upstreamResources();
+    vi.spyOn(api, "send").mockRejectedValue(
+      new APIError(409, "conflict", "revision conflict"),
+    );
+    render(<Configuration kind="upstreams" range="" />);
+    if (operation === "mode")
+      fireEvent.change(screen.getByLabelText("Selection mode"), {
+        target: { value: "adaptive" },
+      });
+    else
+      fireEvent.click(
+        screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
+      );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /haven't been saved/,
+    );
+    expect(screen.getByLabelText("Selection mode")).toHaveValue("ordered");
+    expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.53:53");
+    expect(screen.queryByText("Changes saved.")).not.toBeInTheDocument();
+  },
+);
+
+it("waits for matching revisions and lets the user refresh after an external change", async () => {
+  upstreamResources();
+  resources.values.settings = { loading: true };
+  const view = render(<Configuration kind="upstreams" range="" />);
+  expect(screen.getByLabelText("Selection mode")).toBeDisabled();
+  expect(
+    screen.queryByRole("button", { name: /Move .* down/ }),
+  ).not.toBeInTheDocument();
+  upstreamResources();
+  resources.values.upstreams.data = {
+    revision: "newer-revision",
+    items: ["192.0.2.53:53", "192.0.2.54:53"],
+  };
+  resources.values.upstreams.reload = async () =>
+    upstreamResources("ordered", "newer-revision");
+  view.rerender(<Configuration kind="upstreams" range="" />);
+  expect(screen.getByLabelText("Selection mode")).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh upstream settings" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByLabelText("Selection mode")).toBeEnabled(),
+  );
+  expect(
+    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
+  ).toBeEnabled();
 });
 
 it("validates custom upstreams locally and formats IPv6 with the default port", async () => {

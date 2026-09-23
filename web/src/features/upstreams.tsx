@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { api, APIError, type Job, type Row } from "@/lib/api";
 import { ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,93 @@ export function UpstreamPoolSummary({ config }: { config?: Row }) {
           : "Configured upstreams use standard DNS (unencrypted)."}
       {" Encryption covers the connection from dimsum to the upstream server."}
     </p>
+  );
+}
+
+export function UpstreamSelection({
+  mode,
+  disabled,
+  saving,
+  change,
+}: {
+  mode?: string;
+  disabled: boolean;
+  saving: boolean;
+  change: (mode: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-border px-[18px] py-4">
+      <label className="flex flex-col gap-1.5 text-xs">
+        Selection mode
+        <select
+          className="min-h-9 min-w-40 rounded-md border border-input bg-background px-2.5 py-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+          value={mode ?? ""}
+          disabled={disabled}
+          aria-describedby="upstream-selection-help"
+          onChange={(event) => change(event.target.value)}
+        >
+          {!mode && <option value="">Loading…</option>}
+          <option value="ordered">Ordered</option>
+          <option value="adaptive">Adaptive</option>
+        </select>
+      </label>
+      <p
+        id="upstream-selection-help"
+        className="max-w-xl text-xs text-muted-foreground"
+      >
+        {mode === "ordered"
+          ? "Try servers from top to bottom, skipping unhealthy servers. Use the arrows to change their priority."
+          : mode === "adaptive"
+            ? "Prefer servers with lower measured latency, occasionally trying others. Your saved order is kept for Ordered mode."
+            : "Loading the saved selection mode."}
+      </p>
+      {saving && (
+        <span role="status" className="text-xs text-muted-foreground">
+          Saving…
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function UpstreamOrder({
+  address,
+  index,
+  count,
+  disabled,
+  move,
+}: {
+  address: string;
+  index: number;
+  count: number;
+  disabled: boolean;
+  move: (index: number, direction: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="mr-2 min-w-4 text-xs text-muted-foreground tabular-nums">
+        {index + 1}
+      </span>
+      {([-1, 1] as const).map((direction) => {
+        const label = direction === -1 ? "up" : "down";
+        const Icon = direction === -1 ? ArrowUp : ArrowDown;
+        return (
+          <Button
+            key={direction}
+            size="icon"
+            variant="outline"
+            aria-label={`Move ${address} ${label}`}
+            title={`Move ${label}`}
+            disabled={
+              disabled || index + direction < 0 || index + direction >= count
+            }
+            onClick={() => move(index, direction)}
+          >
+            <Icon aria-hidden="true" />
+          </Button>
+        );
+      })}
+    </div>
   );
 }
 

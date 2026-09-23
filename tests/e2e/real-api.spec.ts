@@ -403,6 +403,45 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
       exact: true,
     }),
   ).toBeVisible();
+  await expect(page.getByLabel("Selection mode")).toHaveValue("ordered");
+  await page
+    .getByRole("button", { name: "Move 192.0.2.53:53 up", exact: true })
+    .click();
+  await expect(page.getByRole("row").nth(3)).toContainText("192.0.2.53:53");
+  await page.reload();
+  await expect(page.getByRole("row").nth(3)).toContainText("192.0.2.53:53");
+  const reordered = await (await page.request.get("/api/v1/upstreams")).json();
+  expect(reordered.items.slice(-2)).toEqual(["192.0.2.53:53", "8.8.4.4:53"]);
+  expect(reordered.status.active_revision).toBe(
+    reordered.status.saved_revision,
+  );
+  await page.getByLabel("Selection mode").selectOption("adaptive");
+  await expect(page.getByRole("button", { name: /Move .* up/ })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel("Selection mode")).toHaveValue("adaptive");
+  const adaptive = await (await page.request.get("/api/v1/settings")).json();
+  expect(adaptive.config.dns.upstream_policy.mode).toBe("adaptive");
+  expect(adaptive.status.active_revision).toBe(adaptive.status.saved_revision);
+  await page.screenshot({
+    path: testInfo.outputPath("upstream-adaptive-desktop.png"),
+  });
+  await page.getByLabel("Selection mode").selectOption("ordered");
+  await page
+    .getByRole("button", { name: "Move 192.0.2.53:53 down", exact: true })
+    .click();
+  await expect(page.getByRole("row").last()).toContainText("192.0.2.53:53");
+  expect(await readFile(file, "utf8")).toContain("# keep upstream comment");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel("Selection mode")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("upstream-ordered-mobile.png"),
+  });
+  await page.setViewportSize({ width: 1440, height: 1100 });
   await page
     .getByRole("row")
     .filter({ hasText: "192.0.2.53:53" })

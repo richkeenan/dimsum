@@ -43,6 +43,42 @@ revision-checked PATCH and DELETE operations also apply to encrypted entries.
 Read the saved configuration and activation status after a mutation. Saving a
 URL does not prove that the server can answer DNS queries.
 
+## Selection mode and priority
+
+On the **Upstreams** page, **Selection mode** chooses how servers are tried:
+
+- **Ordered** (the default): try servers from top to bottom, skipping unhealthy
+  servers. Use the up/down arrows beside each numbered row to change priority.
+- **Adaptive**: prefer servers with lower measured latency, occasionally trying
+  others to refresh measurements. The configured order is retained when switching
+  back to Ordered mode.
+
+Changes save immediately. Both modes try another eligible server after a failed
+attempt, subject to retry and time limits. An NXDOMAIN answer is valid and does
+not trigger another attempt. Explicit fallback servers are tried after eligible
+primary servers, even in Adaptive mode.
+
+The CLI uses the same revision-checked control API. Read `dimsum control settings`
+for the current saved revision, then select a mode:
+
+```sh
+dimsum control patch settings '{"revision":"CURRENT_REVISION","edits":[{"path":["dns","upstream_policy","mode"],"value":"adaptive"}]}'
+```
+
+Use `"ordered"` to switch back. To swap the first two servers, read
+`dimsum control upstreams` and submit both positions in one request, using the
+actual saved addresses. For example, if they are `192.0.2.53:53` followed by
+`192.0.2.54:53`:
+
+```sh
+dimsum control patch upstreams '{"revision":"CURRENT_REVISION","edits":[{"path":["0"],"value":"192.0.2.54:53"},{"path":["1"],"value":"192.0.2.53:53"}]}'
+```
+
+Read back the saved order and activation status after either operation. Each
+mutation needs the latest revision; a conflicting edit must be refreshed first.
+Reordering swaps address values; existing YAML comments stay in their original
+positions.
+
 ## Bootstrap DNS
 
 Bootstrap resolvers locate encrypted server hostnames without using the system
