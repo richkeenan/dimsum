@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/localdns"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -22,7 +21,6 @@ type CustomRule struct {
 
 // Typed text boundaries for the next local-data and naming producers.
 type Record = localdns.Record
-type ClientOverride = clients.Override
 
 func (c Config) PolicyRules() []policy.Rule {
 	out := c.Filtering.Rules()
@@ -108,13 +106,5 @@ func validatePolicy(c Config) error {
 			return fmt.Errorf("records[%d].type: expected A, AAAA, CNAME or PTR", i)
 		}
 	}
-	seen = map[string]bool{}
-	for i, c := range c.Clients {
-		a, e := netip.ParseAddr(c.Address)
-		if e != nil || strings.TrimSpace(c.Name) == "" || seen[a.Unmap().String()] {
-			return fmt.Errorf("clients[%d]: expected unique IP and nonempty name", i)
-		}
-		seen[a.Unmap().String()] = true
-	}
-	return nil
+	return validateClientPolicy(c)
 }

@@ -28,6 +28,8 @@ type Config struct {
 	Rules      []CustomRule         `yaml:"rules,omitempty"`
 	Records    []Record             `yaml:"records,omitempty"`
 	Clients    []ClientOverride     `yaml:"clients,omitempty"`
+	Profiles   []Profile            `yaml:"profiles,omitempty"`
+	Blocking   *bool                `yaml:"blocking,omitempty"`
 	Zones      []localdns.Zone      `yaml:"zones,omitempty"`
 	Filtering  policy.Settings      `yaml:"filtering,omitempty"`
 	Naming     clients.Settings     `yaml:"naming,omitempty"`
@@ -156,6 +158,7 @@ func (d *Document) Config() Config {
 	c.Rules = append([]CustomRule(nil), c.Rules...)
 	c.Records = append([]Record(nil), c.Records...)
 	c.Clients = append([]ClientOverride(nil), c.Clients...)
+	c.cloneClientPolicy()
 	c.Zones = append([]localdns.Zone(nil), c.Zones...)
 	return c
 }

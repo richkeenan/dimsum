@@ -18,6 +18,9 @@ type Subscription struct {
 	Dialect    Dialect     `yaml:"dialect"`
 	DomainKind policy.Kind `yaml:"domain_kind"`
 	Enabled    bool        `yaml:"enabled"`
+	// DefaultApply controls network application, independently of download availability.
+	// Omission preserves the legacy enabled-source behavior.
+	DefaultApply *bool `yaml:"default_apply,omitempty" json:"DefaultApply,omitempty"`
 	// A deletion of >= 50% is quarantined until explicitly approved in text.
 	AllowLargeDeletion bool `yaml:"allow_large_deletion,omitempty"`
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"slices"
 
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/policy"
@@ -20,7 +21,7 @@ type subscriptionState struct {
 
 func (s *Store) prepareSubscriptions(ctx context.Context, c Config, refresh bool) (*subscriptionState, error) {
 	old := s.Snapshot()
-	if !refresh && old != nil && reflect.DeepEqual(c.Lists, old.document.value.Lists) {
+	if !refresh && old != nil && reflect.DeepEqual(subscriptionMembership(c.Lists), subscriptionMembership(old.document.value.Lists)) {
 		if err := s.statSubscriptionArtifact(old.subscriptions.artifact); err != nil {
 			return nil, err
 		}
@@ -89,4 +90,13 @@ func (s *Store) prepareSubscriptions(ctx context.Context, c Config, refresh bool
 		return nil, err
 	}
 	return s.compileSubscriptions(c, rules, statuses)
+}
+
+// Application defaults do not change downloaded membership or durable indexes.
+func subscriptionMembership(in []lists.Subscription) []lists.Subscription {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].DefaultApply = nil
+	}
+	return out
 }

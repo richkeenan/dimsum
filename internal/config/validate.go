@@ -19,7 +19,7 @@ func Validate(c Config) error {
 	if err := dhcp.ValidateDNS(c.DHCP, c.DNS.Listen); err != nil {
 		return err
 	}
-	if _, err := clients.NewView(c.Naming, c.Clients, nil); err != nil {
+	if _, err := clients.NewView(c.Naming, c.NamingOverrides(), nil); err != nil {
 		return fmt.Errorf("naming: %w", err)
 	}
 	if c.Version != 1 {

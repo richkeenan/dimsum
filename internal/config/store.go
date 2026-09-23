@@ -205,7 +205,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err != nil {
 		return s.fail(err)
 	}
-	names, err := clients.NewView(c.Naming, c.Clients, local.Names())
+	names, err := clients.NewView(c.Naming, c.NamingOverrides(), local.Names())
 	if err != nil {
 		return s.fail(err)
 	}
@@ -213,7 +213,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err != nil {
 		return s.fail(err)
 	}
-	compiled, err := policy.CompileOverlay(generation, c.PolicyRules(), subs.policy, policy.DefaultLimits())
+	clientPolicies, err := c.compileClientPolicies(generation, subs.policy)
 	if err != nil {
 		return s.fail(err)
 	}
@@ -244,7 +244,7 @@ func (s *Store) activate(ctx context.Context, d *Document, expected string, save
 	if err = s.commitManifest(stage); err != nil {
 		return s.fail(err)
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: generation, subscriptions: subs}, subs.sources, false)
+	s.publish(&Snapshot{document: d, policy: clientPolicies.Network().Policy(), clientPolicies: clientPolicies, local: local, names: names, generation: generation, subscriptions: subs}, subs.sources, false)
 	if !save {
 		s.cleanupSubscriptions(subs.artifact.Name)
 	}
@@ -265,7 +265,9 @@ func (s *Store) reusableSources(subs []lists.Subscription) map[string]lists.Vers
 			continue
 		}
 		for _, prior := range old.document.value.Lists {
-			if sub != prior {
+			prior.DefaultApply = nil
+			sub.DefaultApply = nil
+			if !reflect.DeepEqual(sub, prior) {
 				continue
 			}
 			if status, usable := s.previousSource(sub); usable {

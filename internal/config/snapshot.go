@@ -13,6 +13,7 @@ import (
 type Snapshot struct {
 	document        *Document
 	policy          *policy.PolicySnapshot
+	clientPolicies  *ClientPolicies
 	generation      uint64
 	local           *localdns.Zones
 	names           *clients.View
@@ -21,15 +22,16 @@ type Snapshot struct {
 	upstreamCancel  context.CancelFunc
 }
 
-func (s *Snapshot) Config() Config                 { return s.document.Config() }
-func (s *Snapshot) Policy() *policy.PolicySnapshot { return s.policy }
-func (s *Snapshot) Local() *localdns.Zones         { return s.local }
-func (s *Snapshot) Names() *clients.View           { return s.names }
-func (s *Snapshot) Filtering() policy.Settings     { return s.document.value.Filtering }
-func (s *Snapshot) CacheSettings() Cache           { return s.document.value.Cache }
-func (s *Snapshot) Generation() uint64             { return s.generation }
-func (s *Snapshot) DHCPEnabled() bool              { return s.document.value.DHCP.Enabled }
-func (s *Snapshot) Revision() string               { return s.document.Revision() }
+func (s *Snapshot) Config() Config                  { return s.document.Config() }
+func (s *Snapshot) Policy() *policy.PolicySnapshot  { return s.policy }
+func (s *Snapshot) ClientPolicies() *ClientPolicies { return s.clientPolicies }
+func (s *Snapshot) Local() *localdns.Zones          { return s.local }
+func (s *Snapshot) Names() *clients.View            { return s.names }
+func (s *Snapshot) Filtering() policy.Settings      { return s.document.value.Filtering }
+func (s *Snapshot) CacheSettings() Cache            { return s.document.value.Cache }
+func (s *Snapshot) Generation() uint64              { return s.generation }
+func (s *Snapshot) DHCPEnabled() bool               { return s.document.value.DHCP.Enabled }
+func (s *Snapshot) Revision() string                { return s.document.Revision() }
 
 // UpstreamOptions returns owned endpoint slices from the captured generation.
 func (s *Snapshot) UpstreamOptions() upstream.Options { return s.document.value.DNS.UpstreamOptions() }

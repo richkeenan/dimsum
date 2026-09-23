@@ -136,7 +136,7 @@ func (s *Store) compileSubscriptions(c Config, rules []policy.Rule, sources []So
 	if err != nil {
 		return nil, err
 	}
-	b, err := json.Marshal(subscriptionInputs{Version: recoveryVersion, Lists: c.Lists, Rules: rules})
+	b, err := json.Marshal(subscriptionInputs{Version: recoveryVersion, Lists: subscriptionMembership(c.Lists), Rules: rules})
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ func (s *Store) recover() error {
 				owners[rule.ID] = rule
 			}
 		}
-		expected := d.value.PolicyRules()
+		expected := d.value.scopedPolicyRules()
 		if len(expected) != len(owners) {
 			return fmt.Errorf("recovery: owner/config mismatch")
 		}
@@ -286,7 +286,7 @@ func (s *Store) recover() error {
 		if err := strictJSON(b, &inputs); err != nil {
 			return err
 		}
-		if inputs.Version != recoveryVersion || !reflect.DeepEqual(inputs.Lists, d.value.Lists) {
+		if inputs.Version != recoveryVersion || !reflect.DeepEqual(inputs.Lists, subscriptionMembership(d.value.Lists)) {
 			return fmt.Errorf("recovery: subscription version/config mismatch")
 		}
 		if err := validateMembership(d.value, inputs.Rules, m.Sources); err != nil {
@@ -299,7 +299,7 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
-	compiled, err := policy.CompileOverlay(m.Generation, d.value.PolicyRules(), subs.policy, policy.DefaultLimits())
+	clientPolicies, err := d.value.compileClientPolicies(m.Generation, subs.policy)
 	if err != nil {
 		return err
 	}
@@ -307,7 +307,7 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
-	names, err := clients.NewView(d.value.Naming, d.value.Clients, local.Names())
+	names, err := clients.NewView(d.value.Naming, d.value.NamingOverrides(), local.Names())
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,7 @@ func (s *Store) recover() error {
 			return err
 		}
 	}
-	s.publish(&Snapshot{document: d, policy: compiled, local: local, names: names, generation: m.Generation, subscriptions: subs}, m.Sources, true)
+	s.publish(&Snapshot{document: d, policy: clientPolicies.Network().Policy(), clientPolicies: clientPolicies, local: local, names: names, generation: m.Generation, subscriptions: subs}, m.Sources, true)
 	s.cleanupSubscriptions(subs.artifact.Name)
 	return nil
 }
