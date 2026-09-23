@@ -72,25 +72,22 @@ export function DomainInspector({ clientID = "" }: { clientID?: string }) {
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">
-        Active policy for the original name; no upstream lookup or alias-chain
-        check.
+        Active policy for the original name; no upstream lookup or alias-chain check.
       </p>
       {error && <ErrorNotice error={error} />}
       {result && (
         <div role="status" className="space-y-1 text-sm">
           <p>
-            {result.normalized}: <strong>{result.decision.result}</strong> ·{" "}
-            {result.handling}
+            {result.normalized}: <strong>{result.decision.result}</strong> · {result.handling}
           </p>
           <p className="text-xs text-muted-foreground">
-            {clients.data?.items?.find((c) => c.policy_id === result.client_id)
-              ?.name || "Network defaults"}
+            {clients.data?.items?.find((c) => c.policy_id === result.client_id)?.name ||
+              "Network defaults"}
           </p>
           {result.decision.rule_id && (
             <p className="break-all text-xs">
-              Winning rule: {result.decision.rule_id} ·{" "}
-              {sourceLabel(result.decision.scope)} · sources:{" "}
-              {result.decision.source_ids.join(", ")}
+              Winning rule: {result.decision.rule_id} · {sourceLabel(result.decision.scope)} ·
+              sources: {result.decision.source_ids.join(", ")}
             </p>
           )}
         </div>

@@ -9,7 +9,7 @@ export default defineConfig({
       tanstackStart({
         spa: { enabled: true, prerender: { outputPath: "/index.html" } },
       }),
-    react(),
+    react({ compiler: true }),
     tailwindcss(),
   ],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "src") } },

@@ -29,19 +29,15 @@ it("aborts superseded query pages and never displays their late results", async 
         ),
     ),
   );
-  const { result, rerender } = renderHook(
-    ({ path }) => useResource<{ items: string[] }>(path),
-    { wrapper, initialProps: { path: "queries?name=first" } },
-  );
+  const { result, rerender } = renderHook(({ path }) => useResource<{ items: string[] }>(path), {
+    wrapper,
+    initialProps: { path: "queries?name=first" },
+  });
   rerender({ path: "queries?name=second" });
   expect(responses[0].signal.aborted).toBe(true);
-  await act(async () =>
-    responses[1].resolve(new Response('{"items":["new"]}')),
-  );
+  await act(async () => responses[1].resolve(new Response('{"items":["new"]}')));
   await waitFor(() => expect(result.current.data?.items).toEqual(["new"]));
-  await act(async () =>
-    responses[0].resolve(new Response('{"items":["old"]}')),
-  );
+  await act(async () => responses[0].resolve(new Response('{"items":["old"]}')));
   expect(result.current.data?.items).toEqual(["new"]);
 });
 
@@ -67,10 +63,9 @@ it("deduplicates shared settings and retains data during a background refresh", 
 it("polls live results every two seconds and stops on pause", () => {
   vi.useFakeTimers();
   const update = vi.fn();
-  const { result, rerender } = renderHook(
-    ({ enabled }) => useLive(enabled, update),
-    { initialProps: { enabled: true } },
-  );
+  const { result, rerender } = renderHook(({ enabled }) => useLive(enabled, update), {
+    initialProps: { enabled: true },
+  });
   act(() => vi.advanceTimersByTime(6000));
   expect(update).toHaveBeenCalledTimes(3);
   expect(result.current).toBe("Live");

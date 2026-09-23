@@ -1,17 +1,5 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import {
-  Link,
-  useNavigate,
-  useRouterState,
-  useSearch,
-} from "@tanstack/react-router";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -38,12 +26,7 @@ import { filterKeys, type ViewSearch } from "./lib/navigation";
 import { useLive } from "./lib/hooks";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "./components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { ErrorNotice } from "./components/data";
 import { DNSAddresses, ServiceNotices } from "./components/network-status";
 import { DimsumLogo } from "./components/dimsum-logo";
@@ -84,23 +67,16 @@ export default function App() {
       ? { from: search.from, to: search.to }
       : undefined;
   const filter = useMemo(
-    () =>
-      Object.fromEntries(
-        filterKeys.filter((k) => search[k]).map((k) => [k, search[k]!]),
-      ),
+    () => Object.fromEntries(filterKeys.filter((k) => search[k]).map((k) => [k, search[k]!])),
     [search],
   );
   const [anchor, setAnchor] = useState(() => Date.now());
   const [refresh, setRefresh] = useState(0);
   const [auth, setAuth] = useState(
-    () =>
-      typeof sessionStorage === "undefined" ||
-      !sessionStorage.getItem("dimsum-csrf"),
+    () => typeof sessionStorage === "undefined" || !sessionStorage.getItem("dimsum-csrf"),
   );
   const [dark, setDark] = useState(
-    () =>
-      typeof localStorage !== "undefined" &&
-      localStorage.getItem("theme") === "dark",
+    () => typeof localStorage !== "undefined" && localStorage.getItem("theme") === "dark",
   );
   const [menu, setMenu] = useState(false);
   const [blocking, setBlocking] = useState(false);
@@ -125,22 +101,14 @@ export default function App() {
   }, [range, search.from, search.to]);
   const liveTick = useCallback(() => setAnchor(Date.now()), []);
   useLive(
-    !auth &&
-      ["overview", "performance", "clients"].includes(page) &&
-      range !== "custom",
+    !auth && ["overview", "performance", "clients"].includes(page) && range !== "custom",
     liveTick,
     5000,
   );
-  const historical = ["overview", "performance", "queries", "clients"].includes(
-    page,
-  );
+  const historical = ["overview", "performance", "queries", "clients"].includes(page);
   const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
-  const { params: rangeParams, resolution } = historyWindow(
-    range,
-    anchor,
-    custom,
-  );
-  const rangeSearch: ViewSearch = { range, ...(custom ?? {}) };
+  const { params: rangeParams, resolution } = historyWindow(range, anchor, custom);
+  const rangeSearch: ViewSearch = { range, ...custom };
   function go(p: string, next: ViewSearch = rangeSearch) {
     setMenu(false);
     void navigate({ to: "/$page", params: { page: p }, search: next });
@@ -153,8 +121,7 @@ export default function App() {
       queryClient.clear();
     };
     const changed = (event: Event) => {
-      const refresh = (event as CustomEvent<{ refresh?: string[] }>).detail
-        ?.refresh;
+      const refresh = (event as CustomEvent<{ refresh?: string[] }>).detail?.refresh;
       if (!refresh) {
         void queryClient.invalidateQueries({ queryKey: ["api"] });
         return;
@@ -218,10 +185,7 @@ export default function App() {
 
   return (
     <div className="flex min-h-dvh">
-      <a
-        className="fixed -top-16 z-50 bg-background p-3 focus:top-0"
-        href="#main"
-      >
+      <a className="fixed -top-16 z-50 bg-background p-3 focus:top-0" href="#main">
         Skip to content
       </a>
       {menu && (
@@ -272,8 +236,7 @@ export default function App() {
         </div>
         <div className="mt-auto pt-8 [&>button]:w-full [&>button]:justify-start [&>button]:font-normal [&>button]:text-[#c2d0e5] [&>button_svg]:stroke-[1.5] [&>button:hover]:bg-[#233e63] [&>button:hover]:text-white">
           <Button variant="ghost" onClick={() => setDark(!dark)}>
-            {dark ? <Sun size={16} /> : <Moon size={16} />}{" "}
-            {dark ? "Light" : "Dark"} appearance
+            {dark ? <Sun size={16} /> : <Moon size={16} />} {dark ? "Light" : "Dark"} appearance
           </Button>
           <Button
             variant="ghost"
@@ -294,11 +257,7 @@ export default function App() {
       </aside>
       <div className="min-w-0 flex-1 md:ml-60">
         <header className="flex min-h-16 items-center border-b border-border bg-background px-4 py-2 text-xs md:hidden">
-          <Button
-            variant="ghost"
-            aria-label="Open navigation"
-            onClick={() => setMenu(true)}
-          >
+          <Button variant="ghost" aria-label="Open navigation" onClick={() => setMenu(true)}>
             <Menu size={20} />
           </Button>
         </header>
@@ -406,8 +365,7 @@ export default function App() {
           {historical && page !== "queries" && range === "custom" && (
             <div className="mb-5 text-xs text-muted-foreground">
               <span>
-                {new Date(search.from!).toLocaleString()} –{" "}
-                {new Date(search.to!).toLocaleString()}
+                {new Date(search.from!).toLocaleString()} – {new Date(search.to!).toLocaleString()}
               </span>
             </div>
           )}
@@ -429,16 +387,10 @@ export default function App() {
                 range={rangeParams}
                 refresh={refresh}
                 onPerformance={() => go("performance")}
-                drill={(key, value) =>
-                  go("queries", { ...rangeSearch, [key]: value })
-                }
+                drill={(key, value) => go("queries", { ...rangeSearch, [key]: value })}
               />
             ) : page === "performance" ? (
-              <Performance
-                range={rangeParams}
-                resolution={resolution}
-                refresh={refresh}
-              />
+              <Performance range={rangeParams} resolution={resolution} refresh={refresh} />
             ) : page === "queries" ? (
               <Queries
                 key={`${range}:${search.from ?? ""}:${search.to ?? ""}`}
@@ -446,9 +398,7 @@ export default function App() {
                 range={rangeParams}
                 refresh={refresh}
                 initialFilter={filter}
-                onFilterChange={(next) =>
-                  go("queries", { ...rangeSearch, ...next })
-                }
+                onFilterChange={(next) => go("queries", { ...rangeSearch, ...next })}
                 liveAllowed={range !== "custom"}
               />
             ) : page === "clients" ? (
@@ -472,9 +422,7 @@ export default function App() {
                 key={page}
                 kind={page}
                 range={rangeParams}
-                onClientQueries={(address) =>
-                  go("queries", { ...rangeSearch, client: address })
-                }
+                onClientQueries={(address) => go("queries", { ...rangeSearch, client: address })}
               />
             )}
           </Suspense>
@@ -484,9 +432,9 @@ export default function App() {
         <DialogContent>
           <DialogTitle>Pause filtering</DialogTitle>
           <DialogDescription>
-            Temporarily stop blocking domains for all devices, for example to
-            troubleshoot a website. DNS keeps working, and filtering resumes
-            automatically after the selected duration.
+            Temporarily stop blocking domains for all devices, for example to troubleshoot a
+            website. DNS keeps working, and filtering resumes automatically after the selected
+            duration.
           </DialogDescription>
           <Blocking />
         </DialogContent>
@@ -548,9 +496,7 @@ function Blocking() {
         enabled,
         ...(!enabled
           ? {
-              pause_until: new Date(
-                Date.now() + Number(minutes) * 60000,
-              ).toISOString(),
+              pause_until: new Date(Date.now() + Number(minutes) * 60000).toISOString(),
             }
           : {}),
       });

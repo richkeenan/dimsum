@@ -59,21 +59,15 @@ export default function Diagnostics() {
               <ul className="space-y-2 text-xs [overflow-wrap:anywhere]">
                 {upstreams.map((server, index) => (
                   <li key={index}>
-                    <strong>
-                      {String(server.Endpoint ?? server.endpoint ?? "Server")}
-                    </strong>{" "}
-                    —{" "}
+                    <strong>{String(server.Endpoint ?? server.endpoint ?? "Server")}</strong> —{" "}
                     {(
                       {
                         closed: "Accepting queries",
                         open: "Waiting before retry",
                         "half-open": "Checking connection",
                       } as Record<string, string>
-                    )[String(server.State ?? server.state)] ??
-                      "Status unavailable"}
-                    {server.Fallback === true || server.fallback === true
-                      ? " (fallback)"
-                      : ""}
+                    )[String(server.State ?? server.state)] ?? "Status unavailable"}
+                    {server.Fallback === true || server.fallback === true ? " (fallback)" : ""}
                   </li>
                 ))}
               </ul>
@@ -85,9 +79,7 @@ export default function Diagnostics() {
           </section>
         </div>
         <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-          <summary className="cursor-pointer text-muted-foreground">
-            Technical measurements
-          </summary>
+          <summary className="cursor-pointer text-muted-foreground">Technical measurements</summary>
           <Details value={state.data} />
         </details>
       </Resource>

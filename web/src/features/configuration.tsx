@@ -1,13 +1,6 @@
 import { useState } from "react";
-import {
-  ListSubscriptions,
-  RefreshListsButton,
-  type ListToggle,
-} from "./lists";
-import {
-  ClientDeviceButton,
-  ClientIdentity,
-} from "@/components/client-identity";
+import { ListSubscriptions, RefreshListsButton, type ListToggle } from "./lists";
+import { ClientDeviceButton, ClientIdentity } from "@/components/client-identity";
 import type { Device } from "@/lib/api";
 import {
   api,
@@ -25,12 +18,7 @@ import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Revision } from "./settings";
 import {
   UpstreamEditor,
@@ -134,17 +122,12 @@ const listFormatHelp: Record<string, string> = {
 };
 export function editorDefaults(kind: string): Row {
   const defaults = Object.fromEntries(
-    fields[kind].map((f) => [
-      f.key,
-      f.type === "boolean" ? true : (f.options?.[0] ?? ""),
-    ]),
+    fields[kind].map((f) => [f.key, f.type === "boolean" ? true : (f.options?.[0] ?? "")]),
   );
   if (kind === "lists" || kind === "rules")
     defaults.id = `${kind.slice(0, -1)}-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
-  if (kind === "records")
-    Object.assign(defaults, { ttl: 300, auto_ptr: false });
-  if (kind === "lists")
-    Object.assign(defaults, { default_apply: true, enabled: true });
+  if (kind === "records") Object.assign(defaults, { ttl: 300, auto_ptr: false });
+  if (kind === "lists") Object.assign(defaults, { default_apply: true, enabled: true });
   return defaults;
 }
 export default function Configuration({
@@ -187,10 +170,8 @@ export default function Configuration({
     !((kind === "lists" || kind === "upstreams") && state.isFetching);
   const upstreamMode = settings.data?.config
     ? String(
-        (
-          (settings.data.config.dns as Row | undefined)?.upstream_policy as
-            Row | undefined
-        )?.mode || "ordered",
+        ((settings.data.config.dns as Row | undefined)?.upstream_policy as Row | undefined)?.mode ||
+          "ordered",
       )
     : undefined;
   const upstreamReady =
@@ -214,11 +195,7 @@ export default function Configuration({
     }
   }
 
-  async function saveUpstreamSelection(
-    resource: string,
-    edits: Edit[],
-    order?: Row[],
-  ) {
+  async function saveUpstreamSelection(resource: string, edits: Edit[], order?: Row[]) {
     if (!upstreamReady) return;
     setUpstreamSaving(true);
     setUpstreamOrder(order);
@@ -260,9 +237,7 @@ export default function Configuration({
   const observedClients = rows(state.data?.observed);
   const devices = [
     ...observedClients.map((observed) => {
-      const configured = configuredClients.find(
-        (client) => client.address === observed.address,
-      );
+      const configured = configuredClients.find((client) => client.address === observed.address);
       return {
         ...observed,
         ...configured,
@@ -270,10 +245,7 @@ export default function Configuration({
       };
     }),
     ...configuredClients.filter(
-      (client) =>
-        !observedClients.some(
-          (observed) => observed.address === client.address,
-        ),
+      (client) => !observedClients.some((observed) => observed.address === client.address),
     ),
   ];
   function open(row?: Row) {
@@ -288,9 +260,7 @@ export default function Configuration({
         ? {
             ...defaults,
             ...(row.id ? { id: row.id } : {}),
-            ...Object.fromEntries(
-              fields[kind].map((f) => [f.key, row[f.key] ?? defaults[f.key]]),
-            ),
+            ...Object.fromEntries(fields[kind].map((f) => [f.key, row[f.key] ?? defaults[f.key]])),
           }
         : defaults,
     );
@@ -301,30 +271,23 @@ export default function Configuration({
     setError(undefined);
     try {
       if (!editRevision)
-        throw new Error(
-          "The configuration revision is unavailable. Reload and retry.",
-        );
+        throw new Error("The configuration revision is unavailable. Reload and retry.");
       const body: Mutation = { revision: editRevision };
       if (kind === "lists" && row && method !== "DELETE") {
         row = {
           ...row,
           enabled:
-            row.default_apply === true || method === "POST"
-              ? true
-              : original?.enabled === true,
+            row.default_apply === true || method === "POST" ? true : original?.enabled === true,
         };
       }
-      if (method === "POST")
-        body.item = kind === "upstreams" ? row?.address : row;
+      if (method === "POST") body.item = kind === "upstreams" ? row?.address : row;
       else if (method === "DELETE") body.index = Number(original?.__index);
       else
         body.edits = Object.entries(row ?? {})
           .filter(([key, value]) => value !== original?.[key])
           .map(([key, value]) => ({
             path:
-              kind === "upstreams"
-                ? [String(original?.__index)]
-                : [String(original?.__index), key],
+              kind === "upstreams" ? [String(original?.__index)] : [String(original?.__index), key],
             value: value as string | number | boolean,
           }));
       if (method === "PATCH" && !body.edits?.length) {
@@ -344,12 +307,8 @@ export default function Configuration({
       const result = await api.send<Row>(kind, method, body);
       setDashboardURL("");
       if (kind === "records" && method !== "DELETE") {
-        const name = new URL(`http://${row?.name}`).hostname
-          .toLowerCase()
-          .replace(/\.$/, "");
-        const candidate = rows(result.dashboard_hosts).find(
-          (host) => host.name === name,
-        );
+        const name = new URL(`http://${row?.name}`).hostname.toLowerCase().replace(/\.$/, "");
+        const candidate = rows(result.dashboard_hosts).find((host) => host.name === name);
         if (candidate && result.saved_revision) {
           setHostError(undefined);
           setDashboardHost({
@@ -373,7 +332,7 @@ export default function Configuration({
     setBusy(true);
     setHostError(undefined);
     try {
-      const result = await api.send<Row>("records", "PATCH", {
+      await api.send<Row>("records", "PATCH", {
         revision: dashboardHost.revision,
         accept_admin_host: dashboardHost.name,
       });
@@ -392,35 +351,29 @@ export default function Configuration({
     setBusy(true);
     setListToggle({ id: row.id, enabled });
     try {
-      await api.send<Row>(
-        "lists",
-        row.__index === undefined ? "POST" : "PATCH",
-        {
-          revision,
-          ...(row.__index === undefined
-            ? {
-                item: {
-                  ...editorDefaults("lists"),
-                  default_apply: enabled,
-                  url: row.url,
-                  dialect: row.dialect,
-                  domain_kind: row.domain_kind,
-                  enabled,
+      await api.send<Row>("lists", row.__index === undefined ? "POST" : "PATCH", {
+        revision,
+        ...(row.__index === undefined
+          ? {
+              item: {
+                ...editorDefaults("lists"),
+                default_apply: enabled,
+                url: row.url,
+                dialect: row.dialect,
+                domain_kind: row.domain_kind,
+                enabled,
+              },
+            }
+          : {
+              edits: [
+                {
+                  path: [String(row.__index), "default_apply"],
+                  value: enabled,
                 },
-              }
-            : {
-                edits: [
-                  {
-                    path: [String(row.__index), "default_apply"],
-                    value: enabled,
-                  },
-                  ...(enabled
-                    ? [{ path: [String(row.__index), "enabled"], value: true }]
-                    : []),
-                ],
-              }),
-        },
-      );
+                ...(enabled ? [{ path: [String(row.__index), "enabled"], value: true }] : []),
+              ],
+            }),
+      });
     } catch (e) {
       setError(e as Error);
     } finally {
@@ -435,9 +388,7 @@ export default function Configuration({
       <Resource state={settings}>
         <Revision value={settings.data} />
       </Resource>
-      {kind === "upstreams" && (
-        <UpstreamPoolSummary config={settings.data?.config} />
-      )}
+      {kind === "upstreams" && <UpstreamPoolSummary config={settings.data?.config} />}
       {kind === "clients" && (
         <Resource state={state}>
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
@@ -451,8 +402,8 @@ export default function Configuration({
               <>
                 {(state.data?.observed as Row)?.truncated === true && (
                   <p className="my-3 rounded-[5px] border border-border border-l-[3px] border-l-[#b69860] bg-muted px-3.5 py-3 text-xs [overflow-wrap:anywhere]">
-                    The observed client list is truncated. Narrow the time range
-                    to inspect more identities.
+                    The observed client list is truncated. Narrow the time range to inspect more
+                    identities.
                   </p>
                 )}
                 <DataTable
@@ -471,9 +422,7 @@ export default function Configuration({
                             address={text(r.address)}
                             name={r.name ? String(r.name) : undefined}
                             device={r.device as Device | undefined}
-                            source={
-                              r.name_source ? String(r.name_source) : undefined
-                            }
+                            source={r.name_source ? String(r.name_source) : undefined}
                           />
                         </button>
                       ),
@@ -482,9 +431,7 @@ export default function Configuration({
                       key: "last_seen",
                       label: "Last seen",
                       render: (r) =>
-                        r.last_seen
-                          ? new Date(String(r.last_seen)).toLocaleString()
-                          : "—",
+                        r.last_seen ? new Date(String(r.last_seen)).toLocaleString() : "—",
                     },
                     {
                       key: "count",
@@ -505,9 +452,7 @@ export default function Configuration({
                             address={text(r.address)}
                             name={r.name ? String(r.name) : undefined}
                             device={r.device as Device | undefined}
-                            source={
-                              r.name_source ? String(r.name_source) : undefined
-                            }
+                            source={r.name_source ? String(r.name_source) : undefined}
                           />
                           <Button
                             size="sm"
@@ -515,9 +460,8 @@ export default function Configuration({
                             disabled={!ready}
                             onClick={() =>
                               open(
-                                collectionRows(state.data).find(
-                                  (c) => c.address === r.address,
-                                ) ?? r,
+                                collectionRows(state.data).find((c) => c.address === r.address) ??
+                                  r,
                               )
                             }
                           >
@@ -537,9 +481,7 @@ export default function Configuration({
           </section>
         </Resource>
       )}
-      {error && !editing && (
-        <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />
-      )}
+      {error && !editing && <ErrorNotice error={error} retry={() => setTick((t) => t + 1)} />}
       {kind !== "clients" && (
         <section
           aria-busy={kind === "upstreams" ? upstreamSaving : undefined}
@@ -555,10 +497,7 @@ export default function Configuration({
             </h2>
             <div className="flex flex-wrap items-center gap-2">
               {kind === "lists" && (
-                <RefreshListsButton
-                  disabled={!ready}
-                  completed={() => setTick((t) => t + 1)}
-                />
+                <RefreshListsButton disabled={!ready} completed={() => setTick((t) => t + 1)} />
               )}
               <Button
                 disabled={!ready && !upstreamSaving}
@@ -569,8 +508,7 @@ export default function Configuration({
                   ? "Add custom URL"
                   : kind === "clients"
                     ? "Name an address"
-                    : "Add " +
-                      (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
+                    : "Add " + (kind === "upstreams" ? "upstream" : kind.slice(0, -1))}
               </Button>
             </div>
           </div>
@@ -609,8 +547,7 @@ export default function Configuration({
                           className="flex flex-wrap items-center gap-3 border-b border-border px-[18px] py-3 text-xs text-muted-foreground"
                           role="status"
                         >
-                          Configuration changed. Refresh before changing
-                          selection or priority.
+                          Configuration changed. Refresh before changing selection or priority.
                           <Button
                             variant="outline"
                             size="sm"
@@ -708,16 +645,15 @@ export default function Configuration({
                 />
               </>
             )}
-            {kind === "lists" &&
-              rows(state.data).some((r) => r.homepage || r.license) && (
-                <div className="p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground">
-                  {rows(state.data).map((r) => (
-                    <p key={text(r.id)}>
-                      {text(r.id)} · {text(r.license)} · {text(r.homepage)}
-                    </p>
-                  ))}
-                </div>
-              )}
+            {kind === "lists" && rows(state.data).some((r) => r.homepage || r.license) && (
+              <div className="p-5 [&>p]:mb-[18px] [&>p]:text-xs [&>p]:text-muted-foreground">
+                {rows(state.data).map((r) => (
+                  <p key={text(r.id)}>
+                    {text(r.id)} · {text(r.license)} · {text(r.homepage)}
+                  </p>
+                ))}
+              </div>
+            )}
           </Resource>
         </section>
       )}
@@ -744,20 +680,14 @@ export default function Configuration({
         }}
       >
         <DialogContent>
-          <DialogTitle>
-            Use {dashboardHost?.name} for the dashboard too?
-          </DialogTitle>
+          <DialogTitle>Use {dashboardHost?.name} for the dashboard too?</DialogTitle>
           <DialogDescription>
-            This address belongs to this dimsum server. Add it to accepted hosts
-            to open the dashboard at {dashboardHost?.url}.
+            This address belongs to this dimsum server. Add it to accepted hosts to open the
+            dashboard at {dashboardHost?.url}.
           </DialogDescription>
           {hostError && <ErrorNotice error={hostError} />}
           <div className="flex flex-wrap justify-end gap-2">
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setDashboardHost(undefined)}
-            >
+            <Button variant="outline" disabled={busy} onClick={() => setDashboardHost(undefined)}>
               Not now
             </Button>
             <Button disabled={busy} onClick={() => void acceptDashboardHost()}>
@@ -789,8 +719,7 @@ export default function Configuration({
           className={`max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] min-w-0 overflow-y-auto [&>*]:min-w-0 ${kind === "lists" ? "sm:max-w-[720px] sm:p-8" : ""}`}
         >
           <DialogTitle>
-            {original ? "Edit" : "Add"}{" "}
-            {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
+            {original ? "Edit" : "Add"} {kind === "clients" ? "friendly name" : kind.slice(0, -1)}
           </DialogTitle>
           {editing && (
             <form
@@ -829,9 +758,7 @@ export default function Configuration({
                         className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         aria-label={f.label}
                         value={text(editing[f.key])}
-                        onChange={(e) =>
-                          setEditing({ ...editing, [f.key]: e.target.value })
-                        }
+                        onChange={(e) => setEditing({ ...editing, [f.key]: e.target.value })}
                       >
                         {f.options.map((o) => (
                           <option key={o} value={o}>
@@ -849,10 +776,7 @@ export default function Configuration({
                         onChange={(e) =>
                           setEditing({
                             ...editing,
-                            [f.key]:
-                              f.type === "number"
-                                ? Number(e.target.value)
-                                : e.target.value,
+                            [f.key]: f.type === "number" ? Number(e.target.value) : e.target.value,
                           })
                         }
                       />
@@ -878,8 +802,8 @@ export default function Configuration({
               )}
               {kind === "lists" && Number(original?.__references) > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  This list has {String(original?.__references)} explicit device
-                  or profile assignments. Reset those list choices in{" "}
+                  This list has {String(original?.__references)} explicit device or profile
+                  assignments. Reset those list choices in{" "}
                   <a href="/clients" className="underline">
                     Devices
                   </a>{" "}
@@ -926,10 +850,7 @@ export default function Configuration({
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={
-                      busy ||
-                      (kind === "lists" && Number(original?.__references) > 0)
-                    }
+                    disabled={busy || (kind === "lists" && Number(original?.__references) > 0)}
                     onClick={() => mutate("DELETE")}
                   >
                     Delete {kind.slice(0, -1)}
@@ -960,9 +881,7 @@ function RuleTester() {
           setError(undefined);
           setResult(undefined);
           try {
-            setResult(
-              await api.send<Row>("rules/test", "POST", { name, qtype }),
-            );
+            setResult(await api.send<Row>("rules/test", "POST", { name, qtype }));
           } catch (err) {
             setError(err as Error);
           } finally {
@@ -972,11 +891,7 @@ function RuleTester() {
       >
         <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
           Domain
-          <Input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
           Type
@@ -1011,9 +926,7 @@ function RuleTester() {
           </strong>
           <p className="mt-1 mb-2">{text(result.normalized || result.name)}</p>
           <details className="min-w-0 border-t border-border px-5 py-3 text-xs">
-            <summary className="cursor-pointer text-muted-foreground">
-              Match details
-            </summary>
+            <summary className="cursor-pointer text-muted-foreground">Match details</summary>
             <Details value={result} />
           </details>
         </div>

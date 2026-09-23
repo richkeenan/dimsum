@@ -113,9 +113,7 @@ export function AgentAccess() {
 
       {created && (
         <div className="mt-4 min-w-0 rounded-md border border-border bg-muted p-4">
-          <h3 className="text-xs font-medium">
-            Save your token for {created.name}
-          </h3>
+          <h3 className="text-xs font-medium">Save your token for {created.name}</h3>
           <p className="mt-2 text-xs text-muted-foreground">
             Copy this token before closing. You cannot view it again.
           </p>
@@ -148,9 +146,7 @@ export function AgentAccess() {
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                void copy(connectionField.current)
-              }
+              onClick={() => void copy(connectionField.current)}
             >
               Copy connection fields
             </Button>
@@ -181,10 +177,7 @@ export function AgentAccess() {
           </p>
         )}
         {state.error && (
-          <ErrorNotice
-            error={state.error}
-            retry={() => setTick((value) => value + 1)}
-          />
+          <ErrorNotice error={state.error} retry={() => setTick((value) => value + 1)} />
         )}
         {state.data?.items.length === 0 && (
           <p className="text-xs text-muted-foreground">No agent tokens yet.</p>

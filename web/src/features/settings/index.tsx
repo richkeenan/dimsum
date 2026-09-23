@@ -26,9 +26,7 @@ export function Revision({ value }: { value?: Settings }) {
       ) : value?.pending ? (
         <p>Applying saved changes…</p>
       ) : null}
-      {value?.status?.restart_required && (
-        <p>Restart the service to apply listener changes.</p>
-      )}
+      {value?.status?.restart_required && <p>Restart the service to apply listener changes.</p>}
       {value?.status?.recovered && <p>Using the last working configuration.</p>}
     </div>
   );
@@ -105,18 +103,11 @@ const groups: { title: string; fields: Setting[] }[] = [
 export function settingValue(config: Row | undefined, path: string): string {
   let value: unknown = config;
   for (const key of path.split("."))
-    value =
-      value && typeof value === "object" ? (value as Row)[key] : undefined;
+    value = value && typeof value === "object" ? (value as Row)[key] : undefined;
   return value == null ? "" : String(value);
 }
 
-function SettingsForm({
-  settings,
-  refresh,
-}: {
-  settings: Settings;
-  refresh: () => void;
-}) {
+function SettingsForm({ settings, refresh }: { settings: Settings; refresh: () => void }) {
   // Capture the original revision with the first edit. Polling must never rebase a draft silently.
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [revision, setRevision] = useState<string>();
@@ -134,19 +125,13 @@ function SettingsForm({
         setBusy(true);
         setError(undefined);
         try {
-          if (!revision)
-            throw new Error("Wait for settings to load before editing.");
+          if (!revision) throw new Error("Wait for settings to load before editing.");
           const edits = Object.entries(draft).map(([path, value]) => {
-            const field = groups
-              .flatMap((g) => g.fields)
-              .find((f) => f.path === path)!;
-            const parsed =
-              field.type === "text" || field.options ? value : Number(value);
+            const field = groups.flatMap((g) => g.fields).find((f) => f.path === path)!;
+            const parsed = field.type === "text" || field.options ? value : Number(value);
             if (
               typeof parsed === "number" &&
-              (!value.trim() ||
-                !Number.isSafeInteger(parsed) ||
-                parsed < (field.min ?? 0))
+              (!value.trim() || !Number.isSafeInteger(parsed) || parsed < (field.min ?? 0))
             )
               throw new Error(`Enter a valid value for ${field.label}.`);
             return { path: path.split("."), value: parsed };
@@ -170,19 +155,13 @@ function SettingsForm({
           <h2 className="mb-3 text-sm font-medium">{group.title}</h2>
           <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
             {group.fields.map((field) => (
-              <label
-                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
-                key={field.path}
-              >
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal" key={field.path}>
                 {field.label}
                 {field.options ? (
                   <select
                     className="min-h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 py-2 text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                     disabled={busy || !settings.revision}
-                    value={
-                      draft[field.path] ??
-                      settingValue(settings.config, field.path)
-                    }
+                    value={draft[field.path] ?? settingValue(settings.config, field.path)}
                     onChange={(e) => change(field.path, e.target.value)}
                   >
                     {field.options.map(([value, label]) => (
@@ -197,17 +176,12 @@ function SettingsForm({
                     type={field.type ?? "number"}
                     min={field.min}
                     step={field.type ? undefined : 1}
-                    value={
-                      draft[field.path] ??
-                      settingValue(settings.config, field.path)
-                    }
+                    value={draft[field.path] ?? settingValue(settings.config, field.path)}
                     onChange={(e) => change(field.path, e.target.value)}
                   />
                 )}
                 {field.help && (
-                  <small className="text-xs font-normal text-muted-foreground">
-                    {field.help}
-                  </small>
+                  <small className="text-xs font-normal text-muted-foreground">{field.help}</small>
                 )}
               </label>
             ))}
@@ -216,9 +190,7 @@ function SettingsForm({
       ))}
       {error && <ErrorNotice error={error} />}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          disabled={busy || !settings.revision || !Object.keys(draft).length}
-        >
+        <Button disabled={busy || !settings.revision || !Object.keys(draft).length}>
           {busy ? "Saving…" : "Save settings"}
         </Button>
         {!!Object.keys(draft).length && (
@@ -299,9 +271,7 @@ export function PasswordForm() {
           </label>
         </div>
         {error && <ErrorNotice error={error} />}
-        <Button disabled={busy}>
-          {busy ? "Changing password…" : "Change password"}
-        </Button>
+        <Button disabled={busy}>{busy ? "Changing password…" : "Change password"}</Button>
       </form>
     </section>
   );
@@ -316,25 +286,14 @@ export default function SettingsView() {
       <Revision value={state.data} />
       {state.data ? (
         <>
-          <SettingsForm
-            settings={state.data}
-            refresh={() => setTick((t) => t + 1)}
-          />
+          <SettingsForm settings={state.data} refresh={() => setTick((t) => t + 1)} />
           <DiscoverySettings
             settings={state.data}
             refresh={() => setTick((t) => t + 1)}
             diagnostics={diagnostics.data?.naming as Row | undefined}
           />
-          <BootstrapSettings
-            settings={state.data}
-            refresh={() => setTick((t) => t + 1)}
-          />
-          {state.error && (
-            <ErrorNotice
-              error={state.error}
-              retry={() => setTick((t) => t + 1)}
-            />
-          )}
+          <BootstrapSettings settings={state.data} refresh={() => setTick((t) => t + 1)} />
+          {state.error && <ErrorNotice error={state.error} retry={() => setTick((t) => t + 1)} />}
         </>
       ) : (
         <Resource state={state} retry={() => setTick((t) => t + 1)}>
@@ -348,8 +307,8 @@ export default function SettingsView() {
           Advanced configuration details
         </summary>
         <p className="mt-2.5 mb-[18px] max-w-[75ch] text-xs text-muted-foreground">
-          Redacted configuration for troubleshooting. Use a backup to export the
-          complete configuration.
+          Redacted configuration for troubleshooting. Use a backup to export the complete
+          configuration.
         </p>
         {state.data?.source ? (
           <pre className="max-h-[600px] overflow-auto font-mono text-xs whitespace-pre-wrap [overflow-wrap:anywhere]">

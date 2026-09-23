@@ -44,14 +44,10 @@ export function stringifyViewSearch(search: Record<string, unknown>): string {
 }
 export function validateView(raw: Record<string, unknown>): ViewSearch {
   const result: ViewSearch = {};
-  if (
-    typeof raw.range === "string" &&
-    ["1h", "24h", "7d", "custom"].includes(raw.range)
-  )
+  if (typeof raw.range === "string" && ["1h", "24h", "7d", "custom"].includes(raw.range))
     result.range = raw.range;
   for (const key of [...filterKeys, "from", "to", "device"] as const)
-    if (typeof raw[key] === "string" && raw[key].length <= 512)
-      result[key] = raw[key];
+    if (typeof raw[key] === "string" && raw[key].length <= 512) result[key] = raw[key];
   if (result.range === "custom") {
     const from = Date.parse(result.from ?? ""),
       to = Date.parse(result.to ?? "");

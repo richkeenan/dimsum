@@ -86,13 +86,9 @@ export function DNSAddresses() {
                   className="flex min-w-0 items-center justify-between gap-3 rounded-md px-1 hover:bg-muted"
                 >
                   <div className="min-w-0">
-                    <code className="select-all wrap-anywhere text-foreground">
-                      {address}
-                    </code>
+                    <code className="select-all wrap-anywhere text-foreground">{address}</code>
                     {port !== "53" && (
-                      <span className="block text-muted-foreground">
-                        Port {port}
-                      </span>
+                      <span className="block text-muted-foreground">Port {port}</span>
                     )}
                   </div>
                   <Button
@@ -109,14 +105,11 @@ export function DNSAddresses() {
             {diagnostics.loading && (
               <p className="px-1 text-muted-foreground">Loading addresses…</p>
             )}
-            {!diagnostics.loading &&
-              !diagnostics.data?.dns_addresses?.length && (
-                <span className="text-muted-foreground">
-                  {diagnostics.error
-                    ? "Address unavailable"
-                    : "No client-facing address"}
-                </span>
-              )}
+            {!diagnostics.loading && !diagnostics.data?.dns_addresses?.length && (
+              <span className="text-muted-foreground">
+                {diagnostics.error ? "Address unavailable" : "No client-facing address"}
+              </span>
+            )}
             {feedback && (
               <span role="status" className="text-muted-foreground">
                 {feedback}
@@ -178,11 +171,7 @@ export function ServiceNotices() {
             {!!blocking.data.pause_until &&
               ` Resumes ${new Date(String(blocking.data.pause_until)).toLocaleString()}.`}
           </p>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void resume()}
-          >
+          <Button variant="outline" disabled={busy} onClick={() => void resume()}>
             Resume filtering
           </Button>
         </div>

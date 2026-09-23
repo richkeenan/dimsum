@@ -13,17 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DHCPError, panel } from "./index";
 
-export function Reservations({
-  tick,
-  refresh,
-}: {
-  tick: number;
-  refresh: () => void;
-}) {
-  const state = useResource<DHCPReservationsResponse>(
-    "dhcp/reservations",
-    tick,
-  );
+export function Reservations({ tick, refresh }: { tick: number; refresh: () => void }) {
+  const state = useResource<DHCPReservationsResponse>("dhcp/reservations", tick);
   const [draft, setDraft] = useState<{
     revision: string;
     item: DHCPReservation;
@@ -36,12 +27,8 @@ export function Reservations({
   const blocked = busy || needsReload;
   const [page, setPage] = useState(0);
   const items = state.data?.items ?? [];
-  const currentPage = Math.min(
-    page,
-    Math.max(0, Math.ceil(items.length / 25) - 1),
-  );
-  const outdated =
-    !!draft && draft.revision !== state.data?.status.saved_revision;
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(items.length / 25) - 1));
+  const outdated = !!draft && draft.revision !== state.data?.status.saved_revision;
   function open(item: DHCPReservation, existing: boolean, remove = false) {
     if (!state.data || blocked) return;
     setDraft({
@@ -62,9 +49,7 @@ export function Reservations({
         <Button
           variant="outline"
           disabled={!state.data || blocked || !!draft}
-          onClick={() =>
-            open({ id: "", address: "", mac: "", hostname: "" }, false)
-          }
+          onClick={() => open({ id: "", address: "", mac: "", hostname: "" }, false)}
         >
           Add reservation
         </Button>
@@ -167,9 +152,7 @@ export function Reservations({
                 : draft.existing
                   ? {
                       revision: draft.revision,
-                      edits: (
-                        ["address", "mac", "client_id", "hostname"] as const
-                      ).map((key) => ({
+                      edits: (["address", "mac", "client_id", "hostname"] as const).map((key) => ({
                         path: [key],
                         value: draft.item[key] ?? "",
                       })),
@@ -216,9 +199,7 @@ export function Reservations({
                   <label htmlFor={`reservation-${key}`}>{label}</label>
                   <Input
                     id={`reservation-${key}`}
-                    aria-describedby={
-                      key === "id" ? "reservation-name-help" : undefined
-                    }
+                    aria-describedby={key === "id" ? "reservation-name-help" : undefined}
                     value={draft.item[key] ?? ""}
                     required={key !== "hostname"}
                     disabled={blocked || (key === "id" && draft.existing)}
@@ -230,12 +211,8 @@ export function Reservations({
                     }
                   />
                   {key === "id" && (
-                    <span
-                      id="reservation-name-help"
-                      className="text-muted-foreground"
-                    >
-                      Use a unique name with letters, numbers or hyphens, such
-                      as office-printer.
+                    <span id="reservation-name-help" className="text-muted-foreground">
+                      Use a unique name with letters, numbers or hyphens, such as office-printer.
                     </span>
                   )}
                 </div>
@@ -244,9 +221,7 @@ export function Reservations({
                 Identify device by
                 <select
                   className="min-h-11 rounded-md border border-input bg-background px-3"
-                  value={
-                    draft.item.client_id !== undefined ? "client_id" : "mac"
-                  }
+                  value={draft.item.client_id !== undefined ? "client_id" : "mac"}
                   disabled={blocked}
                   onChange={(e) =>
                     setDraft({
@@ -254,8 +229,7 @@ export function Reservations({
                       item: {
                         ...draft.item,
                         mac: e.target.value === "mac" ? "" : undefined,
-                        client_id:
-                          e.target.value === "client_id" ? "" : undefined,
+                        client_id: e.target.value === "client_id" ? "" : undefined,
                       },
                     })
                   }
@@ -265,9 +239,7 @@ export function Reservations({
                 </select>
               </label>
               <label className="flex flex-col gap-1.5 text-xs">
-                {draft.item.client_id !== undefined
-                  ? "Client ID (hex)"
-                  : "MAC address"}
+                {draft.item.client_id !== undefined ? "Client ID (hex)" : "MAC address"}
                 <Input
                   required
                   disabled={blocked}
@@ -277,9 +249,7 @@ export function Reservations({
                       ...draft,
                       item: {
                         ...draft.item,
-                        [draft.item.client_id !== undefined
-                          ? "client_id"
-                          : "mac"]: e.target.value,
+                        [draft.item.client_id !== undefined ? "client_id" : "mac"]: e.target.value,
                       },
                     })
                   }
@@ -289,16 +259,10 @@ export function Reservations({
           )}
           {outdated && (
             <p role="status" className="mb-3 text-xs">
-              Configuration changed. Cancel and reopen this form to use the
-              latest revision.
+              Configuration changed. Cancel and reopen this form to use the latest revision.
             </p>
           )}
-          {error &&
-            (needsReload ? (
-              <ErrorNotice error={error} />
-            ) : (
-              <DHCPError error={error} />
-            ))}
+          {error && (needsReload ? <ErrorNotice error={error} /> : <DHCPError error={error} />)}
           <div className="flex gap-2">
             <Button disabled={blocked || outdated}>
               {draft.remove ? "Confirm removal" : "Save reservation"}
@@ -321,8 +285,7 @@ export function Reservations({
       {needsReload && !busy && (
         <div className="mt-3 text-xs">
           <p role="status">
-            Reservation change saved. Reload saved reservations before editing
-            again.
+            Reservation change saved. Reload saved reservations before editing again.
           </p>
           <Button
             variant="outline"
@@ -353,8 +316,7 @@ export function Reservations({
 }
 
 function localTime(value: unknown) {
-  if (typeof value !== "string" || !value || value.startsWith("0001-"))
-    return "—";
+  if (typeof value !== "string" || !value || value.startsWith("0001-")) return "—";
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
@@ -394,13 +356,8 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
   const params = new URLSearchParams({ limit: "100" });
   if (filter) params.set("address", filter);
   if (cursor) params.set("cursor", cursor);
-  const state = useResource<DHCPLeasesResponse>(
-    `dhcp/leases?${params}`,
-    tick + refresh,
-  );
-  const expired =
-    state.error instanceof APIError &&
-    state.error.code === "lease_cursor_expired";
+  const state = useResource<DHCPLeasesResponse>(`dhcp/leases?${params}`, tick + refresh);
+  const expired = state.error instanceof APIError && state.error.code === "lease_cursor_expired";
   const restart = () => {
     setCursor(undefined);
     setPage(1);
@@ -454,8 +411,7 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
         <Resource state={state} retry={restart}>
           {state.data && !state.data.runtime_available && (
             <p role="status" className="mb-4 text-xs">
-              The live address list is unavailable. Devices may still have
-              unexpired leases.
+              The live address list is unavailable. Devices may still have unexpired leases.
             </p>
           )}
           <DataTable
@@ -466,13 +422,9 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
                 label: "Device",
                 render: (r) => (
                   <div>
-                    <p className="font-medium">
-                      {String(r.hostname || r.mac || "Unknown device")}
-                    </p>
+                    <p className="font-medium">{String(r.hostname || r.mac || "Unknown device")}</p>
                     {r.hostname ? (
-                      <p className="text-xs text-muted-foreground">
-                        {String(r.mac || "")}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{String(r.mac || "")}</p>
                     ) : null}
                   </div>
                 ),
@@ -501,16 +453,14 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
                     </summary>
                     <dl className="max-w-64 space-y-2 whitespace-normal break-words py-2">
                       <div>
-                        <dt className="text-muted-foreground">
-                          Address held until
-                        </dt>
+                        <dt className="text-muted-foreground">Address held until</dt>
                         <dd>{localTime(r.hold_until)}</dd>
                       </div>
                       <div>
                         <dt className="sr-only">About this hold</dt>
                         <dd className="text-muted-foreground">
-                          The address stays set aside until this time, even if
-                          the lease has expired.
+                          The address stays set aside until this time, even if the lease has
+                          expired.
                         </dd>
                       </div>
                       {r.client_id ? (
@@ -537,18 +487,12 @@ export function Leases({ tick, enabled }: { tick: number; enabled?: boolean }) {
       {(page > 1 || state.data?.next_cursor) && (
         <div className="mt-4 flex flex-wrap items-center gap-3 text-xs">
           <span>Page {page}</span>
-          <Button
-            variant="outline"
-            disabled={page === 1 || state.isFetching}
-            onClick={restart}
-          >
+          <Button variant="outline" disabled={page === 1 || state.isFetching} onClick={restart}>
             First page
           </Button>
           <Button
             variant="outline"
-            disabled={
-              state.isFetching || !!state.error || !state.data?.next_cursor
-            }
+            disabled={state.isFetching || !!state.error || !state.data?.next_cursor}
             onClick={() => {
               setCursor(state.data?.next_cursor);
               setPage((p) => p + 1);
@@ -587,19 +531,13 @@ export function DHCPCheck() {
         Look for other DHCP servers
       </label>
       {probe && (
-        <p
-          id="dhcp-probe-help"
-          className="mb-4 max-w-prose text-xs text-muted-foreground"
-        >
-          Sends a discovery message on your network without requesting an
-          address.
+        <p id="dhcp-probe-help" className="mb-4 max-w-prose text-xs text-muted-foreground">
+          Sends a discovery message on your network without requesting an address.
         </p>
       )}
       <Button
         disabled={
-          busy ||
-          latest?.state === "running" ||
-          jobs.data?.items.some((j) => j.state === "running")
+          busy || latest?.state === "running" || jobs.data?.items.some((j) => j.state === "running")
         }
         onClick={async () => {
           setBusy(true);
@@ -619,9 +557,7 @@ export function DHCPCheck() {
           }
         }}
       >
-        {busy || latest?.state === "running"
-          ? "Checking setup…"
-          : "Check setup"}
+        {busy || latest?.state === "running" ? "Checking setup…" : "Check setup"}
       </Button>
       {error && <DHCPError error={error} />}
       {jobs.error && <DHCPError error={jobs.error} />}
@@ -673,9 +609,7 @@ function CheckResults({ value }: { value: unknown }) {
     ["dns_ready", "DNS service", { true: "Ready", false: "Not ready" }],
   ] as const;
   const servers = Array.isArray(result.other_servers)
-    ? result.other_servers.filter(
-        (server): server is string => typeof server === "string",
-      )
+    ? result.other_servers.filter((server): server is string => typeof server === "string")
     : [];
   return (
     <div className="mt-3 space-y-3">
@@ -714,9 +648,7 @@ function CheckResults({ value }: { value: unknown }) {
             </ul>
           )}
           {result.probe_truncated === true && (
-            <p className="mt-2">
-              The search reached its limit; there may be more servers.
-            </p>
+            <p className="mt-2">The search reached its limit; there may be more servers.</p>
           )}
         </div>
       )}

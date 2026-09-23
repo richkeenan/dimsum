@@ -1,27 +1,10 @@
 import { useMemo, type ReactNode } from "react";
-import {
-  createColumnHelper,
-  tableFeatures,
-  useTable,
-} from "@tanstack/react-table";
+import { createColumnHelper, tableFeatures, useTable } from "@tanstack/react-table";
 import { APIError, text, type Row } from "@/lib/api";
 import { Button } from "./ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "./ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
-export function ErrorNotice({
-  error,
-  retry,
-}: {
-  error: Error;
-  retry?: () => void;
-}) {
+export function ErrorNotice({ error, retry }: { error: Error; retry?: () => void }) {
   const conflict = error instanceof APIError && error.status === 409;
   return (
     <div
@@ -29,9 +12,7 @@ export function ErrorNotice({
       role="alert"
     >
       <strong>
-        {conflict
-          ? "Settings changed since you opened this form"
-          : "Couldn't complete the request"}
+        {conflict ? "Settings changed since you opened this form" : "Couldn't complete the request"}
       </strong>
       <p>
         {conflict
@@ -58,15 +39,11 @@ export function Resource({
 }) {
   if (state.loading && !state.data)
     return (
-      <div
-        className="my-4 rounded-lg bg-muted p-8 text-center text-muted-foreground"
-        role="status"
-      >
+      <div className="my-4 rounded-lg bg-muted p-8 text-center text-muted-foreground" role="status">
         Loading…
       </div>
     );
-  if (state.error && !state.data)
-    return <ErrorNotice error={state.error} retry={retry} />;
+  if (state.error && !state.data) return <ErrorNotice error={state.error} retry={retry} />;
   return (
     <>
       {state.error && (
@@ -124,13 +101,7 @@ export function DataTable({
   });
   return (
     <Table
-      className={
-        compact
-          ? "min-w-190 table-fixed"
-          : visible.length > 5
-            ? "min-w-190"
-            : undefined
-      }
+      className={compact ? "min-w-190 table-fixed" : visible.length > 5 ? "min-w-190" : undefined}
     >
       <TableHeader>
         {table.getHeaderGroups().map((group) => (
@@ -138,11 +109,7 @@ export function DataTable({
             {group.headers.map((header, i) => (
               <TableHead
                 key={header.id}
-                className={
-                  compact
-                    ? "bg-muted px-3 text-[12px]"
-                    : "bg-muted px-4 text-xs"
-                }
+                className={compact ? "bg-muted px-3 text-[12px]" : "bg-muted px-4 text-xs"}
                 style={{
                   width: visible[i]?.width,
                   textAlign: visible[i]?.align,
@@ -185,10 +152,7 @@ export function DataTable({
           ))
         ) : (
           <TableRow>
-            <TableCell
-              colSpan={visible.length}
-              className="p-9 text-center text-muted-foreground"
-            >
+            <TableCell colSpan={visible.length} className="p-9 text-center text-muted-foreground">
               {empty}
             </TableCell>
           </TableRow>
@@ -201,14 +165,12 @@ export function DataTable({
 export function Details({ value }: { value: unknown }) {
   return (
     <dl className="text-base wrap-anywhere [&>div]:grid [&>div]:grid-cols-[minmax(110px,35%)_1fr] [&>div]:gap-3 [&>div]:border-b [&>div]:border-border [&>div]:py-3 [&_dt]:text-muted-foreground [&_dt]:capitalize [&_dd]:whitespace-pre-wrap">
-      {Object.entries(value && typeof value === "object" ? value : {}).map(
-        ([key, v]) => (
-          <div key={key}>
-            <dt>{key.replaceAll("_", " ")}</dt>
-            <dd>{typeof v === "number" ? v.toLocaleString() : text(v)}</dd>
-          </div>
-        ),
-      )}
+      {Object.entries(value && typeof value === "object" ? value : {}).map(([key, v]) => (
+        <div key={key}>
+          <dt>{key.replaceAll("_", " ")}</dt>
+          <dd>{typeof v === "number" ? v.toLocaleString() : text(v)}</dd>
+        </div>
+      ))}
     </dl>
   );
 }

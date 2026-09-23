@@ -23,9 +23,7 @@ it.each([
     </>,
   );
   expect(screen.getByText(`Encrypted · ${label}`)).toBeVisible();
-  expect(
-    screen.getByText(/All configured upstreams use encrypted DNS/),
-  ).toBeVisible();
+  expect(screen.getByText(/All configured upstreams use encrypted DNS/)).toBeVisible();
   expect(screen.getByText(address)).toBeVisible();
   view.rerender(
     <UpstreamEditor
@@ -86,38 +84,24 @@ it.each([
   },
 );
 
-it.each(["https", "plain"])(
-  "adds a provider using the explicit %s choice",
-  async (transport) => {
-    const send = vi.spyOn(api, "send").mockResolvedValue({});
-    render(
-      <UpstreamEditor
-        revision="r1"
-        configured={[]}
-        close={() => {}}
-        saved={() => {}}
-      />,
-    );
-    fireEvent.change(screen.getByLabelText("DNS provider"), {
-      target: { value: "cloudflare" },
-    });
-    expect(screen.getByRole("radio", { name: /Encrypted/ })).toBeChecked();
-    if (transport === "plain")
-      fireEvent.click(screen.getByRole("radio", { name: /Standard/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
-    await waitFor(() =>
-      expect(send).toHaveBeenCalledWith("upstreams", "POST", {
-        revision: "r1",
-        item: { preset: "cloudflare", transport },
-      }),
-    );
-  },
-);
+it.each(["https", "plain"])("adds a provider using the explicit %s choice", async (transport) => {
+  const send = vi.spyOn(api, "send").mockResolvedValue({});
+  render(<UpstreamEditor revision="r1" configured={[]} close={() => {}} saved={() => {}} />);
+  fireEvent.change(screen.getByLabelText("DNS provider"), {
+    target: { value: "cloudflare" },
+  });
+  expect(screen.getByRole("radio", { name: /Encrypted/ })).toBeChecked();
+  if (transport === "plain") fireEvent.click(screen.getByRole("radio", { name: /Standard/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Add provider" }));
+  await waitFor(() =>
+    expect(send).toHaveBeenCalledWith("upstreams", "POST", {
+      revision: "r1",
+      item: { preset: "cloudflare", transport },
+    }),
+  );
+});
 
-it.each([
-  "https://resolver.example/dns-query?profile=one",
-  "tls://resolver.example:8853",
-])(
+it.each(["https://resolver.example/dns-query?profile=one", "tls://resolver.example:8853"])(
   "edits a saved encrypted endpoint without splitting its URL: %s",
   async (address) => {
     const send = vi.spyOn(api, "send").mockResolvedValue({});
@@ -146,14 +130,7 @@ it.each([
 
 it("adds a custom encrypted URL and rejects an insecure URL", async () => {
   const send = vi.spyOn(api, "send").mockResolvedValue({});
-  render(
-    <UpstreamEditor
-      revision="r1"
-      configured={[]}
-      close={() => {}}
-      saved={() => {}}
-    />,
-  );
+  render(<UpstreamEditor revision="r1" configured={[]} close={() => {}} saved={() => {}} />);
   fireEvent.change(screen.getByLabelText("DNS provider"), {
     target: { value: "custom" },
   });
@@ -161,9 +138,7 @@ it("adds a custom encrypted URL and rejects an insecure URL", async () => {
     target: { value: "http://resolver.example/dns-query" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Add server" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    /https:\/\/.*tls:\/\//,
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(/https:\/\/.*tls:\/\//);
   expect(send).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Encrypted server URL"), {
     target: { value: " https://resolver.example/dns-query " },
@@ -188,9 +163,7 @@ it("includes standard fallback servers in mixed-pool messaging", () => {
       }}
     />,
   );
-  expect(
-    screen.getByText(/Some lookups may be sent unencrypted/),
-  ).toBeVisible();
+  expect(screen.getByText(/Some lookups may be sent unencrypted/)).toBeVisible();
 });
 
 it.each([
@@ -214,57 +187,38 @@ it.each([
     },
     /bootstrap.*timeout/,
   ],
-])(
-  "shows measured encryption or the actual diagnostic failure",
-  async (result, message) => {
-    vi.spyOn(api, "send").mockResolvedValue({
-      id: "8",
-      state: "succeeded",
-      result,
-    });
-    render(
-      <UpstreamConnectionTest address="https://resolver.example/dns-query" />,
-    );
-    expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(message);
-  },
-);
+])("shows measured encryption or the actual diagnostic failure", async (result, message) => {
+  vi.spyOn(api, "send").mockResolvedValue({
+    id: "8",
+    state: "succeeded",
+    result,
+  });
+  render(<UpstreamConnectionTest address="https://resolver.example/dns-query" />);
+  expect(screen.queryByText(/verified/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+  expect(await screen.findByRole("status")).toHaveTextContent(message);
+});
 
 it.each([
-  [
-    { healthy: true, responding: true, duration_us: "24000" },
-    "Responded in 24.0 ms",
-  ],
-  [
-    { healthy: false, responding: true, duration_us: "24000" },
-    "Server responded with a DNS error",
-  ],
-  [
-    { healthy: false, responding: false, duration_us: "1000000" },
-    "No valid response",
-  ],
-])(
-  "shows the completed connection result on the upstream row",
-  async (result, message) => {
-    const job = {
-      id: "7",
-      kind: "upstream-probe",
-      state: "running" as const,
-      created: "2026-01-01T00:00:00Z",
-    };
-    vi.spyOn(api, "send").mockResolvedValue(job);
-    vi.spyOn(api, "get").mockResolvedValue({
-      items: [{ ...job, state: "succeeded", result }],
-    });
-    render(<UpstreamConnectionTest address="192.0.2.53:53" />);
-    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(message);
-    expect(
-      screen.getByRole("button", { name: "Test connection" }),
-    ).toBeEnabled();
-  },
-);
+  [{ healthy: true, responding: true, duration_us: "24000" }, "Responded in 24.0 ms"],
+  [{ healthy: false, responding: true, duration_us: "24000" }, "Server responded with a DNS error"],
+  [{ healthy: false, responding: false, duration_us: "1000000" }, "No valid response"],
+])("shows the completed connection result on the upstream row", async (result, message) => {
+  const job = {
+    id: "7",
+    kind: "upstream-probe",
+    state: "running" as const,
+    created: "2026-01-01T00:00:00Z",
+  };
+  vi.spyOn(api, "send").mockResolvedValue(job);
+  vi.spyOn(api, "get").mockResolvedValue({
+    items: [{ ...job, state: "succeeded", result }],
+  });
+  render(<UpstreamConnectionTest address="192.0.2.53:53" />);
+  fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+  expect(await screen.findByRole("status")).toHaveTextContent(message);
+  expect(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
+});
 
 it("retains a custom draft and explains a server-side self-loop error", async () => {
   vi.spyOn(api, "send").mockRejectedValue(
@@ -288,9 +242,7 @@ it("retains a custom draft and explains a server-side self-loop error", async ()
     target: { value: "127.0.0.1" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Choose another DNS server",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Choose another DNS server");
   expect(screen.getByLabelText("IP address")).toHaveValue("127.0.0.1");
   expect(saved).not.toHaveBeenCalled();
 });
@@ -311,10 +263,7 @@ it("rejects invalid ports without a request and saves a corrected custom port", 
   });
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("1 to 65535");
-  expect(screen.getByLabelText("IP address")).not.toHaveAttribute(
-    "aria-invalid",
-    "true",
-  );
+  expect(screen.getByLabelText("IP address")).not.toHaveAttribute("aria-invalid", "true");
   expect(screen.getByLabelText("Port")).toHaveAttribute("aria-invalid", "true");
   expect(send).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText("Port"), {
@@ -363,30 +312,20 @@ it.each(["missing", "offline", "failed"])(
     };
     vi.spyOn(api, "send").mockResolvedValue(job);
     const get = vi.spyOn(api, "get");
-    if (state === "offline")
-      get.mockRejectedValue(new Error("Connection lost"));
+    if (state === "offline") get.mockRejectedValue(new Error("Connection lost"));
     else
       get.mockResolvedValue({
-        items:
-          state === "missing"
-            ? []
-            : [{ ...job, state: "failed", error: "test failed" }],
+        items: state === "missing" ? [] : [{ ...job, state: "failed", error: "test failed" }],
       });
     render(<UpstreamConnectionTest address="192.0.2.53:53" />);
     fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
-    expect(
-      await screen.findByRole(state === "failed" ? "status" : "alert"),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Test connection" }),
-    ).toBeEnabled();
+    expect(await screen.findByRole(state === "failed" ? "status" : "alert")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeEnabled();
   },
 );
 
 it("keeps an upstream draft after a stale revision is rejected", async () => {
-  vi.spyOn(api, "send").mockRejectedValue(
-    new APIError(409, "conflict", "revision conflict"),
-  );
+  vi.spyOn(api, "send").mockRejectedValue(new APIError(409, "conflict", "revision conflict"));
   const close = vi.fn();
   render(
     <UpstreamEditor
@@ -401,9 +340,7 @@ it("keeps an upstream draft after a stale revision is rejected", async () => {
     target: { value: "5353" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "haven't been saved",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("haven't been saved");
   expect(screen.getByLabelText("Port")).toHaveValue(5353);
   expect(close).not.toHaveBeenCalled();
 });

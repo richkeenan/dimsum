@@ -66,10 +66,7 @@ function form(value = fixture()) {
   client.setQueryData(["api", "dhcp", "dhcp"], value);
   return render(
     <QueryClientProvider client={client}>
-      <DHCPForm
-        applied={{ status, dhcp: null, runtime_available: false }}
-        refresh={() => {}}
-      />
+      <DHCPForm applied={{ status, dhcp: null, runtime_available: false }} refresh={() => {}} />
     </QueryClientProvider>,
   );
 }
@@ -87,9 +84,7 @@ it("starts with real detected values and enables without entering any fields", a
   expect(screen.getByText("192.0.2.128 – 192.0.2.227")).toBeVisible();
   expect(send).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("switch", { name: "Enable DHCP" }));
-  await userEvent.click(
-    screen.getByRole("button", { name: "Save and enable" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Save and enable" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("dhcp", "PATCH", {
       revision: "one",
@@ -104,20 +99,12 @@ it("starts with real detected values and enables without entering any fields", a
 });
 
 it("lets users edit suggestions and save them while keeping DHCP off", async () => {
-  const send = vi
-    .spyOn(api, "send")
-    .mockRejectedValue(new Error("Write unavailable"));
+  const send = vi.spyOn(api, "send").mockRejectedValue(new Error("Write unavailable"));
   form();
   await userEvent.click(screen.getByText("Edit settings", { exact: true }));
   await userEvent.clear(screen.getByLabelText("First IP address"));
-  await userEvent.type(
-    screen.getByLabelText("First IP address"),
-    "192.0.2.140",
-  );
-  await userEvent.selectOptions(
-    screen.getByLabelText("Lease duration"),
-    "3600",
-  );
+  await userEvent.type(screen.getByLabelText("First IP address"), "192.0.2.140");
+  await userEvent.selectOptions(screen.getByLabelText("Lease duration"), "3600");
   await userEvent.click(screen.getByRole("button", { name: "Save settings" }));
   const edits = send.mock.calls[0][2] as {
     edits: { path: string[]; value: unknown }[];
@@ -142,18 +129,14 @@ it("opens missing fields when detection cannot choose a network", () => {
   form(value);
   expect(screen.getByLabelText("Network interface")).toBeVisible();
   expect(screen.getByLabelText("Network interface")).toHaveValue("");
-  expect(
-    screen.getByText("Couldn’t choose one network automatically."),
-  ).toBeVisible();
+  expect(screen.getByText("Couldn’t choose one network automatically.")).toBeVisible();
 });
 
 it("explains a dynamic server address without pretending it is fixed", () => {
   const value = fixture();
   value.setup!.fixed_address = "no";
   form(value);
-  expect(
-    screen.getByText(/server gets its address automatically/),
-  ).toBeVisible();
+  expect(screen.getByText(/server gets its address automatically/)).toBeVisible();
 });
 
 it("keeps existing saved settings authoritative", async () => {

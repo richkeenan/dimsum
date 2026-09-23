@@ -13,10 +13,7 @@ const metrics: Latency = {
   p99_us: "100000",
   percentiles_available: true,
 };
-const point = (
-  time: string,
-  extra: Partial<LatencyPoint> = {},
-): LatencyPoint => ({
+const point = (time: string, extra: Partial<LatencyPoint> = {}): LatencyPoint => ({
   ...metrics,
   time,
   complete: true,
@@ -35,12 +32,8 @@ describe("response-time presentation", () => {
         ]}
       />,
     );
-    const path = container
-      .querySelector('path[data-series="p95_us"]')!
-      .getAttribute("d")!;
-    const positions = [...path.matchAll(/[ML]([\d.]+),/g)].map((match) =>
-      Number(match[1]),
-    );
+    const path = container.querySelector('path[data-series="p95_us"]')!.getAttribute("d")!;
+    const positions = [...path.matchAll(/[ML]([\d.]+),/g)].map((match) => Number(match[1]));
     expect(positions[0]).toBe(0);
     expect(positions[1]).toBeCloseTo(16.39344, 4);
     expect(positions[2]).toBe(1000);
@@ -104,8 +97,6 @@ describe("response-time presentation", () => {
     const details = container.querySelector("details")!;
     details.open = true;
     fireEvent(details, new Event("toggle"));
-    expect(
-      within(screen.getByRole("table")).getByText("Missing"),
-    ).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("Missing")).toBeInTheDocument();
   });
 });

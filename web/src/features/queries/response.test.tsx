@@ -5,17 +5,11 @@ import { ResponseRecords, ResponseTime } from "./response";
 it("distinguishes unavailable data, negative answers and partial capture", () => {
   const view = render(<ResponseRecords />);
   expect(screen.getByText(/wasn’t recorded/)).toBeInTheDocument();
-  view.rerender(
-    <ResponseRecords response={{ records: [], truncated: false }} />,
-  );
+  view.rerender(<ResponseRecords response={{ records: [], truncated: false }} />);
   expect(screen.getByText("No answer records returned.")).toBeInTheDocument();
   expect(screen.queryByText(/wasn’t recorded/)).not.toBeInTheDocument();
-  view.rerender(
-    <ResponseRecords response={{ records: [], truncated: true }} />,
-  );
-  expect(
-    screen.getByText(/No answer records in the captured portion/),
-  ).toBeInTheDocument();
+  view.rerender(<ResponseRecords response={{ records: [], truncated: true }} />);
+  expect(screen.getByText(/No answer records in the captured portion/)).toBeInTheDocument();
   expect(screen.getByText(/Partial response:/)).toBeInTheDocument();
 });
 

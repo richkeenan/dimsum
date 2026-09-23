@@ -14,6 +14,8 @@ Generate the embedded frontend before running Go tests on a fresh checkout:
 
 ```sh
 sh scripts/build-web.sh
+npm --prefix web run lint
+npm --prefix web run fmt:check
 go test ./...
 go vet ./...
 npm --prefix web test

@@ -16,9 +16,7 @@ it("sorts names naturally and filters immediately while retaining empty drop tar
       onEdit={vi.fn()}
     />,
   );
-  expect(
-    screen.getAllByRole("combobox").map((el) => el.getAttribute("aria-label")),
-  ).toEqual([
+  expect(screen.getAllByRole("combobox").map((el) => el.getAttribute("aria-label"))).toEqual([
     "Profile for alpha",
     "Profile for Tablet 2",
     "Profile for Tablet 10",
@@ -27,9 +25,7 @@ it("sorts names naturally and filters immediately while retaining empty drop tar
     target: { value: "TABLET 2" },
   });
   expect(screen.getAllByRole("combobox")).toHaveLength(1);
-  expect(
-    screen.getByRole("region", { name: "Kids devices" }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Kids devices" })).toBeInTheDocument();
   expect(screen.getByText("1 of 3 devices")).toBeInTheDocument();
 });
 import { api } from "@/lib/api";
@@ -42,9 +38,7 @@ it("keeps a device in its group and reports a failed drop", async () => {
     status: { saved_revision: "latest" },
     items: [configured],
   });
-  vi.spyOn(api, "send").mockRejectedValue(
-    new Error("Settings changed. Refresh and try again."),
-  );
+  vi.spyOn(api, "send").mockRejectedValue(new Error("Settings changed. Refresh and try again."));
   render(
     <ProfileMap
       rows={[{ key: "tablet", configured, observed: [] }]}
@@ -63,9 +57,7 @@ it("keeps a device in its group and reports a failed drop", async () => {
   fireEvent.drop(screen.getByRole("region", { name: "Kids devices" }), {
     dataTransfer,
   });
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Settings changed",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Settings changed");
   expect(screen.getByRole("combobox")).toHaveValue("");
 });
 

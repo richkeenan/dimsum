@@ -26,11 +26,7 @@ export function ActivationStatus({ status }: { status: Activation }) {
     !status.recovered &&
     !status.restart_required &&
     status.saved_revision === status.active_revision;
-  if (
-    active &&
-    !status.sources.some((s) => s.enabled && (!s.usable || s.error))
-  )
-    return null;
+  if (active && !status.sources.some((s) => s.enabled && (!s.usable || s.error))) return null;
   return (
     <div
       role={status.error ? "alert" : "status"}
@@ -53,10 +49,7 @@ export function ActivationStatus({ status }: { status: Activation }) {
         .filter((s) => s.enabled && (!s.usable || s.error))
         .map((s) => (
           <p key={s.id} className="text-destructive">
-            {s.id}:{" "}
-            {s.usable
-              ? "Using last download; refresh failed"
-              : "Source not active"}
+            {s.id}: {s.usable ? "Using last download; refresh failed" : "Source not active"}
             {s.error ? ` — ${s.error}` : ""}
           </p>
         ))}
@@ -124,9 +117,7 @@ export function PolicyEditor({
           reload={async () => {
             const result = await state.reload();
             if (result.error || !result.data)
-              throw (
-                result.error ?? new Error("Saved policy read-back unavailable.")
-              );
+              throw result.error ?? new Error("Saved policy read-back unavailable.");
             if (result.data) {
               setSnapshot(result.data);
               setEpoch((x) => x + 1);
@@ -155,9 +146,7 @@ function PolicyForm({
   onDeleted?: () => void;
   onPromoted?: (id: string) => void;
 }) {
-  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
-    "profiles",
-  );
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const catalog = useResource<Schema["Catalog"]>("catalog");
   const lists = useResource<{ items: Schema["PolicySubscription"][] }>("lists");
   const availableLists = catalog.data?.items.map((item) => ({
@@ -174,9 +163,7 @@ function PolicyForm({
   const own = ownerPolicy(read);
   const [fields, setFields] = useState<Schema["PolicyField"][]>([]);
   const [extra, setExtra] = useState<Partial<PolicyMutation>>({});
-  const [subscriptions, setSubscriptions] = useState<
-    Schema["PolicySubscription"][]
-  >([]);
+  const [subscriptions, setSubscriptions] = useState<Schema["PolicySubscription"][]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<Error>();
   const [status, setStatus] = useState<Activation>();
@@ -188,78 +175,51 @@ function PolicyForm({
   const [promotionID] = useState(() => policyID("device"));
   const [addresses, setAddresses] = useState(
     (
-      desiredClient.selectors?.addresses ??
-      (desiredClient.address ? [desiredClient.address] : [])
+      desiredClient.selectors?.addresses ?? (desiredClient.address ? [desiredClient.address] : [])
     ).join("\n"),
   );
-  const [macs, setMacs] = useState(
-    desiredClient.selectors?.macs?.join("\n") ?? "",
-  );
-  const [cidrs, setCidrs] = useState(
-    desiredClient.selectors?.cidrs?.join("\n") ?? "",
-  );
+  const [macs, setMacs] = useState(desiredClient.selectors?.macs?.join("\n") ?? "");
+  const [cidrs, setCidrs] = useState(desiredClient.selectors?.cidrs?.join("\n") ?? "");
   const [lease, setLease] = useState("");
   const [primary, setPrimary] = useState(
     (own.upstream ?? read.effective.upstream).upstreams.join("\n"),
   );
   const [fallback, setFallback] = useState(
-    (own.upstream ?? read.effective.upstream).fallback_upstreams?.join("\n") ??
-      "",
+    (own.upstream ?? read.effective.upstream).fallback_upstreams?.join("\n") ?? "",
   );
   const [rulePattern, setRulePattern] = useState("");
-  const [ruleKind, setRuleKind] =
-    useState<Schema["PolicyRule"]["kind"]>("exact");
-  const [ruleAction, setRuleAction] =
-    useState<Schema["PolicyRule"]["action"]>("deny");
+  const [ruleKind, setRuleKind] = useState<Schema["PolicyRule"]["kind"]>("exact");
+  const [ruleAction, setRuleAction] = useState<Schema["PolicyRule"]["action"]>("deny");
   const keyOf = (path: string[]) => JSON.stringify(path);
-  const field = (path: string[]) =>
-    fields.find((f) => keyOf(f.path) === keyOf(path));
-  const setField = (
-    path: string[],
-    value: Schema["PolicyField"]["value"] | undefined,
-  ) => {
+  const field = (path: string[]) => fields.find((f) => keyOf(f.path) === keyOf(path));
+  const setField = (path: string[], value: Schema["PolicyField"]["value"] | undefined) => {
     setExtra((e) => {
       const next = { ...e };
       delete next.reset_all;
       return next;
     });
-    const saved =
-      path[0] === "lists"
-        ? own.lists?.[path[1]]
-        : own[path[0] as keyof typeof own];
+    const saved = path[0] === "lists" ? own.lists?.[path[1]] : own[path[0] as keyof typeof own];
     const resetFields: Schema["PolicyField"][] = extra.reset_all
       ? [
-          ...(own.blocking !== undefined
-            ? [{ path: ["blocking"], reset: true as const }]
-            : []),
+          ...(own.blocking !== undefined ? [{ path: ["blocking"], reset: true as const }] : []),
           ...Object.keys(own.lists ?? {}).map((id) => ({
             path: ["lists", id],
             reset: true as const,
           })),
-          ...(own.upstream
-            ? [{ path: ["upstream"], reset: true as const }]
-            : []),
+          ...(own.upstream ? [{ path: ["upstream"], reset: true as const }] : []),
           ...(own.rules ? [{ path: ["rules"], reset: true as const }] : []),
         ]
       : [];
     setFields((old) => [
-      ...(extra.reset_all ? resetFields : old).filter(
-        (f) => keyOf(f.path) !== keyOf(path),
-      ),
+      ...(extra.reset_all ? resetFields : old).filter((f) => keyOf(f.path) !== keyOf(path)),
       ...(JSON.stringify(saved) === JSON.stringify(value)
         ? []
-        : [
-            value === undefined
-              ? { path, reset: true as const }
-              : { path, value },
-          ]),
+        : [value === undefined ? { path, reset: true as const } : { path, value }]),
     ]);
     if (path[0] === "lists" && value !== true)
       setSubscriptions((old) => old.filter((s) => s.id !== path[1]));
     if (path[0] === "lists" && value === true) {
-      const list = lists.data?.items.find(
-        (s) => s.id === path[1] && !s.enabled,
-      );
+      const list = lists.data?.items.find((s) => s.id === path[1] && !s.enabled);
       if (list)
         setSubscriptions((old) => [
           ...old.filter((s) => s.id !== list.id),
@@ -276,15 +236,13 @@ function PolicyForm({
   const changed =
     fields.length +
     Object.keys(extra).filter((k) => k !== "promote_id").length +
-    subscriptions.filter(
-      (s) => !fields.some((f) => f.path[0] === "lists" && f.path[1] === s.id),
-    ).length;
+    subscriptions.filter((s) => !fields.some((f) => f.path[0] === "lists" && f.path[1] === s.id))
+      .length;
   const unstaged =
     rulePattern.trim() !== "" ||
     addresses !==
       (
-        desiredClient.selectors?.addresses ??
-        (desiredClient.address ? [desiredClient.address] : [])
+        desiredClient.selectors?.addresses ?? (desiredClient.address ? [desiredClient.address] : [])
       ).join("\n") ||
     macs !== (desiredClient.selectors?.macs ?? []).join("\n") ||
     cidrs !== (desiredClient.selectors?.cidrs ?? []).join("\n");
@@ -299,9 +257,7 @@ function PolicyForm({
     ...extra,
     ...(fields.length ? { fields } : {}),
     ...(subscriptions.length ? { subscribe: subscriptions } : {}),
-    ...(read.scope === "client" && !desiredClient.id
-      ? { promote_id: promotionID }
-      : {}),
+    ...(read.scope === "client" && !desiredClient.id ? { promote_id: promotionID } : {}),
   };
   const serialized = JSON.stringify(mutation);
   useEffect(() => {
@@ -358,18 +314,9 @@ function PolicyForm({
       (routeEdit?.reset || extra.reset_all || (!own.upstream && !routeEdit))
     ) {
       setPrimary(preview.effective.upstream.upstreams.join("\n"));
-      setFallback(
-        preview.effective.upstream.fallback_upstreams?.join("\n") ?? "",
-      );
+      setFallback(preview.effective.upstream.fallback_upstreams?.join("\n") ?? "");
     }
-  }, [
-    preview,
-    routeEdit,
-    own.upstream,
-    extra.reset_all,
-    changed,
-    read.effective.upstream,
-  ]);
+  }, [preview, routeEdit, own.upstream, extra.reset_all, changed, read.effective.upstream]);
   const boolRow = (
     label: string,
     path: string[],
@@ -431,18 +378,12 @@ function PolicyForm({
               : selected
           }
           onChange={(e) =>
-            setField(
-              path,
-              e.target.value === "inherit"
-                ? undefined
-                : e.target.value === "on",
-            )
+            setField(path, e.target.value === "inherit" ? undefined : e.target.value === "on")
           }
         >
           {read.scope !== "network" && (
             <option value="inherit">
-              {read.scope === "client" &&
-              (extra.profile ?? desiredClient.profile)
+              {read.scope === "client" && (extra.profile ?? desiredClient.profile)
                 ? "Use profile setting"
                 : "Use network default"}
             </option>
@@ -473,15 +414,10 @@ function PolicyForm({
     setPreview(undefined);
     setName(desiredClient.name ?? "");
     setPrimary((own.upstream ?? read.effective.upstream).upstreams.join("\n"));
-    setFallback(
-      (own.upstream ?? read.effective.upstream).fallback_upstreams?.join(
-        "\n",
-      ) ?? "",
-    );
+    setFallback((own.upstream ?? read.effective.upstream).fallback_upstreams?.join("\n") ?? "");
     setAddresses(
       (
-        desiredClient.selectors?.addresses ??
-        (desiredClient.address ? [desiredClient.address] : [])
+        desiredClient.selectors?.addresses ?? (desiredClient.address ? [desiredClient.address] : [])
       ).join("\n"),
     );
     setMacs(desiredClient.selectors?.macs?.join("\n") ?? "");
@@ -491,10 +427,7 @@ function PolicyForm({
   }
   return (
     <div className="space-y-4">
-      <fieldset
-        disabled={busy || !!status}
-        className="flex min-w-0 flex-col gap-4"
-      >
+      <fieldset disabled={busy || !!status} className="flex min-w-0 flex-col gap-4">
         <section className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-medium">{scopeName}</h2>
@@ -516,21 +449,15 @@ function PolicyForm({
             read.active &&
             (liveStatus ?? read.status).saved_revision !==
               (liveStatus ?? read.status).active_revision && (
-              <p className="text-xs">
-                Showing saved settings. The active policy differs.
-              </p>
+              <p className="text-xs">Showing saved settings. The active policy differs.</p>
             )}
-          {liveStatus &&
-            liveStatus.saved_revision !== read.status.saved_revision && (
-              <p className="text-xs text-muted-foreground">
-                Newer settings are available. Your draft still uses the revision
-                opened here.
-              </p>
-            )}
-          {!read.active && (
+          {liveStatus && liveStatus.saved_revision !== read.status.saved_revision && (
             <p className="text-xs text-muted-foreground">
-              These settings are not active yet.
+              Newer settings are available. Your draft still uses the revision opened here.
             </p>
+          )}
+          {!read.active && (
+            <p className="text-xs text-muted-foreground">These settings are not active yet.</p>
           )}
           {read.scope !== "network" && (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -543,8 +470,7 @@ function PolicyForm({
                       setName(e.target.value);
                       setExtra((x) => {
                         const next = { ...x };
-                        if (e.target.value === (desiredClient.name ?? ""))
-                          delete next.name;
+                        if (e.target.value === (desiredClient.name ?? "")) delete next.name;
                         else next.name = e.target.value;
                         return next;
                       });
@@ -562,8 +488,7 @@ function PolicyForm({
                     onChange={(e) =>
                       setExtra((x) => {
                         const next = { ...x };
-                        if (e.target.value === (desiredClient.profile ?? ""))
-                          delete next.profile;
+                        if (e.target.value === (desiredClient.profile ?? "")) delete next.profile;
                         else next.profile = e.target.value;
                         return next;
                       })
@@ -588,8 +513,7 @@ function PolicyForm({
             effective?.blocking ?? read.effective.blocking,
           )}
           <p className="text-xs text-muted-foreground">
-            When on, DNS filtering blocks domains using the filter lists and
-            custom rules below.
+            When on, DNS filtering blocks domains using the filter lists and custom rules below.
           </p>
           {
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -597,9 +521,7 @@ function PolicyForm({
               {read.scope !== "network" && (
                 <Button
                   variant="ghost"
-                  disabled={
-                    !!extra.reset_all || !Object.keys(own.lists ?? {}).length
-                  }
+                  disabled={!!extra.reset_all || !Object.keys(own.lists ?? {}).length}
                   onClick={() => {
                     setSubscriptions([]);
                     setFields((old) => [
@@ -616,19 +538,14 @@ function PolicyForm({
               )}
             </div>
           }
-          <p className="text-xs text-muted-foreground">
-            Choose which lists of domains to block.
-          </p>
+          <p className="text-xs text-muted-foreground">Choose which lists of domains to block.</p>
           {Object.entries({
             ...Object.fromEntries(
               subscriptions.map((s) => [
                 s.id,
                 {
                   value: true,
-                  source:
-                    read.scope === "network"
-                      ? {}
-                      : { kind: read.scope, id: read.id },
+                  source: read.scope === "network" ? {} : { kind: read.scope, id: read.id },
                 },
               ]),
             ),
@@ -663,27 +580,19 @@ function PolicyForm({
                     Loading available lists…
                   </p>
                 )}
-                {availableLists &&
-                  !availableLists.some(
-                    (c) => !(c.id in read.effective.lists),
-                  ) && (
-                    <p className="text-xs text-muted-foreground">
-                      All available lists are already shown above.
-                    </p>
-                  )}
+                {availableLists && !availableLists.some((c) => !(c.id in read.effective.lists)) && (
+                  <p className="text-xs text-muted-foreground">
+                    All available lists are already shown above.
+                  </p>
+                )}
                 {availableLists
                   ?.filter((c) => !(c.id in read.effective.lists))
                   .map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex flex-wrap items-center justify-between gap-2"
-                    >
+                    <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 wrap-anywhere text-sm">
                         {c.label}
                         {!c.available && (
-                          <p className="text-xs text-muted-foreground">
-                            {c.unavailable_reason}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{c.unavailable_reason}</p>
                         )}
                       </div>
                       <Button
@@ -691,10 +600,7 @@ function PolicyForm({
                         size="sm"
                         aria-label={`Add ${c.label}`}
                         className="min-h-10"
-                        disabled={
-                          !c.available ||
-                          subscriptions.some((s) => s.id === c.id)
-                        }
+                        disabled={!c.available || subscriptions.some((s) => s.id === c.id)}
                         onClick={() => {
                           setSubscriptions((old) => [
                             ...old,
@@ -719,8 +625,8 @@ function PolicyForm({
           {subscriptions.length > 0 && (
             <p className="text-xs text-muted-foreground">
               New lists download on save. Applied only to this{" "}
-              {read.scope === "client" ? "device" : read.scope}; existing
-              network application is retained.
+              {read.scope === "client" ? "device" : read.scope}; existing network application is
+              retained.
             </p>
           )}
         </section>
@@ -731,22 +637,18 @@ function PolicyForm({
               {extra.reset_all && own.rules && (
                 <p className="text-xs">
                   Removing owner rules:{" "}
-                  {own.rules.map((r) => r.pattern).join(", ") ||
-                    "empty explicit collection"}
+                  {own.rules.map((r) => r.pattern).join(", ") || "empty explicit collection"}
                 </p>
               )}
               {read.scope !== "network" && (
-                <Button
-                  variant="ghost"
-                  onClick={() => setField(["rules"], undefined)}
-                >
+                <Button variant="ghost" onClick={() => setField(["rules"], undefined)}>
                   Reset rules
                 </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              {(effective?.rules ?? []).filter((r) => !r.source.kind).length}{" "}
-              network rules apply automatically.{" "}
+              {(effective?.rules ?? []).filter((r) => !r.source.kind).length} network rules apply
+              automatically.{" "}
               <a href="/rules" className="underline underline-offset-4">
                 View network rules
               </a>
@@ -767,8 +669,7 @@ function PolicyForm({
                     className="flex flex-wrap items-center justify-between gap-2 text-sm"
                   >
                     <span className="min-w-0 flex-1 basis-48 wrap-anywhere">
-                      {rule.action === "allow" ? "Allow" : "Block"}{" "}
-                      {rule.pattern} ({rule.kind})
+                      {rule.action === "allow" ? "Allow" : "Block"} {rule.pattern} ({rule.kind})
                       {!rule.enabled ? " · disabled" : ""}
                     </span>
                     <div className="flex flex-wrap gap-2">
@@ -781,9 +682,7 @@ function PolicyForm({
                           setField(
                             ["rules"],
                             ownRules.map((r) =>
-                              r.id === rule.id
-                                ? { ...r, enabled: !r.enabled }
-                                : r,
+                              r.id === rule.id ? { ...r, enabled: !r.enabled } : r,
                             ),
                           )
                         }
@@ -819,9 +718,7 @@ function PolicyForm({
                     aria-label="Rule action"
                     className={selectClass}
                     value={ruleAction}
-                    onChange={(e) =>
-                      setRuleAction(e.target.value as typeof ruleAction)
-                    }
+                    onChange={(e) => setRuleAction(e.target.value as typeof ruleAction)}
                   >
                     <option value="deny">Block</option>
                     <option value="allow">Allow</option>
@@ -830,15 +727,11 @@ function PolicyForm({
                     aria-label="Rule match"
                     className={selectClass}
                     value={ruleKind}
-                    onChange={(e) =>
-                      setRuleKind(e.target.value as typeof ruleKind)
-                    }
+                    onChange={(e) => setRuleKind(e.target.value as typeof ruleKind)}
                   >
-                    {["exact", "suffix", "wildcard", "glob", "regex"].map(
-                      (k) => (
-                        <option key={k}>{k}</option>
-                      ),
-                    )}
+                    {["exact", "suffix", "wildcard", "glob", "regex"].map((k) => (
+                      <option key={k}>{k}</option>
+                    ))}
                   </select>
                   <Button
                     variant="outline"
@@ -882,8 +775,7 @@ function PolicyForm({
             </p>
             {extra.paused_until && (
               <p role="status" className="text-sm font-medium text-primary">
-                Pending pause until{" "}
-                {new Date(extra.paused_until).toLocaleString()} · applies on
+                Pending pause until {new Date(extra.paused_until).toLocaleString()} · applies on
                 save.
               </p>
             )}
@@ -901,9 +793,7 @@ function PolicyForm({
                     setExtra((x) => {
                       const n = {
                         ...x,
-                        paused_until: new Date(
-                          Date.now() + minutes * 60000,
-                        ).toISOString(),
+                        paused_until: new Date(Date.now() + minutes * 60000).toISOString(),
                       };
                       delete n.reset_pause;
                       return n;
@@ -928,38 +818,25 @@ function PolicyForm({
             </div>
           </section>
         )}
-        {read.scope === "client" &&
-          (extra.selectors || extra.lease_address) && (
-            <section
-              className={panelClass}
-              aria-label="Pending matching identity"
-            >
-              <h3 className="text-sm font-medium">Pending matching identity</h3>
-              <div className="space-y-1 wrap-anywhere text-sm" role="status">
-                {extra.lease_address ? (
-                  <p>Use the lease MAC for {extra.lease_address}.</p>
-                ) : (
-                  <>
-                    <p>
-                      Addresses:{" "}
-                      {extra.selectors?.addresses?.join(", ") || "None"}
-                    </p>
-                    <p>
-                      MAC addresses:{" "}
-                      {extra.selectors?.macs?.join(", ") || "None"}
-                    </p>
-                    <p>
-                      Networks: {extra.selectors?.cidrs?.join(", ") || "None"}
-                    </p>
-                  </>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Replaces matching selectors on save; profile and policy are
-                  retained.
-                </p>
-              </div>
-            </section>
-          )}
+        {read.scope === "client" && (extra.selectors || extra.lease_address) && (
+          <section className={panelClass} aria-label="Pending matching identity">
+            <h3 className="text-sm font-medium">Pending matching identity</h3>
+            <div className="space-y-1 wrap-anywhere text-sm" role="status">
+              {extra.lease_address ? (
+                <p>Use the lease MAC for {extra.lease_address}.</p>
+              ) : (
+                <>
+                  <p>Addresses: {extra.selectors?.addresses?.join(", ") || "None"}</p>
+                  <p>MAC addresses: {extra.selectors?.macs?.join(", ") || "None"}</p>
+                  <p>Networks: {extra.selectors?.cidrs?.join(", ") || "None"}</p>
+                </>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Replaces matching selectors on save; profile and policy are retained.
+              </p>
+            </div>
+          </section>
+        )}
         {read.scope === "client" && (
           <section className={panelClass}>
             <details>
@@ -967,8 +844,8 @@ function PolicyForm({
                 Matching identity · {read.id}
               </summary>
               <p className="my-3 text-xs text-muted-foreground">
-                Relinking replaces all selectors and preserves this ID, profile
-                and policy. Names are labels, not matching identities.
+                Relinking replaces all selectors and preserves this ID, profile and policy. Names
+                are labels, not matching identities.
               </p>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
@@ -982,9 +859,7 @@ function PolicyForm({
                       aria-label={String(label)}
                       className={`${selectClass} w-full`}
                       value={String(value)}
-                      onChange={(e) =>
-                        (setter as (s: string) => void)(e.target.value)
-                      }
+                      onChange={(e) => (setter as (s: string) => void)(e.target.value)}
                     />
                   </label>
                 ))}
@@ -1022,8 +897,7 @@ function PolicyForm({
                     .filter((o) => o.authoritative_mac)
                     .map((o) => (
                       <option key={o.address} value={o.address}>
-                        {o.name || o.address} · {o.address} ·{" "}
-                        {o.authoritative_mac}
+                        {o.name || o.address} · {o.address} · {o.authoritative_mac}
                       </option>
                     ))}
                 </select>
@@ -1051,22 +925,16 @@ function PolicyForm({
           </summary>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-medium">Upstream servers</h3>
-            <Button
-              variant="ghost"
-              onClick={() => setField(["upstream"], undefined)}
-            >
+            <Button variant="ghost" onClick={() => setField(["upstream"], undefined)}>
               Reset upstream
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            {(effective?.upstream.upstreams ?? []).join(", ") ||
-              "No configured upstream"}{" "}
-            · {sourceLabel(effective?.upstream_source ?? {})}
+            {(effective?.upstream.upstreams ?? []).join(", ") || "No configured upstream"} ·{" "}
+            {sourceLabel(effective?.upstream_source ?? {})}
           </p>
           {extra.reset_all && own.upstream && (
-            <p className="text-xs">
-              Using inherited upstream servers after saving.
-            </p>
+            <p className="text-xs">Using inherited upstream servers after saving.</p>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 text-sm">
@@ -1114,9 +982,7 @@ function PolicyForm({
                 <p className="mt-1 max-h-16 overflow-y-auto wrap-anywhere text-xs text-muted-foreground">
                   {preview.changed_clients.length} affected devices
                   {preview.network_changed ? " · network changed" : ""}
-                  {preview.changed_clients.length
-                    ? `: ${preview.changed_clients.join(", ")}`
-                    : ""}
+                  {preview.changed_clients.length ? `: ${preview.changed_clients.join(", ")}` : ""}
                   {preview.downloads_pending.length
                     ? ` · downloads pending: ${preview.downloads_pending.join(", ")}`
                     : ""}
@@ -1125,26 +991,19 @@ function PolicyForm({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {(changed > 0 || unstaged) && (
-                <Button
-                  variant="ghost"
-                  aria-label="Discard staged changes"
-                  onClick={discard}
-                >
+                <Button variant="ghost" aria-label="Discard staged changes" onClick={discard}>
                   Discard
                 </Button>
               )}
               <Button disabled={!changed || busy} onClick={() => void save()}>
-                {busy
-                  ? "Saving…"
-                  : `Save ${changed} ${changed === 1 ? "change" : "changes"}`}
+                {busy ? "Saving…" : `Save ${changed} ${changed === 1 ? "change" : "changes"}`}
               </Button>
             </div>
           </div>
           {previewError && <ErrorNotice error={previewError} />}
           {error && <ErrorNotice error={error} />}
           {((error instanceof APIError && error.status === 409) ||
-            (liveStatus &&
-              liveStatus.saved_revision !== read.status.saved_revision)) && (
+            (liveStatus && liveStatus.saved_revision !== read.status.saved_revision)) && (
             <Button
               variant="outline"
               onClick={() => void reload().catch((e: Error) => setError(e))}
@@ -1172,10 +1031,7 @@ function PolicyForm({
         )}
         {read.scope !== "network" && onDeleted && (
           <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => setConfirmDelete(!confirmDelete)}
-            >
+            <Button variant="ghost" onClick={() => setConfirmDelete(!confirmDelete)}>
               Delete {read.scope === "client" ? "device" : "profile"}
             </Button>
             {confirmDelete && (
@@ -1205,8 +1061,8 @@ function PolicyForm({
       {status && error && (
         <div>
           <p role="status" className="text-sm">
-            Changes were saved. Reading the saved policy failed; the activation
-            result above is retained.
+            Changes were saved. Reading the saved policy failed; the activation result above is
+            retained.
           </p>
           <Button
             variant="outline"

@@ -33,11 +33,25 @@ export async function checkMCP(url, token) {
 // the same pinned SDK as the frontend. callTool validates structured responses.
 export async function connectDHCPAgent(url, token) {
   const client = new Client({ name: "dimsum-dhcp-parity", version: "1" });
-  await client.connect(new StreamableHTTPClientTransport(new URL(url), {
-    requestInit: { headers: { Authorization: `Bearer ${token}` } },
-  }));
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    }),
+  );
   const { tools } = await client.listTools();
-  for (const name of ["get_dhcp", "update_dhcp", "get_dhcp_status", "list_dhcp_leases", "list_dhcp_reservations", "add_dhcp_reservation", "update_dhcp_reservation", "remove_dhcp_reservation"])
-    assert(tools.some(t => t.name === name), `${name} advertised`);
+  for (const name of [
+    "get_dhcp",
+    "update_dhcp",
+    "get_dhcp_status",
+    "list_dhcp_leases",
+    "list_dhcp_reservations",
+    "add_dhcp_reservation",
+    "update_dhcp_reservation",
+    "remove_dhcp_reservation",
+  ])
+    assert(
+      tools.some((t) => t.name === name),
+      `${name} advertised`,
+    );
   return client;
 }

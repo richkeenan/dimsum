@@ -1,11 +1,5 @@
 import { useState } from "react";
-import {
-  CircleCheck,
-  CircleHelp,
-  LoaderCircle,
-  Power,
-  TriangleAlert,
-} from "lucide-react";
+import { CircleCheck, CircleHelp, LoaderCircle, Power, TriangleAlert } from "lucide-react";
 import {
   api,
   APIError,
@@ -21,8 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Reservations, Leases, DHCPCheck } from "./operations";
 import { SetupSummary, setupComplete } from "./setup";
 
-export const panel =
-  "min-w-0 rounded-lg border border-border bg-background p-5 sm:p-6";
+export const panel = "min-w-0 rounded-lg border border-border bg-background p-5 sm:p-6";
 const networkFields = [
   ["interface", "Network interface", "eth0", ""],
   ["server_ip", "Server IP address", "192.0.2.2", "Use a fixed IPv4 address."],
@@ -44,9 +37,7 @@ export function DHCPError({ error }: { error: Error }) {
     <>
       <ErrorNotice
         error={
-          error instanceof APIError &&
-          error.status === 409 &&
-          error.code !== "revision_conflict"
+          error instanceof APIError && error.status === 409 && error.code !== "revision_conflict"
             ? new Error(error.message)
             : error
         }
@@ -57,12 +48,11 @@ export function DHCPError({ error }: { error: Error }) {
           <Details value={error.fields} />
         </details>
       )}
-      {error instanceof APIError &&
-        (error.status === 0 || error.status >= 500) && (
-          <p className="my-3 text-xs">
-            Couldn’t confirm the save. Reload settings before trying again.
-          </p>
-        )}
+      {error instanceof APIError && (error.status === 0 || error.status >= 500) && (
+        <p className="my-3 text-xs">
+          Couldn’t confirm the save. Reload settings before trying again.
+        </p>
+      )}
     </>
   );
 }
@@ -118,10 +108,7 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
               ? `Assigning addresses on ${d.interface} (${d.server_ip}).`
               : "";
   return (
-    <section
-      className="flex items-start gap-3 px-1 py-1"
-      aria-label="DHCP status"
-    >
+    <section className="flex items-start gap-3 px-1 py-1" aria-label="DHCP status">
       <div
         className={`flex size-11 shrink-0 items-center justify-center rounded-full ${paused || attention ? "bg-destructive/10 text-destructive" : d?.applied_enabled || pending ? "bg-accent text-primary" : "bg-muted text-muted-foreground"}`}
       >
@@ -130,15 +117,10 @@ export function DHCPState({ value }: { value: DHCPStatusResponse }) {
       <div className="min-w-0" aria-live="polite">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         {description && (
-          <p className="mt-1 text-xs text-muted-foreground wrap-anywhere">
-            {description}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground wrap-anywhere">{description}</p>
         )}
         {error && (
-          <p
-            role="alert"
-            className="mt-2 text-xs text-destructive wrap-anywhere"
-          >
+          <p role="alert" className="mt-2 text-xs text-destructive wrap-anywhere">
             {error}
           </p>
         )}
@@ -187,19 +169,15 @@ export function DHCPForm({
       </Resource>
     );
   const proposed =
-    value.availability?.supported !== false &&
-    !value.config.enabled &&
-    value.setup
+    value.availability?.supported !== false && !value.config.enabled && value.setup
       ? value.setup.config
       : value.config;
   const config = draft?.config ?? proposed;
-  const hasSuggestions =
-    !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
+  const hasSuggestions = !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
   const canSave = !!draft || hasSuggestions;
   const outdated = !!draft && draft.revision !== value.status.saved_revision;
   // Saving disable is a separate boundary; unchecking the draft cannot unlock topology.
-  const locked =
-    value.config.enabled || !applied || applied.dhcp?.applied_enabled === true;
+  const locked = value.config.enabled || !applied || applied.dhcp?.applied_enabled === true;
   const change = (key: string, v: string | boolean) => {
     setDraft({
       revision: draft?.revision ?? value.status.saved_revision,
@@ -210,15 +188,8 @@ export function DHCPForm({
   const customDuration =
     customLease ||
     (Number(config.lease_seconds) !== 0 &&
-      !leaseDurations.some(
-        ([seconds]) => seconds === Number(config.lease_seconds),
-      ));
-  const field = (
-    key: keyof DHCPSettings,
-    label: string,
-    placeholder: string,
-    help?: string,
-  ) => (
+      !leaseDurations.some(([seconds]) => seconds === Number(config.lease_seconds)));
+  const field = (key: keyof DHCPSettings, label: string, placeholder: string, help?: string) => (
     <div className="min-w-0" key={key}>
       <label htmlFor={`dhcp-${key}`} className="mb-2 block text-xs font-medium">
         {label}
@@ -230,33 +201,16 @@ export function DHCPForm({
         value={String(config[key] ?? "")}
         disabled={blocked || (locked && topology.has(key))}
         required={config.enabled && key !== "max_leases"}
-        type={
-          key === "lease_seconds" || key === "max_leases" ? "number" : "text"
-        }
+        type={key === "lease_seconds" || key === "max_leases" ? "number" : "text"}
         min={
-          key === "lease_seconds"
-            ? config.enabled
-              ? 60
-              : 0
-            : key === "max_leases"
-              ? 0
-              : undefined
+          key === "lease_seconds" ? (config.enabled ? 60 : 0) : key === "max_leases" ? 0 : undefined
         }
-        max={
-          key === "lease_seconds"
-            ? 604800
-            : key === "max_leases"
-              ? 4096
-              : undefined
-        }
+        max={key === "lease_seconds" ? 604800 : key === "max_leases" ? 4096 : undefined}
         aria-describedby={help ? `dhcp-${key}-help` : undefined}
         onChange={(e) => change(key, e.target.value)}
       />
       {help && (
-        <p
-          id={`dhcp-${key}-help`}
-          className="mt-1.5 text-[13px] text-muted-foreground"
-        >
+        <p id={`dhcp-${key}-help`} className="mt-1.5 text-[13px] text-muted-foreground">
           {help}
         </p>
       )}
@@ -285,15 +239,11 @@ export function DHCPForm({
               const edits = Object.entries(config)
                 .filter(
                   ([key, v]) =>
-                    key !== "reservations" &&
-                    v !== value.config[key as keyof DHCPSettings],
+                    key !== "reservations" && v !== value.config[key as keyof DHCPSettings],
                 )
                 .map(([key, v]) => {
                   if (key === "lease_seconds" || key === "max_leases") {
-                    if (
-                      String(v).trim() === "" ||
-                      !Number.isSafeInteger(Number(v))
-                    )
+                    if (String(v).trim() === "" || !Number.isSafeInteger(Number(v)))
                       throw new Error(
                         `Enter a whole number for ${key === "lease_seconds" ? "lease duration" : "capacity"}.`,
                       );
@@ -321,9 +271,7 @@ export function DHCPForm({
         >
           <div className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-start">
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
-                Network settings
-              </h2>
+              <h2 className="text-lg font-semibold tracking-tight">Network settings</h2>
             </div>
             <label className="relative inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-3 self-start text-xs font-medium">
               <input
@@ -349,15 +297,12 @@ export function DHCPForm({
             open={editing ?? !setupComplete(config)}
             onToggle={(e) => setEditing(e.currentTarget.open)}
           >
-            <summary className="w-fit py-3 text-xs font-medium text-primary">
-              Edit settings
-            </summary>
+            <summary className="w-fit py-3 text-xs font-medium text-primary">Edit settings</summary>
             <fieldset className="mt-6 min-w-0">
               <legend className="mb-4 text-sm font-medium">Your network</legend>
               {locked && (
                 <p className="mb-4 text-xs text-muted-foreground">
-                  Save with DHCP off to change the interface, server address,
-                  subnet or domain.
+                  Save with DHCP off to change the interface, server address, subnet or domain.
                 </p>
               )}
               <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
@@ -367,31 +312,21 @@ export function DHCPForm({
               </div>
             </fieldset>
             <fieldset className="mt-7 min-w-0 border-t border-border pt-5">
-              <legend className="pr-3 text-sm font-medium">
-                Addresses for devices
-              </legend>
+              <legend className="pr-3 text-sm font-medium">Addresses for devices</legend>
               <p className="mb-4 text-xs text-muted-foreground">
-                Choose a range that excludes your router, server and other fixed
-                addresses.
+                Choose a range that excludes your router, server and other fixed addresses.
               </p>
               <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
                 {field("range_start", "First IP address", "192.0.2.100")}
                 {field("range_end", "Last IP address", "192.0.2.199")}
                 <div>
-                  <label
-                    htmlFor="dhcp-duration"
-                    className="mb-2 block text-xs font-medium"
-                  >
+                  <label htmlFor="dhcp-duration" className="mb-2 block text-xs font-medium">
                     Lease duration
                   </label>
                   <select
                     id="dhcp-duration"
                     className={selectClass}
-                    value={
-                      customDuration
-                        ? "custom"
-                        : String(config.lease_seconds || "")
-                    }
+                    value={customDuration ? "custom" : String(config.lease_seconds || "")}
                     disabled={blocked}
                     required={config.enabled}
                     onChange={(e) => {
@@ -428,9 +363,7 @@ export function DHCPForm({
               </div>
             </fieldset>
             <details className="mt-6 border-t border-border pt-2">
-              <summary className="w-fit py-3 text-xs font-medium">
-                Advanced settings
-              </summary>
+              <summary className="w-fit py-3 text-xs font-medium">Advanced settings</summary>
               <div className="max-w-sm pb-4 pt-1">
                 {field(
                   "max_leases",
@@ -448,27 +381,17 @@ export function DHCPForm({
           )}
           {outdated && (
             <p role="status" className="my-3 text-xs">
-              Settings have changed elsewhere. Reload to use the latest
-              settings.
+              Settings have changed elsewhere. Reload to use the latest settings.
             </p>
           )}
           {needsReload && !busy && (
             <p role="status" className="my-3 text-xs">
-              Settings saved, but couldn’t refresh. Reload settings before
-              editing again.
+              Settings saved, but couldn’t refresh. Reload settings before editing again.
             </p>
           )}
-          {error &&
-            (needsReload ? (
-              <ErrorNotice error={error} />
-            ) : (
-              <DHCPError error={error} />
-            ))}
+          {error && (needsReload ? <ErrorNotice error={error} /> : <DHCPError error={error} />)}
           <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-5">
-            <Button
-              className="min-h-11"
-              disabled={blocked || !canSave || outdated}
-            >
+            <Button className="min-h-11" disabled={blocked || !canSave || outdated}>
               {busy
                 ? "Saving…"
                 : config.enabled !== value.config.enabled
@@ -511,9 +434,7 @@ export function DHCPForm({
             )}
             {canSave && !busy && !needsReload && !outdated && (
               <span className="text-xs text-muted-foreground">
-                {draft
-                  ? "Unsaved changes"
-                  : "Suggested settings · not saved yet"}
+                {draft ? "Unsaved changes" : "Suggested settings · not saved yet"}
               </span>
             )}
           </div>

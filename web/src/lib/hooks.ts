@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, APIError } from "./api";
 
 export function useResource<T>(path: string, refresh = 0) {
@@ -30,11 +26,7 @@ export function useResource<T>(path: string, refresh = 0) {
       : false,
     refetchIntervalInBackground: false,
     retry: (count, error) =>
-      !(
-        error instanceof APIError &&
-        error.status >= 400 &&
-        error.status < 500
-      ) && count < 1,
+      !(error instanceof APIError && error.status >= 400 && error.status < 500) && count < 1,
   });
   useEffect(() => {
     if (previousRefresh.current !== refresh) {
@@ -59,20 +51,13 @@ export function useResource<T>(path: string, refresh = 0) {
 
 // UI invalidation only: Query deduplicates/cancels the actual resource requests.
 // Historic pages and open details disable this hook at the calling view.
-export function useLive(
-  enabled: boolean,
-  invalidate: () => void,
-  interval = 2000,
-) {
+export function useLive(enabled: boolean, invalidate: () => void, interval = 2000) {
   const callback = useRef(invalidate);
   callback.current = invalidate;
   const [visible, setVisible] = useState(
-    () =>
-      typeof document === "undefined" || document.visibilityState !== "hidden",
+    () => typeof document === "undefined" || document.visibilityState !== "hidden",
   );
-  const [online, setOnline] = useState(
-    () => typeof navigator === "undefined" || navigator.onLine,
-  );
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   useEffect(() => {
     const visibility = () => {
       setVisible(document.visibilityState !== "hidden");
@@ -92,11 +77,5 @@ export function useLive(
     const timer = window.setInterval(() => callback.current(), interval);
     return () => window.clearInterval(timer);
   }, [enabled, visible, online, interval]);
-  return !enabled
-    ? "Paused"
-    : !online
-      ? "Offline"
-      : !visible
-        ? "Paused in background"
-        : "Live";
+  return !enabled ? "Paused" : !online ? "Offline" : !visible ? "Paused in background" : "Live";
 }

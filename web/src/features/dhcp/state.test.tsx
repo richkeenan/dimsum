@@ -88,12 +88,8 @@ it("prioritizes a failed change over the updating state", () => {
     last_error: "Interface eth0 is unavailable",
   });
   render(<DHCPState value={value} />);
-  expect(
-    screen.getByRole("heading", { name: "DHCP needs attention" }),
-  ).toBeVisible();
-  expect(screen.getByRole("alert")).toHaveTextContent(
-    "Interface eth0 is unavailable",
-  );
+  expect(screen.getByRole("heading", { name: "DHCP needs attention" })).toBeVisible();
+  expect(screen.getByRole("alert")).toHaveTextContent("Interface eth0 is unavailable");
 });
 
 it("does not misrepresent unavailable runtime information as off", () => {
@@ -101,10 +97,6 @@ it("does not misrepresent unavailable runtime information as off", () => {
   value.runtime_available = false;
   value.dhcp = null;
   render(<DHCPState value={value} />);
-  expect(
-    screen.getByRole("heading", { name: "DHCP status unavailable" }),
-  ).toBeVisible();
-  expect(
-    screen.queryByRole("heading", { name: "DHCP is off" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "DHCP status unavailable" })).toBeVisible();
+  expect(screen.queryByRole("heading", { name: "DHCP is off" })).not.toBeInTheDocument();
 });

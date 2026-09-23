@@ -1,13 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import {
-  api,
-  archiveBase64,
-  backupURL,
-  text,
-  type Job,
-  type Settings,
-} from "@/lib/api";
+import { api, archiveBase64, backupURL, text, type Job, type Settings } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
@@ -44,8 +37,7 @@ export default function Jobs() {
     setBusy(true);
     try {
       const settings = await api.get<Settings>("settings");
-      if (!settings.revision)
-        throw new Error("The saved configuration revision is unavailable.");
+      if (!settings.revision) throw new Error("The saved configuration revision is unavailable.");
       const data = await archiveBase64(file);
       setArchive({ name: file.name, data, revision: settings.revision });
     } catch (e) {
@@ -84,8 +76,8 @@ export default function Jobs() {
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
         <h2 className="mb-3 text-sm font-medium">Back up your configuration</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
-          Includes configuration and secrets. Excludes query history, downloaded
-          lists and DHCP leases.
+          Includes configuration and secrets. Excludes query history, downloaded lists and DHCP
+          leases.
         </p>
         <Button disabled={busy} onClick={() => start("backup")}>
           {busy ? "Working…" : "Create backup"}
@@ -127,9 +119,7 @@ export default function Jobs() {
               }}
             />
           </label>
-          <Button disabled={busy || !archive}>
-            {busy ? "Working…" : "Validate and restore"}
-          </Button>
+          <Button disabled={busy || !archive}>{busy ? "Working…" : "Validate and restore"}</Button>
         </form>
       </section>
       <details className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5 text-xs">
@@ -157,9 +147,7 @@ export default function Jobs() {
             >
               <option value="refresh">Update blocklists</option>
               <option value="upstream-probe">Probe configured upstream</option>
-              <option value="support-bundle">
-                Create redacted support bundle
-              </option>
+              <option value="support-bundle">Create redacted support bundle</option>
             </select>
           </label>
           {kind === "upstream-probe" && (
@@ -202,10 +190,7 @@ export default function Jobs() {
         >
           {latest.error ?? "Job failed. Review the job result."}
           {latest.kind === "restore" && (
-            <p>
-              Reselect the archive to read the current saved revision before
-              retrying.
-            </p>
+            <p>Reselect the archive to read the current saved revision before retrying.</p>
           )}
         </div>
       )}
@@ -238,19 +223,14 @@ export default function Jobs() {
               {
                 key: "created",
                 label: "Started",
-                render: (r) =>
-                  r.created
-                    ? new Date(String(r.created)).toLocaleString()
-                    : "—",
+                render: (r) => (r.created ? new Date(String(r.created)).toLocaleString() : "—"),
               },
               {
                 key: "result",
                 label: "Result",
                 render: (r) => {
-                  const url =
-                    r.state === "succeeded" ? backupURL(r.result) : undefined;
-                  if (url && r.id !== downloadable)
-                    return "Superseded by a newer backup";
+                  const url = r.state === "succeeded" ? backupURL(r.result) : undefined;
+                  if (url && r.id !== downloadable) return "Superseded by a newer backup";
                   return url ? (
                     <a
                       className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
@@ -263,16 +243,11 @@ export default function Jobs() {
                     <details className="group min-w-0">
                       <Button asChild size="sm" variant="outline">
                         <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                          <ChevronRight
-                            aria-hidden="true"
-                            className="group-open:rotate-90"
-                          />
+                          <ChevronRight aria-hidden="true" className="group-open:rotate-90" />
                           {r.error ? "View error" : "Details"}
                         </summary>
                       </Button>
-                      <Details
-                        value={{ id: r.id, error: r.error, result: r.result }}
-                      />
+                      <Details value={{ id: r.id, error: r.error, result: r.result }} />
                     </details>
                   );
                 },

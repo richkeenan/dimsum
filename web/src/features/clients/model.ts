@@ -11,18 +11,14 @@ export type ClientRow = {
   configured?: Schema["PolicyClient"];
   observed: Observation[];
 };
-export function mergeClients(
-  data: Partial<Schema["ClientsResponse"]>,
-): ClientRow[] {
+export function mergeClients(data: Partial<Schema["ClientsResponse"]>): ClientRow[] {
   const result: ClientRow[] = (data.items ?? []).map((configured) => ({
     key: configured.policy_id!,
     configured,
     observed: [],
   }));
   for (const observed of data.observed?.items ?? []) {
-    const owner =
-      observed.client_id &&
-      result.find((row) => row.key === observed.client_id);
+    const owner = observed.client_id && result.find((row) => row.key === observed.client_id);
     if (owner) owner.observed.push(observed);
     else
       result.push({
@@ -38,10 +34,8 @@ export function sourceLabel(source: Schema["PolicyScope"]) {
     : "Network default";
 }
 export function ownerPolicy(read: PolicyRead): Schema["PolicyOverrides"] {
-  if (read.scope === "client")
-    return (read.desired as Schema["PolicyClient"]).overrides ?? {};
-  if (read.scope === "profile")
-    return (read.desired as Schema["PolicyProfile"]).policy ?? {};
+  if (read.scope === "client") return (read.desired as Schema["PolicyClient"]).overrides ?? {};
+  if (read.scope === "profile") return (read.desired as Schema["PolicyProfile"]).policy ?? {};
   return read.desired as Schema["NetworkPolicyDesired"];
 }
 export const selectClass =

@@ -30,12 +30,22 @@ administrative requests to its backend.
 
 ```sh
 npm run api:generate
+npm run lint
+npm run fmt:check
 npm run typecheck
 npm test
 npm run build
 npx playwright install chromium
 npm run test:e2e
 ```
+
+Oxlint and Oxfmt use their default rules and formatting options. Run
+`npm run lint:fix` for automatic lint fixes and `npm run fmt` to format the
+frontend. The generated route tree is excluded from both tools because TanStack
+Router owns its formatting. API type generation formats its output with Oxfmt.
+
+The Vite React plugin enables React Compiler through `oxc-transform-react` for
+automatic component and hook memoization in development and production builds.
 
 The build copies `web/dist/client/` into `internal/webassets/dist/` for embedding.
 Both directories are ignored. From the repository root,

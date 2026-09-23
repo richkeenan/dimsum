@@ -43,9 +43,7 @@ it("syncs URL filters and debounces edits, cancelling pending edits on clear", (
     onLiveTick: vi.fn(),
     onFilterChange,
   };
-  const view = render(
-    <Queries {...props} initialFilter={{ name: "first.test" }} />,
-  );
+  const view = render(<Queries {...props} initialFilter={{ name: "first.test" }} />);
   view.rerender(<Queries {...props} initialFilter={{ name: "second.test" }} />);
   expect(screen.getByLabelText("Filter name")).toHaveValue("second.test");
   expect(onFilterChange).not.toHaveBeenCalled();
@@ -77,9 +75,7 @@ it("selects a client by name with the keyboard and immediately resets pagination
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   const client = screen.getByRole("combobox", { name: "Filter client" });
   fireEvent.change(client, { target: { value: "study" } });
-  expect(
-    screen.getByRole("option", { name: /Study laptop.*192.0.2.1/ }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: /Study laptop.*192.0.2.1/ })).toBeInTheDocument();
   fireEvent.keyDown(client, { key: "ArrowDown" });
   fireEvent.keyDown(client, { key: "Enter" });
   expect(onFilterChange).toHaveBeenLastCalledWith({ client: "192.0.2.1" });
@@ -102,9 +98,7 @@ it("waits for scope before sending an advanced identity filter", () => {
   });
   act(() => vi.advanceTimersByTime(350));
   expect(onFilterChange).not.toHaveBeenCalled();
-  expect(
-    screen.getByText(/Select a query’s rule or upstream/),
-  ).toBeInTheDocument();
+  expect(screen.getByText(/Select a query’s rule or upstream/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Filter boot_id"), {
     target: { value: "boot-a" },
   });
@@ -125,18 +119,16 @@ it("captures cursor range and pauses polling until returning to the newest page"
   expect(mocks.live).toHaveBeenLastCalledWith(true, expect.any(Function));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
   view.rerender(<Queries {...props} range="from=three&to=four" />);
-  expect(
-    mocks.resource.mock.calls
-      .filter(([path]) => path.startsWith("queries?"))
-      .at(-1),
-  ).toEqual(["queries?from=one&to=two&limit=100&cursor=cursor-a", 0]);
+  expect(mocks.resource.mock.calls.filter(([path]) => path.startsWith("queries?")).at(-1)).toEqual([
+    "queries?from=one&to=two&limit=100&cursor=cursor-a",
+    0,
+  ]);
   expect(mocks.live).toHaveBeenLastCalledWith(false, expect.any(Function));
   fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-  expect(
-    mocks.resource.mock.calls
-      .filter(([path]) => path.startsWith("queries?"))
-      .at(-1),
-  ).toEqual(["queries?from=three&to=four&limit=100", 0]);
+  expect(mocks.resource.mock.calls.filter(([path]) => path.startsWith("queries?")).at(-1)).toEqual([
+    "queries?from=three&to=four&limit=100",
+    0,
+  ]);
   expect(mocks.live).toHaveBeenLastCalledWith(true, expect.any(Function));
 });
 
@@ -153,9 +145,7 @@ it("keeps scoped identifiers exact when filtering from query details", () => {
   );
   fireEvent.click(screen.getByRole("button", { name: "example.test" }));
   expect(mocks.live).toHaveBeenLastCalledWith(false, expect.any(Function));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Queries for this rule" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Queries for this rule" }));
   expect(onFilterChange).toHaveBeenLastCalledWith({
     rule_id: row.rule_id,
     generation: row.generation,

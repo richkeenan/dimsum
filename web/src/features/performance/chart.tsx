@@ -21,20 +21,15 @@ export default function LatencyChart({
   const id = useId();
   const [active, setActive] = useState<number | null>(null);
   const [table, setTable] = useState(false);
-  const maximum = Math.max(
-    1,
-    ...points.map((p) => (p.gap ? 0 : Number(p.p99_us ?? 0))),
-  );
+  const maximum = Math.max(1, ...points.map((p) => (p.gap ? 0 : Number(p.p99_us ?? 0))));
   const ceiling =
     Math.ceil(maximum / 10 ** Math.floor(Math.log10(maximum))) *
     10 ** Math.floor(Math.log10(maximum));
   const times = points.map((point) => Date.parse(point.time));
   const span = (times.at(-1) ?? 0) - (times[0] ?? 0);
-  const x = (i: number) =>
-    span > 0 ? ((times[i] - times[0]) / span) * 1000 : 500;
+  const x = (i: number) => (span > 0 ? ((times[i] - times[0]) / span) * 1000 : 500);
   const y = (value: string) => 190 - (Number(value) / ceiling) * 180;
-  const selected =
-    active == null ? undefined : points[Math.min(active, points.length - 1)];
+  const selected = active == null ? undefined : points[Math.min(active, points.length - 1)];
   const hasValues = points.some((p) => !p.gap && p.p99_us != null);
   return (
     <>
@@ -42,12 +37,7 @@ export default function LatencyChart({
         {series.map((s) => (
           <span key={s.key} className="inline-flex items-center gap-2">
             <svg width="20" height="10" aria-hidden="true">
-              <path
-                d="M0 5H20"
-                stroke={s.colour}
-                strokeWidth="2"
-                strokeDasharray={s.dash}
-              />
+              <path d="M0 5H20" stroke={s.colour} strokeWidth="2" strokeDasharray={s.dash} />
             </svg>
             {s.label}
           </span>
@@ -57,8 +47,8 @@ export default function LatencyChart({
         <div className="px-4 sm:px-5">
           <div className="flex gap-2">
             <span id={id + "-help"} className="sr-only">
-              Use left and right arrow keys to inspect intervals, Home and End
-              to jump, or view the timing data table.
+              Use left and right arrow keys to inspect intervals, Home and End to jump, or view the
+              timing data table.
             </span>
             <div
               aria-hidden="true"
@@ -81,25 +71,15 @@ export default function LatencyChart({
                 const target = ((event.clientX - box.left) / box.width) * 1000;
                 let nearest = 0;
                 for (let i = 1; i < points.length; i++) {
-                  if (Math.abs(x(i) - target) < Math.abs(x(nearest) - target))
-                    nearest = i;
+                  if (Math.abs(x(i) - target) < Math.abs(x(nearest) - target)) nearest = i;
                 }
                 setActive(nearest);
               }}
               onPointerLeave={(event) => {
-                if (document.activeElement !== event.currentTarget)
-                  setActive(null);
+                if (document.activeElement !== event.currentTarget) setActive(null);
               }}
               onKeyDown={(event) => {
-                if (
-                  ![
-                    "ArrowLeft",
-                    "ArrowRight",
-                    "Home",
-                    "End",
-                    "Escape",
-                  ].includes(event.key)
-                )
+                if (!["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(event.key))
                   return;
                 event.preventDefault();
                 setActive((n) =>
@@ -127,8 +107,8 @@ export default function LatencyChart({
                 aria-labelledby={id}
               >
                 <title id={id}>
-                  Median, p95 and p99 response times. Missing or incomplete
-                  intervals break the trend.
+                  Median, p95 and p99 response times. Missing or incomplete intervals break the
+                  trend.
                 </title>
                 {[10, 100, 190].map((v) => (
                   <line
@@ -174,12 +154,7 @@ export default function LatencyChart({
                           !points[i + 1]?.complete ||
                           points[i - 1]?.[s.key] == null ||
                           points[i + 1]?.[s.key] == null) ? (
-                          <svg
-                            key={i}
-                            x={x(i)}
-                            y={y(p[s.key]!)}
-                            overflow="visible"
-                          >
+                          <svg key={i} x={x(i)} y={y(p[s.key]!)} overflow="visible">
                             <circle
                               r="3"
                               fill={p.complete ? s.colour : "var(--background)"}
@@ -209,14 +184,9 @@ export default function LatencyChart({
           </div>
           <div className="ml-18 flex justify-between gap-3 pt-2 text-[11px] text-muted-foreground">
             <span>{dateLabel(points[0].time)}</span>
-            <span className="text-right">
-              {dateLabel(points[points.length - 1].time)}
-            </span>
+            <span className="text-right">{dateLabel(points[points.length - 1].time)}</span>
           </div>
-          <div
-            role="status"
-            className="min-h-14 py-3 text-xs text-muted-foreground tabular-nums"
-          >
+          <div role="status" className="min-h-14 py-3 text-xs text-muted-foreground tabular-nums">
             {selected ? (
               <span>
                 {dateLabel(selected.time)}
@@ -227,16 +197,14 @@ export default function LatencyChart({
                     {" "}
                     · {count(selected.count)} queries
                     {!selected.complete && " · Partial coverage"} · Median{" "}
-                    {estimate(selected.p50_us)} · p95{" "}
-                    {estimate(selected.p95_us)} · p99{" "}
+                    {estimate(selected.p50_us)} · p95 {estimate(selected.p95_us)} · p99{" "}
                     {estimate(selected.p99_us)}
                   </>
                 )}
               </span>
             ) : (
               <span className="sr-only">
-                Hover or use arrow keys for timings. Open circles show partial
-                coverage.
+                Hover or use arrow keys for timings. Open circles show partial coverage.
               </span>
             )}
           </div>
@@ -252,9 +220,7 @@ export default function LatencyChart({
         className="border-t border-border text-xs"
         onToggle={(event) => setTable(event.currentTarget.open)}
       >
-        <summary className="px-5 py-3 text-muted-foreground">
-          View timing data
-        </summary>
+        <summary className="px-5 py-3 text-muted-foreground">View timing data</summary>
         {table && (
           <DataTable
             items={points}
@@ -280,14 +246,12 @@ export default function LatencyChart({
                 key: s.key,
                 label: s.label,
                 align: "right" as const,
-                render: (p: Record<string, unknown>) =>
-                  estimate(p[s.key] as string | null),
+                render: (p: Record<string, unknown>) => estimate(p[s.key] as string | null),
               })),
               {
                 key: "complete",
                 label: "Coverage",
-                render: (p) =>
-                  p.gap ? "Missing" : p.complete ? "Complete" : "Partial",
+                render: (p) => (p.gap ? "Missing" : p.complete ? "Complete" : "Partial"),
               },
             ]}
           />

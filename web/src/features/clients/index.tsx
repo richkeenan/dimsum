@@ -4,12 +4,7 @@ import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -32,10 +27,7 @@ import {
 import { DomainInspector } from "./inspect";
 import { usePolicyDraft } from "./draft";
 import { ProfileAssignment, ProfileMap } from "./assignment";
-import {
-  ClientIdentity,
-  ClientDeviceButton,
-} from "@/components/client-identity";
+import { ClientIdentity, ClientDeviceButton } from "@/components/client-identity";
 
 export default function Clients({
   range,
@@ -48,16 +40,11 @@ export default function Clients({
 }) {
   const draft = usePolicyDraft();
   const settingsTrigger = useRef<HTMLElement | null>(null);
-  const state = useResource<Schema["ClientsResponse"]>(
-    `clients?${range}&limit=200`,
-  );
+  const state = useResource<Schema["ClientsResponse"]>(`clients?${range}&limit=200`);
   const [search, setSearch] = useState("");
-  const [assignmentStatus, setAssignmentStatus] =
-    useState<Schema["Activation"]>();
+  const [assignmentStatus, setAssignmentStatus] = useState<Schema["Activation"]>();
   const [creating, setCreating] = useState<ClientRow>();
-  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
-    "profiles",
-  );
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const rows = mergeClients(state.data ?? {}).filter((row) =>
     JSON.stringify(row).toLowerCase().includes(search.toLowerCase()),
   );
@@ -114,8 +101,7 @@ export default function Clients({
         {assignmentStatus && (
           <ActivationStatus
             status={
-              state.data?.status.saved_revision ===
-              assignmentStatus.saved_revision
+              state.data?.status.saved_revision === assignmentStatus.saved_revision
                 ? state.data.status
                 : assignmentStatus
             }
@@ -131,8 +117,7 @@ export default function Clients({
         )}
         {state.data?.observed?.truncated && (
           <p className="text-xs text-muted-foreground">
-            Showing the first 200 observed addresses. Narrow the history window
-            to see others.
+            Showing the first 200 observed addresses. Narrow the history window to see others.
           </p>
         )}
         <div className="overflow-hidden rounded-lg border border-border bg-background">
@@ -142,15 +127,9 @@ export default function Clients({
                 <TableHead className="w-[28%] bg-muted px-4">Device</TableHead>
                 <TableHead className="w-[18%] bg-muted">Profile</TableHead>
                 <TableHead className="w-[17%] bg-muted">Last seen</TableHead>
-                <TableHead className="w-[9%] bg-muted text-right">
-                  Queries
-                </TableHead>
-                <TableHead className="w-[9%] bg-muted text-right">
-                  Blocked
-                </TableHead>
-                <TableHead className="w-[19%] bg-muted px-4 text-right">
-                  Actions
-                </TableHead>
+                <TableHead className="w-[9%] bg-muted text-right">Queries</TableHead>
+                <TableHead className="w-[9%] bg-muted text-right">Blocked</TableHead>
+                <TableHead className="w-[19%] bg-muted px-4 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -165,8 +144,7 @@ export default function Clients({
                   select={() => {
                     if (row.configured) onSelect(row.key);
                     else if (draft.confirmLeave()) {
-                      settingsTrigger.current =
-                        document.activeElement as HTMLElement;
+                      settingsTrigger.current = document.activeElement as HTMLElement;
                       setCreating(row);
                     }
                   }}
@@ -174,10 +152,7 @@ export default function Clients({
               ))}
               {!rows.length && (
                 <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="p-5 text-center text-sm text-muted-foreground"
-                  >
+                  <TableCell colSpan={6} className="p-5 text-center text-sm text-muted-foreground">
                     {search
                       ? "No devices match this search."
                       : "Devices will appear here when they make DNS requests."}
@@ -202,9 +177,7 @@ export default function Clients({
     </div>
   );
 }
-type InventorySummary = NonNullable<
-  Schema["ClientsResponse"]["policy_summaries"]
->[string];
+type InventorySummary = NonNullable<Schema["ClientsResponse"]["policy_summaries"]>[string];
 function DeviceRow({
   row,
   select,
@@ -240,9 +213,7 @@ function DeviceRow({
             aria-label={`View queries for ${name || identity.address}`}
             className="min-h-10 max-w-full text-left text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
             onClick={() =>
-              window.location.assign(
-                `/queries?client=${encodeURIComponent(identity.address)}`,
-              )
+              window.location.assign(`/queries?client=${encodeURIComponent(identity.address)}`)
             }
           >
             <ClientIdentity {...identity} compact />
@@ -252,12 +223,7 @@ function DeviceRow({
         )}
       </TableCell>
       <TableCell className="py-2.5 text-xs">
-        <ProfileAssignment
-          row={row}
-          profiles={profiles}
-          reload={reload}
-          onStatus={onStatus}
-        />
+        <ProfileAssignment row={row} profiles={profiles} reload={reload} onStatus={onStatus} />
         {!!summary?.desired.override_count && (
           <p className="mt-1 text-muted-foreground">Custom settings</p>
         )}
@@ -279,12 +245,12 @@ function DeviceRow({
           : "Not seen in this period"}
       </TableCell>
       <TableCell className="py-2.5 text-right tabular-nums">
-        {count(row.observed.reduce((sum, o) => sum + BigInt(o.count ?? 0), 0n))}
+        {/* oxc-transform-react 0.145.0 lowers inline 0n to undefined; use the
+            constructor so compiled counters retain exact BigInt arithmetic. */}
+        {count(row.observed.reduce((sum, o) => sum + BigInt(o.count ?? 0), BigInt(0)))}
       </TableCell>
       <TableCell className="py-2.5 text-right tabular-nums">
-        {count(
-          row.observed.reduce((sum, o) => sum + BigInt(o.blocked ?? 0), 0n),
-        )}
+        {count(row.observed.reduce((sum, o) => sum + BigInt(o.blocked ?? 0), BigInt(0)))}
       </TableCell>
       <TableCell className="px-4 py-2.5">
         <div className="flex justify-end gap-1">
@@ -415,8 +381,7 @@ export function Profiles() {
         >
           <DialogTitle>Create profile</DialogTitle>
           <DialogDescription>
-            Give this profile a name. You can assign devices and customize its
-            settings next.
+            Give this profile a name. You can assign devices and customize its settings next.
           </DialogDescription>
           <CreateOwner
             scope="profile"
@@ -428,9 +393,7 @@ export function Profiles() {
               setCreating(false);
               setSelected(id);
               void profiles.reload();
-              requestAnimationFrame(() =>
-                editor.current?.scrollIntoView({ block: "start" }),
-              );
+              requestAnimationFrame(() => editor.current?.scrollIntoView({ block: "start" }));
             }}
           />
         </DialogContent>
@@ -471,9 +434,7 @@ function CreateOwner({
   saved: (id: string) => void;
   onDirty: (dirty: boolean) => void;
 }) {
-  const [initialID] = useState(() =>
-    policyID(scope === "client" ? "device" : "profile"),
-  );
+  const [initialID] = useState(() => policyID(scope === "client" ? "device" : "profile"));
   const [id, setID] = useState(initialID);
   const [editRevision, setEditRevision] = useState(revision);
   useEffect(() => {
@@ -507,22 +468,18 @@ function CreateOwner({
         setBusy(true);
         setError(undefined);
         try {
-          const result = await api.send<Schema["Activation"]>(
-            "client-policy",
-            "PATCH",
-            {
-              revision: editRevision,
-              scope,
-              id: id.trim(),
-              create: true,
-              ...(name.trim() ? { name: name.trim() } : {}),
-              ...(scope === "client"
-                ? useMAC
-                  ? { lease_address: observed!.address }
-                  : { selectors: { addresses: words(address) } }
-                : {}),
-            },
-          );
+          const result = await api.send<Schema["Activation"]>("client-policy", "PATCH", {
+            revision: editRevision,
+            scope,
+            id: id.trim(),
+            create: true,
+            ...(name.trim() ? { name: name.trim() } : {}),
+            ...(scope === "client"
+              ? useMAC
+                ? { lease_address: observed!.address }
+                : { selectors: { addresses: words(address) } }
+              : {}),
+          });
           setStatus(result);
           onDirty(false);
           saved(id.trim());
@@ -534,25 +491,16 @@ function CreateOwner({
       }}
     >
       {scope === "client" && (
-        <h3 className="text-sm font-medium">
-          Settings for {observed?.name || observed?.address}
-        </h3>
+        <h3 className="text-sm font-medium">Settings for {observed?.name || observed?.address}</h3>
       )}
       <div className="grid gap-3">
         <label className="text-sm">
           Name
-          <Input
-            ref={firstField}
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input ref={firstField} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
       </div>
       <details>
-        <summary className="text-xs text-muted-foreground">
-          Advanced identification
-        </summary>
+        <summary className="text-xs text-muted-foreground">Advanced identification</summary>
         <label className="text-sm">
           Stable ID
           <Input required value={id} onChange={(e) => setID(e.target.value)} />
@@ -611,11 +559,7 @@ function CreateOwner({
       {status && <ActivationStatus status={status} />}
       <div className="flex gap-2">
         <Button disabled={busy || !editRevision} type="submit">
-          {busy
-            ? "Creating…"
-            : scope === "client"
-              ? "Save device settings"
-              : "Create profile"}
+          {busy ? "Creating…" : scope === "client" ? "Save device settings" : "Create profile"}
         </Button>
         <Button type="button" variant="ghost" onClick={cancel}>
           Cancel

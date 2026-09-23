@@ -13,12 +13,9 @@ export type DHCPLeasesResponse =
   paths["/api/v1/dhcp/leases"]["get"]["responses"][200]["content"]["application/json"];
 export type DHCPReservationsResponse =
   paths["/api/v1/dhcp/reservations"]["get"]["responses"][200]["content"]["application/json"];
-type LoginResult =
-  paths["/session"]["post"]["responses"][200]["content"]["application/json"];
+type LoginResult = paths["/session"]["post"]["responses"][200]["content"]["application/json"];
 let csrfToken =
-  typeof sessionStorage === "undefined"
-    ? ""
-    : (sessionStorage.getItem("dimsum-csrf") ?? "");
+  typeof sessionStorage === "undefined" ? "" : (sessionStorage.getItem("dimsum-csrf") ?? "");
 export type Row = Record<string, unknown>;
 export interface Meta {
   range?: { from: string; to: string };
@@ -75,10 +72,7 @@ export class APIError extends Error {
     super(message);
   }
 }
-export async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -114,8 +108,7 @@ export async function request<T>(
   }
   if (!response.ok) {
     const raw = body && typeof body === "object" ? (body as Row) : {};
-    const detail =
-      raw.error && typeof raw.error === "object" ? (raw.error as Row) : raw;
+    const detail = raw.error && typeof raw.error === "object" ? (raw.error as Row) : raw;
     if (response.status === 401) {
       csrfToken = "";
       sessionStorage.removeItem("dimsum-csrf");
@@ -161,9 +154,7 @@ export const api = {
         "blocking",
       ].includes(path)
     )
-      window.dispatchEvent(
-        new CustomEvent("configuration-changed", { detail: options }),
-      );
+      window.dispatchEvent(new CustomEvent("configuration-changed", { detail: options }));
     return result;
   },
   login: async (password: string) => {
@@ -188,29 +179,23 @@ export function normalizeSettings(value: unknown): Settings {
   const status =
     raw.status && typeof raw.status === "object"
       ? (raw.status as Activation)
-      : typeof raw.saved_revision === "string" &&
-          typeof raw.active_revision === "string"
+      : typeof raw.saved_revision === "string" && typeof raw.active_revision === "string"
         ? (raw as Activation)
         : undefined;
   return {
     ...raw,
     status,
     revision: status?.saved_revision ?? String(raw.revision ?? ""),
-    active_generation:
-      status?.active_generation ??
-      (raw.active_generation as string | undefined),
+    active_generation: status?.active_generation ?? (raw.active_generation as string | undefined),
     pending: status?.pending ?? (raw.pending as boolean | undefined),
     error: String(raw.configuration_error ?? status?.error ?? raw.error ?? ""),
   } as Settings;
 }
 export function collectionRows(value: unknown): Row[] {
-  const raw =
-    value && typeof value === "object" ? (value as Row).items : undefined;
+  const raw = value && typeof value === "object" ? (value as Row).items : undefined;
   return Array.isArray(raw)
     ? raw.map((item, index) => ({
-        ...(typeof item === "object" && item !== null
-          ? item
-          : { address: item }),
+        ...(typeof item === "object" && item !== null ? item : { address: item }),
         __index: index,
       }))
     : [];
@@ -222,9 +207,7 @@ export function rows(value: unknown, key = "items"): Row[] {
       ? (value as Row)[key]
       : undefined;
   return Array.isArray(list)
-    ? list.filter(
-        (r): r is Row => !!r && typeof r === "object" && !Array.isArray(r),
-      )
+    ? list.filter((r): r is Row => !!r && typeof r === "object" && !Array.isArray(r))
     : [];
 }
 export function text(value: unknown): string {
@@ -238,19 +221,10 @@ export function count(value: unknown, locale?: string): string {
   const s = text(value);
   return /^\d+$/.test(s) ? BigInt(s).toLocaleString(locale) : s;
 }
-export function percentage(
-  part: unknown,
-  total: unknown,
-  locale?: string,
-): string {
-  if (
-    !/^\d+$/.test(String(part)) ||
-    !/^\d+$/.test(String(total)) ||
-    BigInt(String(total)) === 0n
-  )
+export function percentage(part: unknown, total: unknown, locale?: string): string {
+  if (!/^\d+$/.test(String(part)) || !/^\d+$/.test(String(total)) || BigInt(String(total)) === 0n)
     return "—";
-  const ratio =
-    Number((BigInt(String(part)) * 1000n) / BigInt(String(total))) / 1000;
+  const ratio = Number((BigInt(String(part)) * 1000n) / BigInt(String(total))) / 1000;
   return ratio.toLocaleString(locale, {
     style: "percent",
     minimumFractionDigits: 1,
@@ -273,10 +247,7 @@ export function microsecondsToMS(value: unknown, locale?: string): string {
     .map((part) => (part.type === "fraction" ? fraction : part.value))
     .join("");
 }
-export function queryParameters(
-  filters: Record<string, string>,
-  cursor?: string,
-): URLSearchParams {
+export function queryParameters(filters: Record<string, string>, cursor?: string): URLSearchParams {
   const p = new URLSearchParams({ limit: "100" });
   for (const key of [
     "name",
@@ -293,30 +264,17 @@ export function queryParameters(
   if (cursor) p.set("cursor", cursor);
   return p;
 }
-export function historyWindow(
-  preset: string,
-  now: number,
-  custom?: { from: string; to: string },
-) {
+export function historyWindow(preset: string, now: number, custom?: { from: string; to: string }) {
   const duration =
-    (
-      { "1h": 3600000, "24h": 86400000, "7d": 604800000 } as Record<
-        string,
-        number
-      >
-    )[preset] ?? 86400000;
+    ({ "1h": 3600000, "24h": 86400000, "7d": 604800000 } as Record<string, number>)[preset] ??
+    86400000;
   let width = duration <= 3600000 ? 60000 : 3600000;
   let to = now,
     from = to - duration;
   if (preset === "custom" && custom) {
     from = Date.parse(custom.from);
     to = Date.parse(custom.to);
-    if (
-      !Number.isFinite(from) ||
-      !Number.isFinite(to) ||
-      to <= from ||
-      to - from > 366 * 86400000
-    )
+    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || to - from > 366 * 86400000)
       throw new Error("Invalid history window.");
     width = 60000;
     while (Math.ceil(to / width) - Math.floor(from / width) > 1500)
@@ -332,8 +290,7 @@ export function historyWindow(
 }
 export const maxArchiveBytes = 2 * 1024 * 1024;
 export async function archiveBase64(file: File): Promise<string> {
-  if (file.size > maxArchiveBytes)
-    throw new Error("Choose an archive no larger than 2 MiB.");
+  if (file.size > maxArchiveBytes) throw new Error("Choose an archive no larger than 2 MiB.");
   if (!file.size) throw new Error("The archive is empty.");
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -342,12 +299,8 @@ export async function archiveBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 export function backupURL(result: unknown): string | undefined {
-  const url =
-    result && typeof result === "object"
-      ? (result as Row).download_url
-      : undefined;
-  return typeof url === "string" &&
-    /^\/api\/v1\/config\/backups\/[a-f0-9]{32}$/.test(url)
+  const url = result && typeof result === "object" ? (result as Row).download_url : undefined;
+  return typeof url === "string" && /^\/api\/v1\/config\/backups\/[a-f0-9]{32}$/.test(url)
     ? url
     : undefined;
 }

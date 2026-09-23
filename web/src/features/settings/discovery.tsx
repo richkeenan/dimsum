@@ -8,9 +8,7 @@ function initial(settings: Settings) {
   const mdns = naming?.mdns as Row | undefined;
   return {
     enabled: mdns?.enabled === true,
-    interfaces: Array.isArray(mdns?.interfaces)
-      ? mdns.interfaces.join("\n")
-      : "",
+    interfaces: Array.isArray(mdns?.interfaces) ? mdns.interfaces.join("\n") : "",
     revision: settings.revision,
   };
 }
@@ -20,11 +18,7 @@ export function DiscoveryStatus({ value }: { value?: Row }) {
     <div className="space-y-2 text-xs text-muted-foreground">
       <p>
         Discovery:{" "}
-        {value.enabled !== true
-          ? "Disabled"
-          : value.running === true
-            ? "Running"
-            : "Unavailable"}
+        {value.enabled !== true ? "Disabled" : value.running === true ? "Running" : "Unavailable"}
       </p>
       {Array.isArray(value.interfaces) && value.interfaces.length > 0 && (
         <p>Interfaces: {value.interfaces.join(", ")}</p>
@@ -53,8 +47,7 @@ export function DiscoverySettings({
   const [saved, setSaved] = useState(false);
   const outdated = settings.revision !== draft.revision;
   useEffect(() => {
-    if (saved && settings.revision !== draft.revision)
-      setDraft(initial(settings));
+    if (saved && settings.revision !== draft.revision) setDraft(initial(settings));
   }, [saved, settings, draft.revision]);
   return (
     <section className="mb-5 rounded-lg border border-border bg-background p-5">
@@ -108,17 +101,13 @@ export function DiscoverySettings({
             aria-describedby="discovery-interface-help"
           />
         </label>
-        <p
-          id="discovery-interface-help"
-          className="text-xs text-muted-foreground"
-        >
-          Optional: one interface name per line, up to eight. Leave empty to use
-          active multicast-capable interfaces.
+        <p id="discovery-interface-help" className="text-xs text-muted-foreground">
+          Optional: one interface name per line, up to eight. Leave empty to use active
+          multicast-capable interfaces.
         </p>
         {outdated && !saved && (
           <p className="text-xs text-muted-foreground">
-            Configuration changed. Reload to discard this draft and use the
-            latest revision.
+            Configuration changed. Reload to discard this draft and use the latest revision.
           </p>
         )}
         <div className="flex flex-wrap gap-2">

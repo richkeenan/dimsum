@@ -11,9 +11,7 @@ function resource(ui: React.ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
 }
 
 it("keeps the reservation name as the API identifier and saves the current revision", async () => {
@@ -24,26 +22,14 @@ it("keeps the reservation name as the API identifier and saves the current revis
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   resource(<Reservations tick={0} refresh={() => {}} />);
   await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Add reservation" }),
-    ).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "Add reservation" })).toBeEnabled(),
   );
-  await userEvent.click(
-    screen.getByRole("button", { name: "Add reservation" }),
-  );
-  await userEvent.type(
-    screen.getByLabelText("Reservation name"),
-    "office-printer",
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Add reservation" }));
+  await userEvent.type(screen.getByLabelText("Reservation name"), "office-printer");
   await userEvent.type(screen.getByLabelText("IP address"), "192.0.2.20");
-  await userEvent.type(
-    screen.getByLabelText("MAC address"),
-    "02:00:00:00:00:20",
-  );
+  await userEvent.type(screen.getByLabelText("MAC address"), "02:00:00:00:00:20");
   expect(screen.getByLabelText("Identify device by")).toHaveValue("mac");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Save reservation" }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: "Save reservation" }));
   expect(send).toHaveBeenCalledWith("dhcp/reservations", "POST", {
     revision: "current",
     item: {
@@ -53,9 +39,7 @@ it("keeps the reservation name as the API identifier and saves the current revis
       hostname: "",
     },
   });
-  await waitFor(() =>
-    expect(screen.queryByLabelText("Reservation name")).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByLabelText("Reservation name")).not.toBeInTheDocument());
 });
 
 it("distinguishes active leases from expired and conflict holds, keeping internals in row details", async () => {
@@ -104,13 +88,9 @@ it("distinguishes active leases from expired and conflict holds, keeping interna
   expect(screen.getByText("Held after conflict")).toBeVisible();
   expect(screen.getByText("Expired · address held")).toBeVisible();
   expect(screen.getByText("01020000000010")).not.toBeVisible();
-  await userEvent.click(
-    screen.getByLabelText("Address details for 192.0.2.10"),
-  );
+  await userEvent.click(screen.getByLabelText("Address details for 192.0.2.10"));
   expect(screen.getByText("01020000000010")).toBeVisible();
-  expect(
-    screen.queryByRole("button", { name: "Next addresses" }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Next addresses" })).not.toBeInTheDocument();
 });
 
 it("explains an unavailable address list without declaring addresses free", async () => {
@@ -119,12 +99,8 @@ it("explains an unavailable address list without declaring addresses free", asyn
     items: [],
   });
   resource(<Leases tick={0} />);
-  expect(
-    await screen.findByText("No live address list available."),
-  ).toBeVisible();
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Devices may still have unexpired leases.",
-  );
+  expect(await screen.findByText("No live address list available.")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("Devices may still have unexpired leases.");
   expect(screen.queryByText(/No leased addresses yet/)).not.toBeInTheDocument();
 });
 
@@ -147,14 +123,10 @@ it("runs checks only on request with the server search off, and does not equate 
   vi.spyOn(api, "get").mockResolvedValue({ items: [] });
   const send = vi.spyOn(api, "send").mockResolvedValue(job);
   resource(<DHCPCheck />);
-  expect(
-    screen.getByText("Troubleshooting").closest("details"),
-  ).not.toHaveAttribute("open");
+  expect(screen.getByText("Troubleshooting").closest("details")).not.toHaveAttribute("open");
   expect(send).not.toHaveBeenCalled();
   await userEvent.click(screen.getByText("Troubleshooting"));
-  expect(
-    screen.getByRole("checkbox", { name: "Look for other DHCP servers" }),
-  ).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Look for other DHCP servers" })).not.toBeChecked();
   await userEvent.click(screen.getByRole("button", { name: "Check setup" }));
   expect(send).toHaveBeenCalledWith("jobs", "POST", {
     kind: "dhcp-check",
@@ -163,9 +135,7 @@ it("runs checks only on request with the server search off, and does not equate 
   expect(await screen.findByText("Setup check finished")).toBeVisible();
   expect(screen.getByText("Not ready")).toBeVisible();
   expect(screen.getByText("unavailable")).toBeVisible();
-  expect(
-    screen.getByText("Technical details").closest("details"),
-  ).not.toHaveAttribute("open");
+  expect(screen.getByText("Technical details").closest("details")).not.toHaveAttribute("open");
 });
 
 it.each([
@@ -174,28 +144,23 @@ it.each([
     "no_offer_observed",
     "No other servers responded during this check. A quiet server may still be present.",
   ],
-])(
-  "shows the actual %s server-search outcome",
-  async (observation, message) => {
-    vi.spyOn(api, "get").mockResolvedValue({ items: [] });
-    vi.spyOn(api, "send").mockResolvedValue({
-      id: "check-2",
-      kind: "dhcp-check",
-      state: observation === "failed" ? "failed" : "succeeded",
-      error: observation === "failed" ? "port unavailable" : undefined,
-      result: { probe_requested: true, observation, other_servers: [] },
-    });
-    resource(<DHCPCheck />);
-    await userEvent.click(screen.getByText("Troubleshooting"));
-    await userEvent.click(
-      screen.getByRole("checkbox", { name: "Look for other DHCP servers" }),
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Check setup" }));
-    expect(await screen.findByText(message)).toBeVisible();
-    if (observation === "failed")
-      expect(screen.getByRole("alert")).toHaveTextContent("port unavailable");
-  },
-);
+])("shows the actual %s server-search outcome", async (observation, message) => {
+  vi.spyOn(api, "get").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "send").mockResolvedValue({
+    id: "check-2",
+    kind: "dhcp-check",
+    state: observation === "failed" ? "failed" : "succeeded",
+    error: observation === "failed" ? "port unavailable" : undefined,
+    result: { probe_requested: true, observation, other_servers: [] },
+  });
+  resource(<DHCPCheck />);
+  await userEvent.click(screen.getByText("Troubleshooting"));
+  await userEvent.click(screen.getByRole("checkbox", { name: "Look for other DHCP servers" }));
+  await userEvent.click(screen.getByRole("button", { name: "Check setup" }));
+  expect(await screen.findByText(message)).toBeVisible();
+  if (observation === "failed")
+    expect(screen.getByRole("alert")).toHaveTextContent("port unavailable");
+});
 
 it("keeps check controls disabled while the submitted job is running", async () => {
   vi.spyOn(api, "get").mockResolvedValue({ items: [] });
@@ -208,11 +173,7 @@ it("keeps check controls disabled while the submitted job is running", async () 
   await userEvent.click(screen.getByText("Troubleshooting"));
   await userEvent.click(screen.getByRole("button", { name: "Check setup" }));
   await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Checking setup…" }),
-    ).toBeDisabled(),
+    expect(screen.getByRole("button", { name: "Checking setup…" })).toBeDisabled(),
   );
-  expect(
-    screen.getByRole("checkbox", { name: "Look for other DHCP servers" }),
-  ).toBeDisabled();
+  expect(screen.getByRole("checkbox", { name: "Look for other DHCP servers" })).toBeDisabled();
 });

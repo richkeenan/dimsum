@@ -2,33 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ClientFilter } from "./client-filter";
 import { QueryDetail } from "./query-detail";
 import { InlineRuleAction } from "./rule-action";
-import {
-  AnswerPreview,
-  ResponseTime,
-  ResultBadge,
-  resultLabel,
-} from "./response";
+import { AnswerPreview, ResponseTime, ResultBadge, resultLabel } from "./response";
 import { ClientIdentity } from "@/components/client-identity";
 import type { Device } from "@/lib/api";
-import {
-  rows,
-  count,
-  text,
-  queryParameters,
-  outcomes,
-  type Page,
-  type Row,
-} from "@/lib/api";
+import { rows, count, text, queryParameters, outcomes, type Page, type Row } from "@/lib/api";
 import { useLive, useResource } from "@/lib/hooks";
 import { DataTable, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 export default function Queries({
   range,
   initialFilter,
@@ -46,9 +28,7 @@ export default function Queries({
 }) {
   const [filters, setFilters] = useState(initialFilter);
   const [draft, setDraft] = useState(initialFilter);
-  const pendingFilter = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const pendingFilter = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [cursors, setCursors] = useState<string[]>([""]);
   const [selected, setSelected] = useState<string>();
   const [live, setLive] = useState(true);
@@ -59,17 +39,11 @@ export default function Queries({
     setTick((v) => v + 1);
     if (liveAllowed && cursors.length === 1 && !selected) onLiveTick();
   }, [onLiveTick, liveAllowed, cursors.length, selected]);
-  const connection = useLive(
-    liveAllowed && live && !selected && cursors.length === 1,
-    invalidate,
-  );
+  const connection = useLive(liveAllowed && live && !selected && cursors.length === 1, invalidate);
   const filterKey = JSON.stringify(Object.entries(initialFilter).sort());
   useEffect(() => {
     clearTimeout(pendingFilter.current);
-    const next = Object.fromEntries(JSON.parse(filterKey)) as Record<
-      string,
-      string
-    >;
+    const next = Object.fromEntries(JSON.parse(filterKey)) as Record<string, string>;
     setFilters(next);
     setDraft(next);
     setCursors([""]);
@@ -103,10 +77,7 @@ export default function Queries({
     setSelected(text(row.id));
   }
   const query = queryParameters(filters, cursors.at(-1));
-  function filterIdentity(
-    row: Row,
-    key: "rule_id" | "upstream_id" | "source_id",
-  ) {
+  function filterIdentity(row: Row, key: "rule_id" | "upstream_id" | "source_id") {
     const next = { ...filters, [key]: text(row[key]) };
     if (key !== "source_id") {
       next.boot_id = text(row.boot_id);
@@ -115,10 +86,7 @@ export default function Queries({
     applyFilters(next);
     setSelected(undefined);
   }
-  const state = useResource<Page>(
-    "queries?" + (snapshot ?? range) + "&" + query,
-    refresh + tick,
-  );
+  const state = useResource<Page>("queries?" + (snapshot ?? range) + "&" + query, refresh + tick);
   return (
     <>
       <form
@@ -141,10 +109,7 @@ export default function Queries({
                 />
               </div>
             ) : (
-              <label
-                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
-                key={key}
-              >
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal" key={key}>
                 {key === "name" ? "Domain (exact)" : "Result"}
                 {key === "outcome" ? (
                   <select
@@ -192,10 +157,7 @@ export default function Queries({
               boot_id: "Boot ID",
               generation: "Configuration version",
             }).map(([key, label]) => (
-              <label
-                className="flex min-w-0 flex-col gap-1.5 text-xs font-normal"
-                key={key}
-              >
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-normal" key={key}>
                 {label}
                 <Input
                   aria-label={"Filter " + key}
@@ -206,14 +168,13 @@ export default function Queries({
             ))}
           </div>
           <p className="my-2.5 max-w-[75ch] text-xs leading-relaxed text-muted-foreground">
-            Rule and upstream IDs need a server run and configuration version.
-            Use query details to capture that scope. Source IDs match archived
-            identities.
+            Rule and upstream IDs need a server run and configuration version. Use query details to
+            capture that scope. Source IDs match archived identities.
           </p>
           {missingScope(draft) && (
             <p className="mt-2 text-xs text-destructive" role="alert">
-              Select a query’s rule or upstream in its details to filter by the
-              correct configuration. Results still show the previous selection.
+              Select a query’s rule or upstream in its details to filter by the correct
+              configuration. Results still show the previous selection.
             </p>
           )}
         </details>
@@ -278,11 +239,7 @@ export default function Queries({
                 render: (r) => (
                   <ClientIdentity
                     compact
-                    source={
-                      r.client_name_source
-                        ? String(r.client_name_source)
-                        : undefined
-                    }
+                    source={r.client_name_source ? String(r.client_name_source) : undefined}
                     address={text(r.client)}
                     name={r.client_name ? String(r.client_name) : undefined}
                     device={r.client_device as Device | undefined}
@@ -302,9 +259,7 @@ export default function Queries({
                     >
                       {text(r.name)}
                     </button>
-                    <span className="block text-[12px] text-muted-foreground">
-                      {text(r.qtype)}
-                    </span>
+                    <span className="block text-[12px] text-muted-foreground">{text(r.qtype)}</span>
                   </div>
                 ),
               },
@@ -325,9 +280,7 @@ export default function Queries({
                 key: "response",
                 label: "Answer",
                 width: technical ? 200 : "20%",
-                render: (r) => (
-                  <AnswerPreview row={r} inspect={() => inspect(r)} />
-                ),
+                render: (r) => <AnswerPreview row={r} inspect={() => inspect(r)} />,
               },
               {
                 key: "actions",
@@ -433,16 +386,8 @@ export default function Queries({
           className="min-w-0 overflow-x-hidden [&>*]:min-w-0 [&_input]:min-w-0 [&_input]:w-full [&_select]:min-w-0 [&_select]:w-full"
         >
           <DialogTitle>Query detail</DialogTitle>
-          <DialogDescription>
-            The DNS response and how this query was handled.
-          </DialogDescription>
-          {selected && (
-            <QueryDetail
-              key={selected}
-              id={selected}
-              filterIdentity={filterIdentity}
-            />
-          )}
+          <DialogDescription>The DNS response and how this query was handled.</DialogDescription>
+          {selected && <QueryDetail key={selected} id={selected} filterIdentity={filterIdentity} />}
         </DialogContent>
       </Dialog>
     </>

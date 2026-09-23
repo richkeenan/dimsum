@@ -34,9 +34,7 @@ export function ListSubscriptions({
 }) {
   const catalog = useResource<Row>("catalog");
   const clients = useResource<Schema["ClientsResponse"]>("clients");
-  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
-    "profiles",
-  );
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const configured = collectionRows(data);
   const presets = rows(catalog.data);
   // Match by URL rather than ID: existing/custom subscriptions may use any ID.
@@ -47,9 +45,7 @@ export function ListSubscriptions({
         ? matches.map((row) => ({ ...preset, ...row }))
         : [{ ...preset, enabled: false }];
     }),
-    ...configured.filter(
-      (row) => !presets.some((preset) => preset.url === row.url),
-    ),
+    ...configured.filter((row) => !presets.some((preset) => preset.url === row.url)),
   ].map((row) => ({
     ...row,
     id: `${row.__index === undefined ? "catalog" : "source"}:${row.id}`,
@@ -63,14 +59,11 @@ export function ListSubscriptions({
     <>
       {catalog.error && <ErrorNotice error={catalog.error} />}
       <p className="px-4 py-3 text-xs text-muted-foreground">
-        Choose lists to use across your network. Lists download and update
-        automatically. You can choose different lists in a profile or a device’s
-        settings.
+        Choose lists to use across your network. Lists download and update automatically. You can
+        choose different lists in a profile or a device’s settings.
       </p>
       {catalog.loading && (
-        <p className="px-4 py-3 text-xs text-muted-foreground">
-          Loading available lists…
-        </p>
+        <p className="px-4 py-3 text-xs text-muted-foreground">Loading available lists…</p>
       )}
       <DataTable
         items={items}
@@ -89,10 +82,7 @@ export function ListSubscriptions({
                       ? pending.enabled
                       : (row.default_apply ?? row.enabled) === true
                   }
-                  disabled={
-                    disabled ||
-                    (row.available === false && row.enabled !== true)
-                  }
+                  disabled={disabled || (row.available === false && row.enabled !== true)}
                   onChange={(event) => toggle(row, event.target.checked)}
                 />
               </label>
@@ -110,9 +100,7 @@ export function ListSubscriptions({
                   )}
                 </div>
                 {!!row.description && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {text(row.description)}
-                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{text(row.description)}</p>
                 )}
                 {row.available === false && (
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -148,9 +136,7 @@ export function ListSubscriptions({
                 <div className="max-w-72 whitespace-normal" aria-live="polite">
                   <span>{status}</span>
                   {row.enabled === true && !!source?.error && (
-                    <p className="mt-1 text-xs text-destructive">
-                      {text(source.error)}
-                    </p>
+                    <p className="mt-1 text-xs text-destructive">{text(source.error)}</p>
                   )}
                 </div>
               );
@@ -162,13 +148,9 @@ export function ListSubscriptions({
             render: (row) => {
               const id = String(row.sourceID);
               const devices =
-                clients.data?.items?.filter(
-                  (c) => c.overrides?.lists?.[id] !== undefined,
-                ) ?? [];
+                clients.data?.items?.filter((c) => c.overrides?.lists?.[id] !== undefined) ?? [];
               const owners =
-                profiles.data?.items?.filter(
-                  (p) => p.policy?.lists?.[id] !== undefined,
-                ) ?? [];
+                profiles.data?.items?.filter((p) => p.policy?.lists?.[id] !== undefined) ?? [];
               if (!devices.length && !owners.length)
                 return <span className="text-muted-foreground">—</span>;
               return (
@@ -182,21 +164,17 @@ export function ListSubscriptions({
                       key={c.policy_id}
                       href={`/clients?device=${encodeURIComponent(c.policy_id!)}`}
                     >
-                      {c.name || c.policy_id}:{" "}
-                      {c.overrides!.lists![id] ? "On" : "Off"}
+                      {c.name || c.policy_id}: {c.overrides!.lists![id] ? "On" : "Off"}
                     </a>
                   ))}
                   {owners.map((p) => (
                     <p key={p.id}>
                       {p.name || p.id}: {p.policy!.lists![id] ? "On" : "Off"} ·{" "}
-                      {clients.data?.items?.filter((c) => c.profile === p.id)
-                        .length ?? 0}{" "}
-                      assigned devices
+                      {clients.data?.items?.filter((c) => c.profile === p.id).length ?? 0} assigned
+                      devices
                     </p>
                   ))}
-                  {(clients.error || profiles.error) && (
-                    <span>Usage unavailable</span>
-                  )}
+                  {(clients.error || profiles.error) && <span>Usage unavailable</span>}
                 </details>
               );
             },
@@ -224,14 +202,10 @@ export function ListSubscriptions({
                         id: row.sourceID,
                         __references:
                           (clients.data?.items?.filter(
-                            (c) =>
-                              c.overrides?.lists?.[String(row.sourceID)] !==
-                              undefined,
+                            (c) => c.overrides?.lists?.[String(row.sourceID)] !== undefined,
                           ).length ?? 0) +
                           (profiles.data?.items?.filter(
-                            (p) =>
-                              p.policy?.lists?.[String(row.sourceID)] !==
-                              undefined,
+                            (p) => p.policy?.lists?.[String(row.sourceID)] !== undefined,
                           ).length ?? 0),
                       })
                     }
@@ -242,10 +216,7 @@ export function ListSubscriptions({
                 <details className="group min-w-0 text-left">
                   <Button asChild size="sm" variant="outline">
                     <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
-                      <ChevronRight
-                        aria-hidden="true"
-                        className="group-open:rotate-90"
-                      />
+                      <ChevronRight aria-hidden="true" className="group-open:rotate-90" />
                       Details
                     </summary>
                   </Button>
@@ -312,16 +283,10 @@ export function RefreshListsButton({
   }
   return (
     <div>
-      <Button
-        variant="outline"
-        disabled={disabled || running}
-        onClick={() => void refresh()}
-      >
+      <Button variant="outline" disabled={disabled || running} onClick={() => void refresh()}>
         {running ? "Updating blocklists…" : "Update blocklists"}
       </Button>
-      {(error || (job && jobs.error)) && (
-        <ErrorNotice error={error ?? jobs.error!} />
-      )}
+      {(error || (job && jobs.error)) && <ErrorNotice error={error ?? jobs.error!} />}
     </div>
   );
 }

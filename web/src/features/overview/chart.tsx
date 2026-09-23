@@ -10,10 +10,7 @@ const labels: Record<(typeof outcomes)[number], string> = {
   error: "Failed",
   rejected: "Rejected",
 };
-const colours: Record<
-  (typeof outcomes)[number],
-  { swatch: string; fill: string }
-> = {
+const colours: Record<(typeof outcomes)[number], { swatch: string; fill: string }> = {
   local: { swatch: "bg-emerald-500", fill: "fill-emerald-500" },
   blocked: { swatch: "bg-red-600", fill: "fill-red-600" },
   cache: { swatch: "bg-teal-400", fill: "fill-teal-400" },
@@ -76,10 +73,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
                       x={0}
                       y={
                         100 -
-                        (values[i]
-                          .slice(0, j + 1)
-                          .reduce((sum, value) => sum + value, 0) /
-                          max) *
+                        (values[i].slice(0, j + 1).reduce((sum, value) => sum + value, 0) / max) *
                           100
                       }
                       width={1}
@@ -92,17 +86,13 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
           ))}
         </div>
       ) : (
-        <p className="p-9 text-center text-muted-foreground">
-          No traffic buckets in this range.
-        </p>
+        <p className="p-9 text-center text-muted-foreground">No traffic buckets in this range.</p>
       )}
       <details
         className="min-w-0 border-t border-border px-5 py-3 text-xs"
         onToggle={(e) => setTable(e.currentTarget.open)}
       >
-        <summary className="cursor-pointer text-muted-foreground">
-          View traffic as a table
-        </summary>
+        <summary className="cursor-pointer text-muted-foreground">View traffic as a table</summary>
         {table && (
           <DataTable
             items={buckets}
@@ -117,9 +107,7 @@ export default function TrafficChart({ buckets }: { buckets: Point[] }) {
                 label: labels[key],
                 align: "right" as const,
                 render: (r: Row) =>
-                  r.gap || !r.outcomes
-                    ? "Missing"
-                    : count((r.outcomes as Row)[key]),
+                  r.gap || !r.outcomes ? "Missing" : count((r.outcomes as Row)[key]),
               })),
               { key: "complete", label: "Complete" },
             ]}

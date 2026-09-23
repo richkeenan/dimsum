@@ -4,35 +4,27 @@ import { api, APIError, type Job, type Row } from "@/lib/api";
 import { ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 const providers = [
   {
     id: "cloudflare",
     name: "Cloudflare",
-    description:
-      "General-purpose DNS without provider-level content filtering.",
+    description: "General-purpose DNS without provider-level content filtering.",
     addresses: ["1.1.1.1:53", "1.0.0.1:53"],
     encrypted: "https://cloudflare-dns.com/dns-query",
   },
   {
     id: "google",
     name: "Google Public DNS",
-    description:
-      "General-purpose DNS without provider-level content filtering.",
+    description: "General-purpose DNS without provider-level content filtering.",
     addresses: ["8.8.8.8:53", "8.8.4.4:53"],
     encrypted: "https://dns.google/dns-query",
   },
   {
     id: "quad9",
     name: "Quad9",
-    description:
-      "Blocks known malicious domains in addition to your dimsum rules.",
+    description: "Blocks known malicious domains in addition to your dimsum rules.",
     addresses: ["9.9.9.9:53", "149.112.112.112:53"],
     encrypted: "https://dns.quad9.net/dns-query",
   },
@@ -123,9 +115,7 @@ export function UpstreamOrder({
 }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="mr-2 min-w-4 text-xs text-muted-foreground tabular-nums">
-        {index + 1}
-      </span>
+      <span className="mr-2 min-w-4 text-xs text-muted-foreground tabular-nums">{index + 1}</span>
       {([-1, 1] as const).map((direction) => {
         const label = direction === -1 ? "up" : "down";
         const Icon = direction === -1 ? ArrowUp : ArrowDown;
@@ -153,9 +143,7 @@ export function UpstreamOrder({
 
 export function UpstreamName({ address }: { address: string }) {
   const transport = encryptedTransport(address);
-  const provider = providers.find(
-    (p) => p.addresses.includes(address) || p.encrypted === address,
-  );
+  const provider = providers.find((p) => p.addresses.includes(address) || p.encrypted === address);
   return (
     <div className="flex flex-col gap-1">
       <span>{provider?.name ?? "Custom DNS server"}</span>
@@ -223,8 +211,7 @@ function endpoint(ip: string, port: string): string {
       const scope = host.indexOf("%");
       const address = scope < 0 ? host : host.slice(0, scope);
       const zone = scope < 0 ? "" : host.slice(scope + 1);
-      if (scope >= 0 && (!zone || /[\s\[\]]/.test(zone)))
-        throw new Error(invalid);
+      if (scope >= 0 && (!zone || /[\s[\]]/.test(zone))) throw new Error(invalid);
       canonical = new URL(`http://[${address}]/`).hostname;
       if (zone) canonical = `${canonical.slice(0, -1)}%${zone}]`;
     } catch {
@@ -256,13 +243,8 @@ function saveError(error: Error): Error {
     message =
       "You can configure up to 16 upstream servers. Remove a server before adding another provider.";
   else if (/expected unicast literal IP/.test(message))
-    message =
-      "Enter a unicast IP address and a port from 1 to 65535 for standard DNS.";
-  else if (
-    /block sequence|block mapping|editable shape|explicit text edit/.test(
-      message,
-    )
-  )
+    message = "Enter a unicast IP address and a port from 1 to 65535 for standard DNS.";
+  else if (/block sequence|block mapping|editable shape|explicit text edit/.test(message))
     message =
       "This upstream list uses a configuration format the editor cannot change. Put each server on its own list line in the configuration, then try again.";
   if (message === error.message) return error;
@@ -300,48 +282,29 @@ export function UpstreamEditor({
   const [transport, setTransport] = useState<"https" | "plain">(
     original && !originalEncrypted ? "plain" : "https",
   );
-  const [url, setURL] = useState(
-    originalEncrypted ? String(original?.address) : "",
-  );
+  const [url, setURL] = useState(originalEncrypted ? String(original?.address) : "");
   const [ip, setIP] = useState(initial.ip);
   const [port, setPort] = useState(initial.port);
   const [error, setError] = useState<Error>();
   const [invalid, setInvalid] = useState<"ip" | "port" | "url">();
   const [busy, setBusy] = useState(false);
   const preset = providers.find((p) => p.id === provider);
-  const addresses = preset
-    ? transport === "https"
-      ? [preset.encrypted]
-      : preset.addresses
-    : [];
+  const addresses = preset ? (transport === "https" ? [preset.encrypted] : preset.addresses) : [];
   const missing =
-    addresses.filter(
-      (address) => !configured.some((r) => r.address === address),
-    ) ?? [];
+    addresses.filter((address) => !configured.some((r) => r.address === address)) ?? [];
   async function submit(remove = false) {
     setError(undefined);
     setInvalid(undefined);
     let address = "";
     if (!remove && !preset) {
       try {
-        address =
-          transport === "https" ? encryptedEndpoint(url) : endpoint(ip, port);
-        if (
-          configured.some(
-            (r) => r.address === address && r.__index !== original?.__index,
-          )
-        )
-          throw new Error(
-            "This server is already configured. Choose a different server address.",
-          );
+        address = transport === "https" ? encryptedEndpoint(url) : endpoint(ip, port);
+        if (configured.some((r) => r.address === address && r.__index !== original?.__index))
+          throw new Error("This server is already configured. Choose a different server address.");
       } catch (e) {
         setError(e as Error);
         setInvalid(
-          e instanceof UpstreamInputError
-            ? e.field
-            : transport === "https"
-              ? "url"
-              : "ip",
+          e instanceof UpstreamInputError ? e.field : transport === "https" ? "url" : "ip",
         );
         return;
       }
@@ -429,16 +392,8 @@ export function UpstreamEditor({
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(
                     [
-                      [
-                        "https",
-                        "Encrypted",
-                        "Private connection to the server.",
-                      ],
-                      [
-                        "plain",
-                        "Standard (unencrypted)",
-                        "Uses a plain IP address and port.",
-                      ],
+                      ["https", "Encrypted", "Private connection to the server."],
+                      ["plain", "Standard (unencrypted)", "Uses a plain IP address and port."],
                     ] as const
                   ).map(([value, label, help]) => (
                     <label
@@ -459,9 +414,7 @@ export function UpstreamEditor({
                       />
                       <span>
                         {label}
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {help}
-                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{help}</span>
                       </span>
                     </label>
                   ))}
@@ -473,17 +426,12 @@ export function UpstreamEditor({
                 <p>{preset.description}</p>
                 <ul className="space-y-2">
                   {addresses.map((address) => (
-                    <li
-                      key={address}
-                      className="flex flex-wrap justify-between gap-2"
-                    >
+                    <li key={address} className="flex flex-wrap justify-between gap-2">
                       <span className="min-w-0 tabular-nums [overflow-wrap:anywhere]">
                         {address}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {missing.includes(address)
-                          ? "Will be added"
-                          : "Already configured"}
+                        {missing.includes(address) ? "Will be added" : "Already configured"}
                       </span>
                     </li>
                   ))}
@@ -513,13 +461,10 @@ export function UpstreamEditor({
                     setInvalid(undefined);
                   }}
                 />
-                <p
-                  id="upstream-url-help"
-                  className="text-xs text-muted-foreground"
-                >
-                  Use https://host/path (DoH) or tls://host[:port] (DoT). Server
-                  certificates are verified. Hostnames are resolved
-                  automatically; bootstrap overrides are in Settings → Advanced.
+                <p id="upstream-url-help" className="text-xs text-muted-foreground">
+                  Use https://host/path (DoH) or tls://host[:port] (DoT). Server certificates are
+                  verified. Hostnames are resolved automatically; bootstrap overrides are in
+                  Settings → Advanced.
                 </p>
               </div>
             )}
@@ -577,16 +522,15 @@ export function UpstreamEditor({
                   id="upstream-address-help"
                   className="text-xs leading-relaxed text-muted-foreground"
                 >
-                  IPv4 or IPv6 address. Standard DNS uses port 53. For a URL,
-                  choose Encrypted.
+                  IPv4 or IPv6 address. Standard DNS uses port 53. For a URL, choose Encrypted.
                 </p>
               </div>
             )}
           </fieldset>
           {provider && (
             <p className="text-xs text-muted-foreground">
-              Save first, then test the connection from the upstream list.
-              Adding a server keeps your existing servers.
+              Save first, then test the connection from the upstream list. Adding a server keeps
+              your existing servers.
             </p>
           )}
           {error &&
@@ -613,22 +557,10 @@ export function UpstreamEditor({
                 Remove server
               </Button>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={close}
-            >
+            <Button type="button" variant="outline" disabled={busy} onClick={close}>
               Cancel
             </Button>
-            <Button
-              disabled={
-                busy ||
-                !revision ||
-                !provider ||
-                (!!preset && missing.length === 0)
-              }
-            >
+            <Button disabled={busy || !revision || !provider || (!!preset && missing.length === 0)}>
               {busy
                 ? "Saving…"
                 : original
@@ -659,10 +591,7 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
         const response = await api.get<{ items: Job[] }>("jobs", abort.signal);
         if (abort.signal.aborted) return;
         const latest = response.items.find((item) => item.id === job!.id);
-        if (!latest)
-          throw new Error(
-            "The connection test is no longer available. Run it again.",
-          );
+        if (!latest) throw new Error("The connection test is no longer available. Run it again.");
         if (latest.state !== "running") setJob(latest);
         else timer = setTimeout(poll, 500);
       } catch (e) {
@@ -681,8 +610,7 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
   const result = job?.result as Row | undefined;
   const running = starting || job?.state === "running";
   let message = "";
-  if (job?.state === "failed")
-    message = `The test could not finish. ${job.error || "Try again."}`;
+  if (job?.state === "failed") message = `The test could not finish. ${job.error || "Try again."}`;
   else if (job?.state === "succeeded")
     message =
       result?.healthy === true
@@ -709,24 +637,15 @@ export function UpstreamConnectionTest({ address }: { address: string }) {
   }
   return (
     <div className="max-w-64 whitespace-normal text-xs">
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={running}
-        onClick={() => void start()}
-      >
+      <Button size="sm" variant="outline" disabled={running} onClick={() => void start()}>
         {running ? "Testing…" : "Test connection"}
       </Button>
       {message && (
         <div className="mt-2 space-y-1" role="status">
           <p>{message}</p>
-          {result?.healthy !== true &&
-            typeof result?.transport === "string" && (
-              <p>
-                Configured / attempted transport:{" "}
-                {result.transport.toUpperCase()}
-              </p>
-            )}
+          {result?.healthy !== true && typeof result?.transport === "string" && (
+            <p>Configured / attempted transport: {result.transport.toUpperCase()}</p>
+          )}
           {result?.healthy !== true && typeof result?.error === "string" && (
             <p className="[overflow-wrap:anywhere]">
               {result.error}

@@ -1,13 +1,7 @@
 import { count, percentage, type LatencyBand } from "@/lib/api";
 import { formatLatency } from "./format";
 
-export default function Distribution({
-  bands,
-  total,
-}: {
-  bands: LatencyBand[];
-  total: string;
-}) {
+export default function Distribution({ bands, total }: { bands: LatencyBand[]; total: string }) {
   return (
     <div className="px-5 py-4">
       <table className="w-full text-xs tabular-nums">
@@ -32,26 +26,18 @@ export default function Distribution({
                   : `${formatLatency(band.lower_us)} – < ${formatLatency(band.upper_us)}`;
             return (
               <tr key={band.lower_us}>
-                <th
-                  scope="row"
-                  className="relative py-2.5 pr-4 text-left font-normal"
-                >
+                <th scope="row" className="relative py-2.5 pr-4 text-left font-normal">
                   <span
                     aria-hidden="true"
                     className="absolute inset-y-1 left-0 rounded-sm bg-primary/10"
                     style={{
-                      width:
-                        share === "—"
-                          ? "0%"
-                          : percentage(band.count, total, "en-US"),
+                      width: share === "—" ? "0%" : percentage(band.count, total, "en-US"),
                     }}
                   />
                   <span className="relative">{label}</span>
                 </th>
                 <td className="py-2.5 text-right">{count(band.count)}</td>
-                <td className="py-2.5 pl-4 text-right text-muted-foreground">
-                  {share}
-                </td>
+                <td className="py-2.5 pl-4 text-right text-muted-foreground">{share}</td>
               </tr>
             );
           })}

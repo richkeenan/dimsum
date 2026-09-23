@@ -12,19 +12,14 @@ export type PerformanceProps = {
   refresh: number;
 };
 
-export function usePerformance({
-  range,
-  resolution,
-  refresh,
-}: PerformanceProps) {
+export function usePerformance({ range, resolution, refresh }: PerformanceProps) {
   return useResource<PerformanceData>(
     `performance?${range}&resolution_seconds=${resolution}`,
     refresh,
   );
 }
 
-const panel =
-  "mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background";
+const panel = "mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background";
 const heading =
   "flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3";
 
@@ -63,14 +58,9 @@ export default function Performance(props: PerformanceProps) {
           <div className="grid min-w-0 gap-x-5 min-[1400px]:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
             <section className={panel}>
               <div className={heading}>
-                <h2 className="text-sm font-medium">
-                  Response-time distribution
-                </h2>
+                <h2 className="text-sm font-medium">Response-time distribution</h2>
               </div>
-              <Distribution
-                bands={data.distribution}
-                total={data.summary.count}
-              />
+              <Distribution bands={data.distribution} total={data.summary.count} />
             </section>
             <section className={panel}>
               <div className={heading}>
@@ -82,8 +72,7 @@ export default function Performance(props: PerformanceProps) {
                   {
                     key: "outcome",
                     label: "Outcome",
-                    render: (r) =>
-                      outcomeLabels[String(r.outcome)] ?? String(r.outcome),
+                    render: (r) => outcomeLabels[String(r.outcome)] ?? String(r.outcome),
                   },
                   {
                     key: "count",
@@ -116,8 +105,8 @@ export default function Performance(props: PerformanceProps) {
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer">Measurement details</summary>
             <p className="mt-2 max-w-4xl leading-relaxed">
-              Server-side timings include upstream waits and exclude admission
-              rejections. ≈ marks histogram estimates (up to 3.125% rounding error).
+              Server-side timings include upstream waits and exclude admission rejections. ≈ marks
+              histogram estimates (up to 3.125% rounding error).
             </p>
           </details>
         </>
@@ -126,9 +115,7 @@ export default function Performance(props: PerformanceProps) {
   );
 }
 
-export function OverviewPerformance(
-  props: PerformanceProps & { onOpen: () => void },
-) {
+export function OverviewPerformance(props: PerformanceProps & { onOpen: () => void }) {
   const state = usePerformance(props);
   const metrics = state.data?.summary;
   const cards = [
@@ -148,9 +135,7 @@ export function OverviewPerformance(
               title={`View response-time details${state.data?.complete === false ? " (partial history coverage)" : ""}`}
               className="min-w-0 rounded-lg border border-border bg-background px-3 py-3 text-left hover:border-primary/50 hover:bg-accent/30 sm:px-5"
             >
-              <span className="block text-xs text-muted-foreground">
-                {label}
-              </span>
+              <span className="block text-xs text-muted-foreground">{label}</span>
               <strong className="mt-1 block whitespace-nowrap text-lg font-[550] tracking-tight tabular-nums sm:text-[25px]">
                 {value}
               </strong>

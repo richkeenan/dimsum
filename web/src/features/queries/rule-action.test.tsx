@@ -19,8 +19,7 @@ it.each(["matched", "unmatched", "unavailable"])(
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
-        if (url.endsWith("settings"))
-          return Response.json({ status, config: {} });
+        if (url.endsWith("settings")) return Response.json({ status, config: {} });
         if (url.endsWith("profiles")) return Response.json({ items: [] });
         if (url.includes("client-policy?"))
           return Response.json({
@@ -31,10 +30,7 @@ it.each(["matched", "unmatched", "unavailable"])(
           });
         if (url.endsWith("rules/test"))
           return mode === "unavailable"
-            ? Response.json(
-                { error: { message: "Identity service unavailable" } },
-                { status: 503 },
-              )
+            ? Response.json({ error: { message: "Identity service unavailable" } }, { status: 503 })
             : Response.json({
                 client_id: mode === "matched" ? "stable" : "",
                 decision: { result: "allow" },
@@ -48,29 +44,19 @@ it.each(["matched", "unmatched", "unavailable"])(
     );
     render(
       <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
-        <InlineRuleAction
-          name="ads.example"
-          outcome="blocked"
-          address="192.0.2.12"
-        />
+        <InlineRuleAction name="ads.example" outcome="blocked" address="192.0.2.12" />
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Allow ads.example" }));
     expect(writes).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "Create allow rule" }));
     if (mode === "matched")
-      await waitFor(() =>
-        expect(writes[0]).toMatchObject({ scope: "client", id: "stable" }),
-      );
+      await waitFor(() => expect(writes[0]).toMatchObject({ scope: "client", id: "stable" }));
     else {
       expect(await screen.findByRole("alert")).toHaveTextContent(
-        mode === "unmatched"
-          ? "Choose a profile for this device"
-          : "Identity service unavailable",
+        mode === "unmatched" ? "Choose a profile for this device" : "Identity service unavailable",
       );
       expect(writes).toHaveLength(0);
     }
@@ -82,11 +68,7 @@ afterEach(() => vi.unstubAllGlobals());
 it.each([
   ["forwarded", "block", undefined],
   ["blocked", "allow", undefined],
-  [
-    "forwarded",
-    "allow",
-    "saved, but an allow exception still takes precedence.",
-  ],
+  ["forwarded", "allow", "saved, but an allow exception still takes precedence."],
 ])(
   "checks the active policy after a flat activation response: %s",
   async (outcome, decision, notice) => {
@@ -102,19 +84,15 @@ it.each([
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "/api/v1/settings")
-          return Response.json({ status: activation, config: {} });
+        if (url === "/api/v1/settings") return Response.json({ status: activation, config: {} });
         if (url === "/api/v1/rules") return Response.json(activation);
-        if (url === "/api/v1/rules/test")
-          return Response.json({ decision: { result: decision } });
+        if (url === "/api/v1/rules/test") return Response.json({ decision: { result: decision } });
         throw new Error(`Unexpected request: ${url}`);
       }),
     );
     render(<InlineRuleAction name="ads.example" outcome={outcome!} />);
     const label = outcome === "blocked" ? "Allow" : "Block";
-    fireEvent.click(
-      screen.getByRole("button", { name: `${label} ads.example` }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: `${label} ads.example` }));
     fireEvent.click(
       screen.getByRole("button", {
         name: `Create ${label.toLowerCase()} rule`,

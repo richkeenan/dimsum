@@ -2155,8 +2155,7 @@ export interface components {
       generation: string;
       client_id: string;
       /** @enum {string} */
-      matching_method:
-        "network" | "configured_id" | "address" | "dhcp_mac" | "cidr";
+      matching_method: "network" | "configured_id" | "address" | "dhcp_mac" | "cidr";
       authoritative_mac?: string;
       /** @enum {string} */
       handling: "policy" | "local" | "private_reverse";
@@ -2302,14 +2301,7 @@ export interface components {
       to: string;
     };
     /** @enum {string} */
-    Outcome:
-      | "local"
-      | "blocked"
-      | "cache"
-      | "stale"
-      | "forwarded"
-      | "error"
-      | "rejected";
+    Outcome: "local" | "blocked" | "cache" | "stale" | "forwarded" | "error" | "rejected";
     HistorySummary: {
       range: components["schemas"]["HistoryRange"];
       /** @description Admitted terminal query count */
@@ -2644,11 +2636,7 @@ export interface components {
     DHCPAvailability: {
       supported: boolean;
       /** @enum {string} */
-      code:
-        | "supported"
-        | "unsupported_platform"
-        | "docker_desktop"
-        | "unknown_deployment";
+      code: "supported" | "unsupported_platform" | "docker_desktop" | "unknown_deployment";
       /** @description Human-readable explanation when unsupported; empty when supported */
       reason: string;
     };
@@ -2726,8 +2714,7 @@ export interface components {
       }[];
     };
     /** @enum {string} */
-    DHCPLeaseState:
-      "probing" | "offered" | "commit-pending" | "bound" | "quarantined";
+    DHCPLeaseState: "probing" | "offered" | "commit-pending" | "bound" | "quarantined";
     DHCPLease: {
       /** Format: ipv4 */
       address: string;
@@ -2802,8 +2789,7 @@ export interface components {
       other_servers: string[];
       probe_truncated: boolean;
       /** @enum {string} */
-      observation:
-        "not_probed" | "failed" | "no_offer_observed" | "offers_observed";
+      observation: "not_probed" | "failed" | "no_offer_observed" | "offers_observed";
       warning: string;
       checks: {
         [key: string]: string;

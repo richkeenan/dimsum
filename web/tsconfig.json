@@ -13,11 +13,5 @@
     "noEmit": true,
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": [
-    "src",
-    "vite.config.ts",
-    "playwright.config.ts",
-    "e2e.ts",
-    "../tests/e2e"
-  ]
+  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e.ts", "../tests/e2e"]
 }

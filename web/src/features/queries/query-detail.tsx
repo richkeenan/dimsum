@@ -1,9 +1,4 @@
-import {
-  microsecondsToMS,
-  text,
-  type QueryDetail as Detail,
-  type Row,
-} from "@/lib/api";
+import { microsecondsToMS, text, type QueryDetail as Detail, type Row } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
@@ -15,10 +10,7 @@ export function QueryDetail({
   filterIdentity,
 }: {
   id: string;
-  filterIdentity: (
-    row: Row,
-    key: "rule_id" | "source_id" | "upstream_id",
-  ) => void;
+  filterIdentity: (row: Row, key: "rule_id" | "source_id" | "upstream_id") => void;
 }) {
   const state = useResource<Detail>("queries/" + encodeURIComponent(id));
   const row = state.data;
@@ -45,9 +37,7 @@ export function QueryDetail({
                 <dd>
                   {row.client_name || row.client}
                   {row.client_name && (
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      {row.client}
-                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{row.client}</span>
                   )}
                 </dd>
               </div>
@@ -97,9 +87,7 @@ export function QueryDetail({
               )}
             </dl>
           </section>
-          {(row.rule_description_available ||
-            row.alias_available ||
-            row.source_id) && (
+          {(row.rule_description_available || row.alias_available || row.source_id) && (
             <section className="space-y-2">
               <h3 className="text-sm font-medium">Why this result?</h3>
               {row.outcome === "blocked" && (
@@ -114,9 +102,7 @@ export function QueryDetail({
                 </p>
               )}
               {row.alias_available && (
-                <p className="text-sm wrap-anywhere">
-                  Matched alias: {row.alias}
-                </p>
+                <p className="text-sm wrap-anywhere">Matched alias: {row.alias}</p>
               )}
               {row.rule_description_available && (
                 <details className="rounded-md border border-border p-3 text-xs">
@@ -146,20 +132,12 @@ export function QueryDetail({
                   onClick={() => filterIdentity(row, key)}
                 >
                   Queries for this{" "}
-                  {key === "rule_id"
-                    ? "rule"
-                    : key === "source_id"
-                      ? "source"
-                      : "upstream"}
+                  {key === "rule_id" ? "rule" : key === "source_id" ? "source" : "upstream"}
                 </Button>
               ) : null,
             )}
           </div>
-          <QueryRuleForm
-            name={row.name}
-            outcome={row.outcome}
-            address={row.client}
-          />
+          <QueryRuleForm name={row.name} outcome={row.outcome} address={row.client} />
         </div>
       )}
     </Resource>

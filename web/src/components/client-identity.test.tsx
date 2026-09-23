@@ -52,19 +52,12 @@ it("marks DNS guesses and explains their observed domains", () => {
   };
   const view = render(
     <>
-      <ClientIdentity
-        address="192.0.2.20"
-        name="Ring device"
-        source="dns-guess"
-        device={device}
-      />
+      <ClientIdentity address="192.0.2.20" name="Ring device" source="dns-guess" device={device} />
       <DeviceDetails device={device} />
     </>,
   );
   expect(screen.getByText("DNS guess")).toBeVisible();
-  expect(screen.getByText("Ring device").parentElement).toHaveClass(
-    "inline-flex",
-  );
+  expect(screen.getByText("Ring device").parentElement).toHaveClass("inline-flex");
   expect(screen.getByText("DNS guess").parentElement).toBe(
     screen.getByText("Ring device").parentElement,
   );
@@ -73,20 +66,11 @@ it("marks DNS guesses and explains their observed domains", () => {
   expect(screen.getByText(/3 queries/)).toBeVisible();
   expect(screen.queryByText("Local advertisements")).not.toBeInTheDocument();
   view.rerender(
-    <ClientIdentity
-      address="192.0.2.20"
-      name="Owner name"
-      source="override"
-      device={device}
-    />,
+    <ClientIdentity address="192.0.2.20" name="Owner name" source="override" device={device} />,
   );
   expect(screen.queryByText("DNS guess")).not.toBeInTheDocument();
   view.rerender(
-    <ClientIdentity
-      address="192.0.2.20"
-      name="Retained camera name"
-      device={device}
-    />,
+    <ClientIdentity address="192.0.2.20" name="Retained camera name" device={device} />,
   );
   expect(screen.getByText("Retained camera name")).toBeVisible();
   expect(screen.queryByText("DNS guess")).not.toBeInTheDocument();

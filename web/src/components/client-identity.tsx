@@ -47,15 +47,8 @@ type Props = {
   source?: string;
   compact?: boolean;
 };
-export function ClientIdentity({
-  address,
-  name,
-  device,
-  source,
-  compact = false,
-}: Props) {
-  const [label, Icon] =
-    categories[device?.category ?? "unknown"] ?? categories.unknown;
+export function ClientIdentity({ address, name, device, source, compact = false }: Props) {
+  const [label, Icon] = categories[device?.category ?? "unknown"] ?? categories.unknown;
   return (
     <span
       className={`inline-flex max-w-full items-start text-left ${compact ? "gap-2" : "gap-2.5"}`}
@@ -66,9 +59,7 @@ export function ClientIdentity({
         className={`mt-1 shrink-0 text-muted-foreground ${compact ? "size-4" : "size-4.5"}`}
         strokeWidth={1.5}
       />
-      <span
-        className={`min-w-0 leading-normal ${compact ? "text-[14px]" : "text-base"}`}
-      >
+      <span className={`min-w-0 leading-normal ${compact ? "text-[14px]" : "text-base"}`}>
         <span className="inline-flex max-w-full items-center gap-1.5">
           <span
             className={`min-w-0 ${compact ? "truncate" : "wrap-anywhere"}`}
@@ -99,11 +90,7 @@ export function ClientIdentity({
 }
 export function DeviceDetails({ device }: { device?: Device }) {
   if (!device)
-    return (
-      <p className="text-sm text-muted-foreground">
-        No discovery metadata available.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">No discovery metadata available.</p>;
   return (
     <div className="space-y-4 text-sm wrap-anywhere">
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
@@ -139,17 +126,12 @@ export function DeviceDetails({ device }: { device?: Device }) {
         <section className="space-y-2">
           <h3 className="font-medium">DNS query clues</h3>
           <p className="text-xs text-muted-foreground">
-            A guess based on recent DNS requests, not a verified device
-            identity. Expires{" "}
-            {new Date(device.dns_guess.expires).toLocaleString()} without
-            supporting queries.
+            A guess based on recent DNS requests, not a verified device identity. Expires{" "}
+            {new Date(device.dns_guess.expires).toLocaleString()} without supporting queries.
           </p>
           <ul className="space-y-3">
             {device.dns_guess.domains.map((entry) => (
-              <li
-                key={entry.domain}
-                className="rounded-md border border-border p-3"
-              >
+              <li key={entry.domain} className="rounded-md border border-border p-3">
                 <p>{entry.domain}</p>
                 <p className="text-xs text-muted-foreground">
                   {count(entry.queries)} queries · First seen{" "}

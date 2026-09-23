@@ -20,53 +20,37 @@ function useAssignment(
     setStatus(undefined);
     try {
       const current = await api.get<Schema["ClientsResponse"]>("clients");
-      const observed = current.observed?.items.find(
-        (o) => o.address === row.observed[0]?.address,
-      );
+      const observed = current.observed?.items.find((o) => o.address === row.observed[0]?.address);
       const configured = current.items?.find(
-        (c) =>
-          c.policy_id === (row.configured?.policy_id ?? observed?.client_id),
+        (c) => c.policy_id === (row.configured?.policy_id ?? observed?.client_id),
       );
       if (row.configured && !configured)
-        throw new Error(
-          "This device’s settings changed. Refresh before assigning a profile.",
-        );
+        throw new Error("This device’s settings changed. Refresh before assigning a profile.");
       if (!configured && !observed)
-        throw new Error(
-          "This device is no longer in the device list. Refresh and try again.",
-        );
+        throw new Error("This device is no longer in the device list. Refresh and try again.");
       const generatedID = policyID("device");
-      const result = await api.send<Schema["Activation"]>(
-        "client-policy",
-        "PATCH",
-        {
-          revision: current.status.saved_revision,
-          scope: "client",
-          profile,
-          ...(configured
-            ? {
-                id: configured.policy_id,
-                ...(!configured.id ? { promote_id: generatedID } : {}),
-              }
-            : {
-                id: generatedID,
-                create: true,
-                ...(observed!.name ? { name: observed!.name } : {}),
-                ...(observed!.authoritative_mac
-                  ? { lease_address: observed!.address }
-                  : { selectors: { addresses: [observed!.address] } }),
-              }),
-        },
-      );
+      const result = await api.send<Schema["Activation"]>("client-policy", "PATCH", {
+        revision: current.status.saved_revision,
+        scope: "client",
+        profile,
+        ...(configured
+          ? {
+              id: configured.policy_id,
+              ...(!configured.id ? { promote_id: generatedID } : {}),
+            }
+          : {
+              id: generatedID,
+              create: true,
+              ...(observed!.name ? { name: observed!.name } : {}),
+              ...(observed!.authoritative_mac
+                ? { lease_address: observed!.address }
+                : { selectors: { addresses: [observed!.address] } }),
+            }),
+      });
       setStatus(result);
       onStatus?.(result);
       const readback = await reload();
-      if (
-        readback &&
-        typeof readback === "object" &&
-        "error" in readback &&
-        readback.error
-      ) {
+      if (readback && typeof readback === "object" && "error" in readback && readback.error) {
         throw new Error(
           "Profile saved, but the device list could not be refreshed. Refresh to see the saved assignment.",
         );
@@ -161,8 +145,7 @@ export function ProfileMap({
     sensitivity: "base",
   });
   const sorted = [...rows].sort((a, b) => {
-    const named = (r: ClientRow) =>
-      !!(r.configured?.name || r.observed.some((o) => o.name));
+    const named = (r: ClientRow) => !!(r.configured?.name || r.observed.some((o) => o.name));
     return (
       Number(named(b)) - Number(named(a)) ||
       compare.compare(deviceName(a), deviceName(b)) ||
@@ -175,8 +158,8 @@ export function ProfileMap({
       <div>
         <h2 className="text-base font-medium">Devices & profiles</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          Drag a device into a profile, or use its profile selector. Devices are
-          sorted A–Z, followed by unnamed addresses.
+          Drag a device into a profile, or use its profile selector. Devices are sorted A–Z,
+          followed by unnamed addresses.
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -197,23 +180,15 @@ export function ProfileMap({
       {error && <ErrorNotice error={error} />}
       {status && (
         <ActivationStatus
-          status={
-            liveStatus?.saved_revision === status.saved_revision
-              ? liveStatus
-              : status
-          }
+          status={liveStatus?.saved_revision === status.saved_revision ? liveStatus : status}
         />
       )}
       <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
         {[
           { id: "", name: "Network defaults" },
-          ...[...profiles].sort((a, b) =>
-            compare.compare(a.name || a.id, b.name || b.id),
-          ),
+          ...[...profiles].sort((a, b) => compare.compare(a.name || a.id, b.name || b.id)),
         ].map((profile) => {
-          const members = sorted.filter(
-            (row) => (row.configured?.profile ?? "") === profile.id,
-          );
+          const members = sorted.filter((row) => (row.configured?.profile ?? "") === profile.id);
           const visible = members.filter((row) =>
             [
               deviceName(row),
@@ -226,9 +201,7 @@ export function ProfileMap({
             !locked &&
             dragged !== undefined &&
             rows.some(
-              (row) =>
-                row.key === dragged &&
-                (row.configured?.profile ?? "") !== profile.id,
+              (row) => row.key === dragged && (row.configured?.profile ?? "") !== profile.id,
             );
           return (
             <section
@@ -243,8 +216,7 @@ export function ProfileMap({
                 }
               }}
               onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null))
-                  setOver(undefined);
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(undefined);
               }}
               onDrop={(e) => {
                 e.preventDefault();
@@ -302,9 +274,7 @@ export function ProfileMap({
                       >
                         <GripVertical className="size-4" />
                       </span>
-                      <p className="break-words text-xs font-medium">
-                        {deviceName(row)}
-                      </p>
+                      <p className="break-words text-xs font-medium">{deviceName(row)}</p>
                     </div>
                     <ProfileAssignment
                       row={row}

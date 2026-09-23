@@ -21,8 +21,7 @@ export function SetupSummary({
   config: DHCPSettings;
   value: DHCPConfigResponse;
 }) {
-  const suggested =
-    !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
+  const suggested = !value.config.enabled && (value.setup?.suggested.length ?? 0) > 0;
   const detectedAddress =
     config.interface === value.setup?.config.interface &&
     config.server_ip === value.setup?.config.server_ip;
@@ -45,19 +44,14 @@ export function SetupSummary({
           <dd>
             {config.server_ip || "Not detected"}
             {config.interface && (
-              <span className="font-normal text-muted-foreground">
-                {" "}
-                · {config.interface}
-              </span>
+              <span className="font-normal text-muted-foreground"> · {config.interface}</span>
             )}
           </dd>
         </div>
         <div>
           <dt>
             Device addresses
-            {suggested && value.setup?.suggested.includes("range_start")
-              ? " · suggested"
-              : ""}
+            {suggested && value.setup?.suggested.includes("range_start") ? " · suggested" : ""}
           </dt>
           <dd>
             {config.range_start && config.range_end
@@ -68,8 +62,7 @@ export function SetupSummary({
         <div>
           <dt>Lease duration · Local domain</dt>
           <dd>
-            {seconds ? duration : "Not set"} ·{" "}
-            {config.local_domain || "Not set"}
+            {seconds ? duration : "Not set"} · {config.local_domain || "Not set"}
           </dd>
         </div>
       </dl>
@@ -89,8 +82,7 @@ export function SetupSummary({
       )}
       {suggested && value.setup?.suggested.includes("range_start") && (
         <p className="mt-3 text-xs text-muted-foreground">
-          Check the suggested range against your router’s existing leases and
-          reservations.
+          Check the suggested range against your router’s existing leases and reservations.
         </p>
       )}
     </div>

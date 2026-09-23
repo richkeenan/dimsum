@@ -35,9 +35,7 @@ export function LatencySummary({
     },
   ];
   return (
-    <dl
-      className={`grid ${compact ? "grid-cols-3" : "grid-cols-2 md:grid-cols-4"}`}
-    >
+    <dl className={`grid ${compact ? "grid-cols-3" : "grid-cols-2 md:grid-cols-4"}`}>
       {items.map(({ label, value, hint }, index) => (
         <div
           key={label}
@@ -58,8 +56,7 @@ export function LatencySummary({
 }
 
 export function PrecisionNotice({ metrics }: { metrics?: Latency }) {
-  if (!metrics || metrics.count === "0" || metrics.percentiles_available)
-    return null;
+  if (!metrics || metrics.count === "0" || metrics.percentiles_available) return null;
   return (
     <p className="px-5 pb-4 text-xs leading-relaxed text-muted-foreground">
       Percentiles unavailable for older history. Choose a more recent range.

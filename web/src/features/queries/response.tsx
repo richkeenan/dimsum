@@ -18,13 +18,7 @@ export function resultLabel(value: unknown) {
   );
 }
 
-export function ResultBadge({
-  outcome,
-  compact = false,
-}: {
-  outcome: unknown;
-  compact?: boolean;
-}) {
+export function ResultBadge({ outcome, compact = false }: { outcome: unknown; compact?: boolean }) {
   return (
     <span
       className={`inline-block w-fit rounded px-[7px] py-[3px] ${compact ? "text-[12px]" : "text-xs"} ${outcome === "blocked" ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200" : outcome === "error" || outcome === "rejected" ? "bg-destructive/10 text-destructive" : outcome === "stale" ? "bg-muted text-muted-foreground" : "bg-accent text-foreground"}`}
@@ -35,10 +29,8 @@ export function ResultBadge({
 }
 
 export function ResponseTime({ value }: { value: unknown }) {
-  const us =
-    typeof value === "string" && /^\d+$/.test(value) ? Number(value) : NaN;
-  if (!Number.isFinite(us))
-    return <span className="text-muted-foreground">—</span>;
+  const us = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : NaN;
+  if (!Number.isFinite(us)) return <span className="text-muted-foreground">—</span>;
   const ms = us / 1000;
   const unit = ms >= 1000 ? "s" : "ms";
   const number =
@@ -53,8 +45,7 @@ export function ResponseTime({ value }: { value: unknown }) {
       className="inline-flex items-baseline gap-1 whitespace-nowrap text-[12px] tabular-nums"
       title={`${microsecondsToMS(value)} ms`}
     >
-      <span>{number}</span>{" "}
-      <span className="text-muted-foreground">{unit}</span>
+      <span>{number}</span> <span className="text-muted-foreground">{unit}</span>
     </span>
   );
 }
@@ -75,24 +66,11 @@ export function responseStatus(value: unknown) {
   );
 }
 
-export function AnswerPreview({
-  row,
-  inspect,
-}: {
-  row: Row;
-  inspect: () => void;
-}) {
+export function AnswerPreview({ row, inspect }: { row: Row; inspect: () => void }) {
   const response = row.response as ResponseSummary | undefined;
-  if (!response)
-    return (
-      <span className="text-[12px] text-muted-foreground">Not recorded</span>
-    );
-  const answers = response.records.filter(
-    (record) => record.section === "answer",
-  );
-  const addresses = answers.filter(
-    (record) => record.type === "A" || record.type === "AAAA",
-  );
+  if (!response) return <span className="text-[12px] text-muted-foreground">Not recorded</span>;
+  const answers = response.records.filter((record) => record.section === "answer");
+  const addresses = answers.filter((record) => record.type === "A" || record.type === "AAAA");
   const shown = addresses.length ? addresses : answers;
   if (!shown.length)
     return (
@@ -113,9 +91,7 @@ export function AnswerPreview({
       <span className="block truncate font-mono">{shown[0].value}</span>
       {(shown.length > 1 || response.truncated) && (
         <span className="text-[12px] text-muted-foreground">
-          {shown.length > 1
-            ? `+${(shown.length - 1).toLocaleString()} more`
-            : ""}
+          {shown.length > 1 ? `+${(shown.length - 1).toLocaleString()} more` : ""}
           {response.truncated ? " · partial" : ""}
         </span>
       )}
@@ -165,9 +141,7 @@ export function ResponseRecords({ response }: { response?: ResponseSummary }) {
                   <p className="font-mono text-sm whitespace-pre-wrap wrap-anywhere">
                     {record.value}
                   </p>
-                  <p className="text-xs text-muted-foreground wrap-anywhere">
-                    {record.name}
-                  </p>
+                  <p className="text-xs text-muted-foreground wrap-anywhere">{record.name}</p>
                 </div>
               ))}
             </div>

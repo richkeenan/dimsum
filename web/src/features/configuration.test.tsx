@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import Configuration from "./configuration";
 import { RefreshListsButton } from "./lists";
@@ -117,12 +111,8 @@ it("requires explicit list assignments to be reset before offering deletion, inc
   render(<Configuration kind="lists" range="" />);
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   const dialog = await screen.findByRole("dialog");
-  expect(
-    within(dialog).getByRole("button", { name: "Delete list" }),
-  ).toBeDisabled();
-  expect(
-    within(dialog).getByText(/1 explicit device or profile assignments/),
-  ).toBeInTheDocument();
+  expect(within(dialog).getByRole("button", { name: "Delete list" })).toBeDisabled();
+  expect(within(dialog).getByText(/1 explicit device or profile assignments/)).toBeInTheDocument();
 });
 
 it("adds a provider as one revision-checked mutation", async () => {
@@ -145,9 +135,7 @@ it("adds a provider as one revision-checked mutation", async () => {
       item: { preset: "cloudflare", transport: "plain" },
     }),
   );
-  await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
 
 function upstreamResources(
@@ -167,24 +155,21 @@ function upstreamResources(
 
 it("switches upstream selection modes without losing the configured order", async () => {
   upstreamResources();
-  const send = vi
-    .spyOn(api, "send")
-    .mockImplementation(async (_path, _method, body) => {
-      const mutation = body as { edits: { value: string }[] };
-      upstreamResources(mutation.edits[0].value, "saved-revision");
-      return {};
-    });
+  const send = vi.spyOn(api, "send").mockImplementation(async (_path, _method, body) => {
+    const mutation = body as { edits: { value: string }[] };
+    upstreamResources(mutation.edits[0].value, "saved-revision");
+    return {};
+  });
   render(<Configuration kind="upstreams" range="" />);
   expect(screen.getByLabelText("Selection mode")).toHaveValue("ordered");
-  expect(
-    screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
-  ).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByRole("button", { name: "Move 192.0.2.53:53 up" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   fireEvent.change(screen.getByLabelText("Selection mode"), {
     target: { value: "adaptive" },
   });
-  await waitFor(() =>
-    expect(screen.getByLabelText("Selection mode")).toHaveValue("adaptive"),
-  );
+  await waitFor(() => expect(screen.getByLabelText("Selection mode")).toHaveValue("adaptive"));
   expect(send).toHaveBeenCalledWith(
     "settings",
     "PATCH",
@@ -194,16 +179,15 @@ it("switches upstream selection modes without losing the configured order", asyn
     },
     { refresh: ["upstreams", "settings"] },
   );
-  expect(
-    screen.queryByRole("button", { name: /Move .* down/ }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Move .* down/ })).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Selection mode"), {
     target: { value: "ordered" },
   });
   await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Move 192.0.2.54:53 down" }),
-    ).toHaveAttribute("aria-disabled", "true"),
+    expect(screen.getByRole("button", { name: "Move 192.0.2.54:53 down" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    ),
   );
   expect(send).toHaveBeenLastCalledWith(
     "settings",
@@ -220,19 +204,12 @@ it("switches upstream selection modes without losing the configured order", asyn
 it("saves an upstream move atomically and displays the returned order", async () => {
   upstreamResources();
   const send = vi.spyOn(api, "send").mockImplementation(async () => {
-    upstreamResources("ordered", "saved-revision", [
-      "192.0.2.54:53",
-      "192.0.2.53:53",
-    ]);
+    upstreamResources("ordered", "saved-revision", ["192.0.2.54:53", "192.0.2.53:53"]);
     return {};
   });
   render(<Configuration kind="upstreams" range="" />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
-  );
-  await waitFor(() =>
-    expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.54:53"),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }));
+  await waitFor(() => expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.54:53"));
   expect(send).toHaveBeenCalledWith(
     "upstreams",
     "PATCH",
@@ -245,33 +222,25 @@ it("saves an upstream move atomically and displays the returned order", async ()
     },
     { refresh: ["upstreams", "settings"] },
   );
-  expect(
-    screen.getByRole("button", { name: "Move 192.0.2.54:53 up" }),
-  ).toHaveAttribute("aria-disabled", "true");
-  expect(
-    screen.getByRole("button", { name: "Move 192.0.2.53:53 up" }),
-  ).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Move 192.0.2.54:53 up" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("button", { name: "Move 192.0.2.53:53 up" })).toBeEnabled();
 });
 
 it.each(["mode", "order"])(
   "keeps saved upstream %s after a revision conflict",
   async (operation) => {
     upstreamResources();
-    vi.spyOn(api, "send").mockRejectedValue(
-      new APIError(409, "conflict", "revision conflict"),
-    );
+    vi.spyOn(api, "send").mockRejectedValue(new APIError(409, "conflict", "revision conflict"));
     render(<Configuration kind="upstreams" range="" />);
     if (operation === "mode")
       fireEvent.change(screen.getByLabelText("Selection mode"), {
         target: { value: "adaptive" },
       });
-    else
-      fireEvent.click(
-        screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
-      );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /haven't been saved/,
-    );
+    else fireEvent.click(screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/haven't been saved/);
     expect(screen.getByLabelText("Selection mode")).toHaveValue("ordered");
     expect(screen.getAllByRole("row")[1]).toHaveTextContent("192.0.2.53:53");
     expect(screen.queryByText("Changes saved.")).not.toBeInTheDocument();
@@ -283,33 +252,22 @@ it("waits for matching revisions and lets the user refresh after an external cha
   resources.values.settings = { loading: true };
   const view = render(<Configuration kind="upstreams" range="" />);
   expect(screen.getByLabelText("Selection mode")).toBeDisabled();
-  expect(
-    screen.queryByRole("button", { name: /Move .* down/ }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Move .* down/ })).not.toBeInTheDocument();
   upstreamResources();
   resources.values.upstreams.data = {
     revision: "newer-revision",
     items: ["192.0.2.53:53", "192.0.2.54:53"],
   };
-  resources.values.upstreams.reload = async () =>
-    upstreamResources("ordered", "newer-revision");
+  resources.values.upstreams.reload = async () => upstreamResources("ordered", "newer-revision");
   view.rerender(<Configuration kind="upstreams" range="" />);
-  expect(screen.getByLabelText("Selection mode")).toHaveAttribute(
+  expect(screen.getByLabelText("Selection mode")).toHaveAttribute("aria-disabled", "true");
+  expect(screen.getByRole("button", { name: "Move 192.0.2.53:53 down" })).toHaveAttribute(
     "aria-disabled",
     "true",
   );
-  expect(
-    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
-  ).toHaveAttribute("aria-disabled", "true");
-  fireEvent.click(
-    screen.getByRole("button", { name: "Refresh upstream settings" }),
-  );
-  await waitFor(() =>
-    expect(screen.getByLabelText("Selection mode")).toBeEnabled(),
-  );
-  expect(
-    screen.getByRole("button", { name: "Move 192.0.2.53:53 down" }),
-  ).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh upstream settings" }));
+  await waitFor(() => expect(screen.getByLabelText("Selection mode")).toBeEnabled());
+  expect(screen.getByRole("button", { name: "Move 192.0.2.53:53 down" })).toBeEnabled();
 });
 
 it("validates custom upstreams locally and formats IPv6 with the default port", async () => {
@@ -346,9 +304,7 @@ it("validates custom upstreams locally and formats IPv6 with the default port", 
 it("subscribes directly from the catalog with its parser settings", async () => {
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   render(<Configuration kind="lists" range="" />);
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "Recommended domains" }),
-  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("lists", "POST", {
       revision: "original-revision",
@@ -384,9 +340,7 @@ it.each([true, false])(
     const send = vi.spyOn(api, "send").mockResolvedValue({});
     render(<Configuration kind="lists" range="" />);
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "Recommended domains" }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
     await waitFor(() =>
       expect(send).toHaveBeenCalledWith("lists", "PATCH", {
         revision: "original-revision",
@@ -408,16 +362,12 @@ it("shows download progress then the source failure without claiming it is activ
       }) as never,
   );
   const view = render(<Configuration kind="lists" range="" />);
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "Recommended domains" }),
-  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   expect(screen.getByText("Downloading…")).toBeInTheDocument();
   expect(screen.getByRole("checkbox")).toBeDisabled();
   resources.values.lists.data = {
     revision: "saved",
-    items: [
-      { id: "existing", url: "https://example.com/domains", enabled: true },
-    ],
+    items: [{ id: "existing", url: "https://example.com/domains", enabled: true }],
     status: {
       sources: [
         {
@@ -430,13 +380,9 @@ it("shows download progress then the source failure without claiming it is activ
     },
   };
   finish({ saved_revision: "saved" });
-  await waitFor(() =>
-    expect(screen.queryByText("Downloading…")).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByText("Downloading…")).not.toBeInTheDocument());
   view.rerender(<Configuration kind="lists" range="" />);
-  expect(
-    screen.getByRole("checkbox", { name: "Recommended domains" }),
-  ).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Recommended domains" })).toBeChecked();
   expect(screen.getByText("Download failed")).toBeInTheDocument();
   expect(screen.getByText("Publisher returned HTTP 503")).toBeInTheDocument();
   expect(screen.queryByText("Active", { exact: true })).not.toBeInTheDocument();
@@ -447,9 +393,7 @@ it("keeps a failed checkbox mutation unchecked and surfaces the conflict", async
     new APIError(409, "revision_conflict", "Changed on disk"),
   );
   render(<Configuration kind="lists" range="" />);
-  fireEvent.click(
-    screen.getByRole("checkbox", { name: "Recommended domains" }),
-  );
+  fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.getByRole("checkbox")).not.toBeChecked();
 });
@@ -498,22 +442,16 @@ it("keeps a retained source visibly active when its update fails", () => {
     },
   };
   render(<Configuration kind="lists" range="" />);
-  expect(
-    screen.getByRole("checkbox", { name: "example.org/hosts" }),
-  ).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "example.org/hosts" })).toBeChecked();
   expect(screen.getByText("Downloaded · update failed")).toBeInTheDocument();
-  expect(
-    screen.getByText("Retained previous source after HTTP 503"),
-  ).toBeInTheDocument();
+  expect(screen.getByText("Retained previous source after HTTP 503")).toBeInTheDocument();
   expect(screen.getByRole("cell", { name: "42" })).toBeInTheDocument();
 });
 
 it("keeps a catalog choice distinct from a source with the same ID and an edited URL", async () => {
   resources.values.lists.data = {
     revision: "original-revision",
-    items: [
-      { id: "recommended", url: "https://example.org/edited", enabled: true },
-    ],
+    items: [{ id: "recommended", url: "https://example.org/edited", enabled: true }],
     status: {
       sources: [{ id: "recommended", enabled: true, usable: true, rules: 42 }],
     },
@@ -532,21 +470,15 @@ it("keeps a catalog choice distinct from a source with the same ID and an edited
   });
   expect(choice).not.toBeChecked();
   expect(configured).toBeChecked();
-  expect(
-    within(choice.closest("tr")!).queryByRole("cell", { name: "42" }),
-  ).not.toBeInTheDocument();
-  expect(
-    within(configured.closest("tr")!).getByRole("cell", { name: "42" }),
-  ).toBeInTheDocument();
+  expect(within(choice.closest("tr")!).queryByRole("cell", { name: "42" })).not.toBeInTheDocument();
+  expect(within(configured.closest("tr")!).getByRole("cell", { name: "42" })).toBeInTheDocument();
   fireEvent.click(choice);
   expect(screen.getAllByText("Downloading…")).toHaveLength(1);
   expect(
     within(configured.closest("tr")!).getByText("Downloaded", { exact: true }),
   ).toBeInTheDocument();
   finish({});
-  await waitFor(() =>
-    expect(screen.queryByText("Downloading…")).not.toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.queryByText("Downloading…")).not.toBeInTheDocument());
 });
 
 it("refreshes source status after mounting during a running refresh", async () => {
@@ -555,20 +487,14 @@ it("refreshes source status after mounting during a running refresh", async () =
     data: { items: [{ id: "prior-job", kind: "refresh", state: "running" }] },
   };
   const completed = vi.fn();
-  const view = render(
-    <RefreshListsButton disabled={false} completed={completed} />,
-  );
-  expect(
-    screen.getByRole("button", { name: "Updating blocklists…" }),
-  ).toBeDisabled();
+  const view = render(<RefreshListsButton disabled={false} completed={completed} />);
+  expect(screen.getByRole("button", { name: "Updating blocklists…" })).toBeDisabled();
   resources.values.jobs.data = {
     items: [{ id: "prior-job", kind: "refresh", state: "succeeded" }],
   };
   view.rerender(<RefreshListsButton disabled={false} completed={completed} />);
   await waitFor(() => expect(completed).toHaveBeenCalledOnce());
-  expect(
-    screen.getByRole("button", { name: "Update blocklists" }),
-  ).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Update blocklists" })).toBeEnabled();
 });
 
 it.each(["succeeded", "failed"])(
@@ -581,14 +507,10 @@ it.each(["succeeded", "failed"])(
       state: "running",
     });
     const completed = vi.fn();
-    const view = render(
-      <RefreshListsButton disabled={false} completed={completed} />,
-    );
+    const view = render(<RefreshListsButton disabled={false} completed={completed} />);
     fireEvent.click(screen.getByRole("button", { name: "Update blocklists" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Updating blocklists…" }),
-      ).toBeDisabled(),
+      expect(screen.getByRole("button", { name: "Updating blocklists…" })).toBeDisabled(),
     );
     expect(completed).not.toHaveBeenCalled();
     resources.values.jobs.data = {
@@ -601,13 +523,9 @@ it.each(["succeeded", "failed"])(
         },
       ],
     };
-    view.rerender(
-      <RefreshListsButton disabled={false} completed={completed} />,
-    );
+    view.rerender(<RefreshListsButton disabled={false} completed={completed} />);
     await waitFor(() => expect(completed).toHaveBeenCalledOnce());
-    expect(
-      screen.getByRole("button", { name: "Update blocklists" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Update blocklists" })).toBeEnabled();
     if (state === "failed")
       expect(screen.getByRole("alert")).toHaveTextContent("Refresh timed out");
   },
@@ -617,12 +535,8 @@ it("offers only supported local records with a five-minute lifetime and reverse 
   render(<Configuration kind="records" range="" />);
   fireEvent.click(screen.getByRole("button", { name: "Add record" }));
   const dialog = screen.getByRole("dialog");
-  expect(
-    within(dialog).queryByRole("option", { name: "TXT" }),
-  ).not.toBeInTheDocument();
-  expect(within(dialog).getByLabelText("Cache lifetime (seconds)")).toHaveValue(
-    300,
-  );
+  expect(within(dialog).queryByRole("option", { name: "TXT" })).not.toBeInTheDocument();
+  expect(within(dialog).getByLabelText("Cache lifetime (seconds)")).toHaveValue(300);
   expect(
     within(dialog).getByRole("combobox", {
       name: "Create a reverse lookup too",
@@ -659,9 +573,7 @@ it("offers a canonical dashboard hostname after saving and shows the link only a
   expect(
     screen.queryByRole("link", { name: "http://xn--bcher-kva.test:18080/" }),
   ).not.toBeInTheDocument();
-  fireEvent.click(
-    within(confirm).getByRole("button", { name: "Add to accepted hosts" }),
-  );
+  fireEvent.click(within(confirm).getByRole("button", { name: "Add to accepted hosts" }));
   expect(
     await screen.findByRole("link", {
       name: "http://xn--bcher-kva.test:18080/",
@@ -730,9 +642,7 @@ it("preserves an existing ID and the editing revision while background data chan
 });
 
 it("patches only changed settings and retains the draft on a revision conflict", async () => {
-  const edit = vi
-    .spyOn(api, "edit")
-    .mockRejectedValue(new APIError(409, "conflict", "changed"));
+  const edit = vi.spyOn(api, "edit").mockRejectedValue(new APIError(409, "conflict", "changed"));
   const view = render(<SettingsView />);
   fireEvent.change(screen.getByLabelText("Memory budget (bytes)"), {
     target: { value: "16777216" },
@@ -754,16 +664,10 @@ it("patches only changed settings and retains the draft on a revision conflict",
 });
 
 it("hides ordinary revision identifiers and only surfaces exceptional activation state", () => {
-  const view = render(
-    <Revision value={{ revision: "private-hash", active_generation: "42" }} />,
-  );
+  const view = render(<Revision value={{ revision: "private-hash", active_generation: "42" }} />);
   expect(view.container).toBeEmptyDOMElement();
-  view.rerender(
-    <Revision value={{ revision: "private-hash", pending: true }} />,
-  );
-  expect(screen.getByRole("status")).toHaveTextContent(
-    "Applying saved changes",
-  );
+  view.rerender(<Revision value={{ revision: "private-hash", pending: true }} />);
+  expect(screen.getByRole("status")).toHaveTextContent("Applying saved changes");
   expect(screen.queryByText("private-hash")).not.toBeInTheDocument();
 });
 
@@ -830,9 +734,7 @@ it("opens client queries from the name and discovery details from a separate act
   };
   const queries = vi.fn();
   render(<Configuration kind="clients" range="" onClientQueries={queries} />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "View queries for Example television" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "View queries for Example television" }));
   expect(queries).toHaveBeenCalledWith("192.0.2.20");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   fireEvent.click(
@@ -918,9 +820,7 @@ it("explains a blocked rule test without displaying raw JSON by default", async 
 });
 
 it("keeps the current session if changing the password fails", async () => {
-  vi.spyOn(api, "send").mockRejectedValue(
-    new Error("Password could not be saved"),
-  );
+  vi.spyOn(api, "send").mockRejectedValue(new Error("Password could not be saved"));
   sessionStorage.setItem("dimsum-csrf", "keep-token");
   const expired = vi.fn();
   window.addEventListener("session-expired", expired);
@@ -932,9 +832,7 @@ it("keeps the current session if changing the password fails", async () => {
     target: { value: "new-secret" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Change password" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Password could not be saved",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Password could not be saved");
   expect(sessionStorage.getItem("dimsum-csrf")).toBe("keep-token");
   expect(expired).not.toHaveBeenCalled();
   window.removeEventListener("session-expired", expired);
@@ -946,9 +844,7 @@ it("provides a direct backup action and requires an archive before restoring", a
     .spyOn(api, "send")
     .mockResolvedValue({ id: "backup-job", kind: "backup", state: "running" });
   render(<Jobs />);
-  expect(
-    screen.getByRole("button", { name: "Validate and restore" }),
-  ).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Validate and restore" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Create backup" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("jobs", "POST", {

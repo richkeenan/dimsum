@@ -34,10 +34,7 @@ export default function Overview({
     refresh,
   );
   const rankings = useResource<Rankings>("rankings?" + range, refresh);
-  const clients = useResource<ClientsResponse>(
-    "clients?" + range + "&limit=200",
-    refresh,
-  );
+  const clients = useResource<ClientsResponse>("clients?" + range + "&limit=200", refresh);
   const s = summary.data;
   return (
     <>
@@ -93,10 +90,7 @@ export default function Overview({
         <Resource state={series}>
           <Suspense
             fallback={
-              <p
-                className="p-5 text-sm leading-relaxed text-muted-foreground"
-                role="status"
-              >
+              <p className="p-5 text-sm leading-relaxed text-muted-foreground" role="status">
                 Loading chart…
               </p>
             }
@@ -110,9 +104,7 @@ export default function Overview({
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
               <h2 className="text-sm font-medium">Top clients</h2>
-              <span className="text-xs text-muted-foreground">
-                By requests · top 10
-              </span>
+              <span className="text-xs text-muted-foreground">By requests · top 10</span>
             </div>
             <DataTable
               items={rows(rankings.data, "clients").slice(0, 10)}
@@ -147,9 +139,7 @@ export default function Overview({
           <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border p-3.5 min-[701px]:px-[18px] min-[701px]:py-[13px]">
               <h2 className="text-sm font-medium">Top blocked domains</h2>
-              <span className="text-xs text-muted-foreground">
-                Exact names · top 10
-              </span>
+              <span className="text-xs text-muted-foreground">Exact names · top 10</span>
             </div>
             <DataTable
               items={rows(rankings.data, "domains").slice(0, 10)}

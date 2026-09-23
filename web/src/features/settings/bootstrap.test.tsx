@@ -8,24 +8,14 @@ afterEach(() => vi.restoreAllMocks());
 it("uses automatic defaults and saves a custom bootstrap list with the draft revision", async () => {
   const edit = vi.spyOn(api, "edit").mockResolvedValue({ revision: "r3" });
   const { rerender } = render(
-    <BootstrapSettings
-      settings={{ revision: "r1", config: {} }}
-      refresh={() => {}}
-    />,
+    <BootstrapSettings settings={{ revision: "r1", config: {} }} refresh={() => {}} />,
   );
   fireEvent.click(screen.getByText("Advanced: bootstrap DNS"));
-  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue(
-    "1.1.1.1:53\n9.9.9.9:53",
-  );
+  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue("1.1.1.1:53\n9.9.9.9:53");
   fireEvent.change(screen.getByLabelText("Bootstrap DNS servers"), {
     target: { value: "192.0.2.53:53\n[2001:db8::53]:5353" },
   });
-  rerender(
-    <BootstrapSettings
-      settings={{ revision: "r2", config: {} }}
-      refresh={() => {}}
-    />,
-  );
+  rerender(<BootstrapSettings settings={{ revision: "r2", config: {} }} refresh={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: "Save bootstrap DNS" }));
   await waitFor(() =>
     expect(edit).toHaveBeenCalledWith("r1", [
@@ -49,12 +39,8 @@ it("resets bootstrap to the explicit default pair through settings editing", asy
     />,
   );
   fireEvent.click(screen.getByText("Advanced: bootstrap DNS"));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Use automatic defaults" }),
-  );
-  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue(
-    "1.1.1.1:53\n9.9.9.9:53",
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Use automatic defaults" }));
+  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue("1.1.1.1:53\n9.9.9.9:53");
   fireEvent.click(screen.getByRole("button", { name: "Save bootstrap DNS" }));
   await waitFor(() =>
     expect(edit).toHaveBeenCalledWith("r1", [
@@ -67,9 +53,7 @@ it("rejects an empty bootstrap override and preserves a rejected draft", async (
   const edit = vi
     .spyOn(api, "edit")
     .mockRejectedValue(new APIError(409, "conflict", "revision conflict"));
-  render(
-    <BootstrapSettings settings={{ revision: "r1" }} refresh={() => {}} />,
-  );
+  render(<BootstrapSettings settings={{ revision: "r1" }} refresh={() => {}} />);
   fireEvent.click(screen.getByText("Advanced: bootstrap DNS"));
   fireEvent.change(screen.getByLabelText("Bootstrap DNS servers"), {
     target: { value: "" },
@@ -81,10 +65,6 @@ it("rejects an empty bootstrap override and preserves a rejected draft", async (
     target: { value: "192.0.2.53:53" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Save bootstrap DNS" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    /haven't been saved/,
-  );
-  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue(
-    "192.0.2.53:53",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(/haven't been saved/);
+  expect(screen.getByLabelText("Bootstrap DNS servers")).toHaveValue("192.0.2.53:53");
 });

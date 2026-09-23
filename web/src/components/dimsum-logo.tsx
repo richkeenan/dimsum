@@ -1,10 +1,4 @@
-export function DimsumLogo({
-  width = 54,
-  height = 44,
-}: {
-  width?: number;
-  height?: number;
-}) {
+export function DimsumLogo({ width = 54, height = 44 }: { width?: number; height?: number }) {
   return (
     <svg
       viewBox="45 50 235 190"
@@ -16,30 +10,11 @@ export function DimsumLogo({
       focusable="false"
     >
       <g strokeLinecap="round" strokeLinejoin="round">
-        <path
-          d="m118 209-7 20m93-23 7 23m-130-69-23 16"
-          stroke="#68A77F"
-          strokeWidth="8"
-        />
-        <path
-          className="dimsum-logo-arm"
-          d="m243 156 23-21"
-          stroke="#68A77F"
-          strokeWidth="8"
-        />
-        <path
-          d="M76 119 99 76l114 1 35 45-12 80q-78 32-153-1Z"
-          fill="#176C55"
-        />
-        <path
-          d="M104 116q-8-48 25-52l58 2q35 5 28 49l-29 36h-48Z"
-          fill="#EEE9C8"
-        />
-        <path
-          d="m121 87 7-3m20-10 7 1m23 4 7 3m9 15 5 4"
-          stroke="#C8C399"
-          strokeWidth="4"
-        />
+        <path d="m118 209-7 20m93-23 7 23m-130-69-23 16" stroke="#68A77F" strokeWidth="8" />
+        <path className="dimsum-logo-arm" d="m243 156 23-21" stroke="#68A77F" strokeWidth="8" />
+        <path d="M76 119 99 76l114 1 35 45-12 80q-78 32-153-1Z" fill="#176C55" />
+        <path d="M104 116q-8-48 25-52l58 2q35 5 28 49l-29 36h-48Z" fill="#EEE9C8" />
+        <path d="m121 87 7-3m20-10 7 1m23 4 7 3m9 15 5 4" stroke="#C8C399" strokeWidth="4" />
         <path d="m76 119 81 35 91-32-12 80q-78 32-153-1Z" fill="#297F5E" />
         <path d="m76 119 37-6 44 41-30-8m121-24-35-15-56 47" fill="#7EB778" />
         <path d="m88 185 151-9" stroke="#D8C275" strokeWidth="6" />
@@ -48,11 +23,7 @@ export function DimsumLogo({
           stroke="#D8C275"
           strokeWidth="5"
         />
-        <path
-          d="m136 108v10m42-10v10m-29 10q9 10 18-1"
-          stroke="#163E35"
-          strokeWidth="6"
-        />
+        <path d="m136 108v10m42-10v10m-29 10q9 10 18-1" stroke="#163E35" strokeWidth="6" />
       </g>
     </svg>
   );

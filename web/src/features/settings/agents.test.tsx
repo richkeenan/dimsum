@@ -46,12 +46,8 @@ it("creates once, copies generic connection fields, and forgets the secret on Do
     return { ...metadata, token: secret };
   });
   const { client } = mount();
-  expect(screen.getByLabelText("MCP URL")).toHaveValue(
-    window.location.origin + "/mcp",
-  );
-  expect(
-    screen.queryByRole("link", { name: "OpenAPI specification" }),
-  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText("MCP URL")).toHaveValue(window.location.origin + "/mcp");
+  expect(screen.queryByRole("link", { name: "OpenAPI specification" })).not.toBeInTheDocument();
   create();
   expect(await screen.findByLabelText("New token")).toHaveValue(secret);
   expect(send).toHaveBeenCalledExactlyOnceWith("tokens", "POST", {
@@ -61,17 +57,13 @@ it("creates once, copies generic connection fields, and forgets the secret on Do
   fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
   await screen.findByText("Copied to clipboard.");
   expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(secret);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Copy connection fields" }),
-  );
+  fireEvent.click(screen.getByRole("button", { name: "Copy connection fields" }));
   expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
     `URL: ${window.location.origin}/mcp\nAuthorization: Bearer ${secret}`,
   );
   await screen.findByRole("button", { name: `Revoke ${metadata.name}` });
   expect(storage).not.toHaveBeenCalled();
-  expect(
-    JSON.stringify(client.getQueryData(["api", "tokens", "tokens"])),
-  ).not.toContain(secret);
+  expect(JSON.stringify(client.getQueryData(["api", "tokens", "tokens"]))).not.toContain(secret);
   fireEvent.click(screen.getByRole("button", { name: "Done" }));
   expect(screen.queryByLabelText("New token")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Connection fields")).not.toBeInTheDocument();
@@ -80,16 +72,12 @@ it("creates once, copies generic connection fields, and forgets the secret on Do
 
 it("keeps selectable text when clipboard access fails and clears the secret on unmount", async () => {
   vi.spyOn(api, "send").mockResolvedValue({ ...metadata, token: secret });
-  vi.mocked(navigator.clipboard.writeText).mockRejectedValue(
-    new Error("Denied"),
-  );
+  vi.mocked(navigator.clipboard.writeText).mockRejectedValue(new Error("Denied"));
   const view = mount();
   create();
   await screen.findByLabelText("New token");
   fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
-  await screen.findByText(
-    "Copy was blocked. Copy the selected text manually.",
-  );
+  await screen.findByText("Copy was blocked. Copy the selected text manually.");
   const field = screen.getByLabelText("New token") as HTMLInputElement;
   fireEvent.focus(field);
   expect(field.selectionStart).toBe(0);
@@ -105,12 +93,15 @@ it("keeps selectable text when clipboard access fails and clears the secret on u
 it("copies both fields on HTTP without the modern clipboard API", async () => {
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
   const copied: string[] = [];
-  Object.defineProperty(document, "execCommand", { configurable: true, value: (command: string) => {
-    if (command !== "copy") return false;
-    const field = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
-    copied.push(field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0));
-    return true;
-  }});
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: (command: string) => {
+      if (command !== "copy") return false;
+      const field = document.activeElement as HTMLInputElement | HTMLTextAreaElement;
+      copied.push(field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0));
+      return true;
+    },
+  });
   vi.spyOn(api, "send").mockResolvedValue({ ...metadata, token: secret });
   mount();
   create();
@@ -118,7 +109,10 @@ it("copies both fields on HTTP without the modern clipboard API", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
   await screen.findByText("Copied to clipboard.");
   fireEvent.click(screen.getByRole("button", { name: "Copy connection fields" }));
-  expect(copied).toEqual([secret, `URL: ${window.location.origin}/mcp\nAuthorization: Bearer ${secret}`]);
+  expect(copied).toEqual([
+    secret,
+    `URL: ${window.location.origin}/mcp\nAuthorization: Bearer ${secret}`,
+  ]);
   Reflect.deleteProperty(document, "execCommand");
 });
 
@@ -146,30 +140,22 @@ it("revokes a token, disables pending actions, and refreshes the token list", as
   vi.mocked(api.get).mockResolvedValue({ items: [] });
   finish({ revoked: true });
   await screen.findByText("No agent tokens yet.");
-  expect(
-    screen.queryByRole("button", { name: `Revoke ${metadata.name}` }),
-  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: `Revoke ${metadata.name}` })).not.toBeInTheDocument();
 });
 
 it("preserves the name and offers retry after failed creation without showing a secret", async () => {
-  const send = vi
-    .spyOn(api, "send")
-    .mockRejectedValue(new Error("Token could not be created."));
+  const send = vi.spyOn(api, "send").mockRejectedValue(new Error("Token could not be created."));
   mount();
   create();
   await screen.findByText("Token could not be created.");
-  expect(screen.getByLabelText("Token name")).toHaveValue(
-    " Desktop assistant ",
-  );
+  expect(screen.getByLabelText("Token name")).toHaveValue(" Desktop assistant ");
   expect(screen.queryByLabelText("New token")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Create token" })).toBeEnabled();
   expect(send).toHaveBeenCalledTimes(1);
 });
 
 it("shows loading and a recoverable list error", async () => {
-  vi.mocked(api.get).mockRejectedValue(
-    new APIError(403, "forbidden", "Cannot list tokens."),
-  );
+  vi.mocked(api.get).mockRejectedValue(new APIError(403, "forbidden", "Cannot list tokens."));
   mount();
   expect(screen.getByText("Loading tokens…")).toBeInTheDocument();
   await screen.findByText("Cannot list tokens.");
@@ -182,13 +168,9 @@ it("retains a token after a failed revoke", async () => {
   vi.mocked(api.get).mockResolvedValue({ items: [metadata] });
   vi.spyOn(api, "send").mockRejectedValue(new Error("Revoke failed."));
   mount();
-  fireEvent.click(
-    await screen.findByRole("button", { name: `Revoke ${metadata.name}` }),
-  );
+  fireEvent.click(await screen.findByRole("button", { name: `Revoke ${metadata.name}` }));
   await screen.findByText("Revoke failed.");
   await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: `Revoke ${metadata.name}` }),
-    ).toBeEnabled(),
+    expect(screen.getByRole("button", { name: `Revoke ${metadata.name}` })).toBeEnabled(),
   );
 });

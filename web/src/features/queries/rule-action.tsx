@@ -8,12 +8,7 @@ function resolveAddress(address: string) {
     name: "identity.invalid",
   });
 }
-import {
-  ownerPolicy,
-  selectClass,
-  type PolicyRead,
-  type Schema,
-} from "../clients/model";
+import { ownerPolicy, selectClass, type PolicyRead, type Schema } from "../clients/model";
 import { Ban, ShieldCheck } from "lucide-react";
 import { api, normalizeSettings, type Settings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -45,9 +40,8 @@ function isActive(settings: Settings) {
 }
 
 function queryRuleID() {
-  return `query-${Array.from(
-    crypto.getRandomValues(new Uint8Array(12)),
-    (byte) => byte.toString(16).padStart(2, "0"),
+  return `query-${Array.from(crypto.getRandomValues(new Uint8Array(12)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
   ).join("")}`;
 }
 
@@ -63,9 +57,7 @@ function useRuleSave(name: string, address?: string) {
     try {
       const settings = await api.get<Settings>("settings");
       if (!settings.revision)
-        throw new Error(
-          "The current settings revision is unavailable. Try again.",
-        );
+        throw new Error("The current settings revision is unavailable. Try again.");
       let clientID: string | undefined;
       let saved: unknown;
       if (target !== "network") {
@@ -81,10 +73,7 @@ function useRuleSave(name: string, address?: string) {
         const current = await api.get<PolicyRead>(
           `client-policy?${new URLSearchParams({ scope, id })}`,
         );
-        if (
-          scope === "client" &&
-          !(current.desired as Schema["PolicyClient"]).id
-        )
+        if (scope === "client" && !(current.desired as Schema["PolicyClient"]).id)
           throw new Error(
             "Give this legacy device a stable ID in Devices before adding device rules.",
           );
@@ -136,14 +125,12 @@ function useRuleSave(name: string, address?: string) {
           });
           const decision = explanation.decision?.result;
           if (action === "deny" && decision === "allow") {
-            result.notice =
-              "saved, but an allow exception still takes precedence.";
+            result.notice = "saved, but an allow exception still takes precedence.";
             result.allowException = true;
           } else if (decision === "paused") {
             result.notice = "saved · filtering is paused";
           } else if (decision !== (action === "deny" ? "block" : "allow")) {
-            result.notice =
-              "saved · the current policy does not match this action";
+            result.notice = "saved · the current policy does not match this action";
           }
         } catch {
           // The write succeeded. Do not invite a duplicate write if the
@@ -171,9 +158,7 @@ function RuleTarget(props: TargetProps) {
   return props.address ? <ScopedRuleTarget {...props} /> : null;
 }
 function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
-  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>(
-    "profiles",
-  );
+  const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const resolution = useQuery({
     queryKey: ["api", "client-resolution", address],
     queryFn: () => resolveAddress(address!),
@@ -203,9 +188,7 @@ function ScopedRuleTarget({ address, value, change, disabled }: TargetProps) {
       </label>
       {profiles.error && <ErrorNotice error={profiles.error} />}
       {resolution.error ? (
-        <p role="status">
-          Device identity unavailable. Retry the action to resolve it again.
-        </p>
+        <p role="status">Device identity unavailable. Retry the action to resolve it again.</p>
       ) : resolution.isPending ? (
         <p>Resolving device identity…</p>
       ) : (
@@ -260,8 +243,7 @@ export function InlineRuleAction({
   outcome: string;
   address?: string;
 }) {
-  if (!name || !["blocked", "forwarded", "cache", "stale"].includes(outcome))
-    return null;
+  if (!name || !["blocked", "forwarded", "cache", "stale"].includes(outcome)) return null;
   const action = outcome === "blocked" ? "allow" : "deny";
   const label = action === "deny" ? "Block" : "Allow";
   const Icon = action === "deny" ? Ban : ShieldCheck;
@@ -297,16 +279,13 @@ export function QueryRuleForm({
   outcome: string;
   address?: string;
 }) {
-  const [action, setAction] = useState(
-    outcome === "blocked" ? "allow" : "deny",
-  );
+  const [action, setAction] = useState(outcome === "blocked" ? "allow" : "deny");
   const [scope, setScope] = useState("exact");
   const state = useRuleSave(name, address);
   if (outcome === "local")
     return (
       <p className="rounded-md bg-muted p-3 text-sm leading-relaxed text-muted-foreground">
-        Local DNS records take priority over domain rules. To change this
-        answer, edit its record in{" "}
+        Local DNS records take priority over domain rules. To change this answer, edit its record in{" "}
         <a href="/records" className="underline underline-offset-2">
           Local DNS
         </a>
@@ -361,9 +340,7 @@ export function QueryRuleForm({
         disabled={state.busy || !name || !!state.result}
         onClick={() => state.save(action, scope)}
       >
-        {state.busy
-          ? "Saving…"
-          : `Create ${action === "deny" ? "block" : "allow"} rule`}
+        {state.busy ? "Saving…" : `Create ${action === "deny" ? "block" : "allow"} rule`}
       </Button>
       {state.result && <RuleSaved result={state.result} />}
     </section>
