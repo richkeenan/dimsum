@@ -64,8 +64,7 @@ func cacheKeyRoute(r *transport.Request, s *config.Snapshot, route upstream.Rout
 }
 
 func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, route upstream.RouteKey, c *dnscache.Cache, k dnscache.Key, r *transport.Request, refresh bool) ([]byte, error) {
-	// Copy before returning to a stale client or sharing work past its deadline.
-	wire := append([]byte(nil), r.Wire...)
+	var wire []byte
 	var metadata upstream.ExchangeResult
 	f, joined, err := p.cache.flights.joinStatus(k, refresh, func(workCtx context.Context) ([]byte, error) {
 		if refresh {
@@ -88,7 +87,11 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, route upstrea
 			}
 		}
 		return out, err
-	}, &metadata)
+	}, &metadata, func() {
+		// Only a leader needs owned bytes. Copy synchronously before returning
+		// to a stale client or sharing work past the caller's deadline.
+		wire = append([]byte(nil), r.Wire...)
+	})
 	if err != nil {
 		p.cache.overflow.Add(1)
 		return nil, err

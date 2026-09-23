@@ -38,11 +38,13 @@ type flights struct {
 }
 
 func (g *flights) join(k dnscache.Key, refresh bool, work func(context.Context) ([]byte, error)) (*flight, error) {
-	f, _, err := g.joinStatus(k, refresh, work, nil)
+	f, _, err := g.joinStatus(k, refresh, work, nil, nil)
 	return f, err
 }
 
-func (g *flights) joinStatus(k dnscache.Key, refresh bool, work func(context.Context) ([]byte, error), metadata *upstream.ExchangeResult) (*flight, bool, error) {
+// prepare runs synchronously only for an admitted leader, before its worker can
+// start. It must be bounded and must not call back into flights.
+func (g *flights) joinStatus(k dnscache.Key, refresh bool, work func(context.Context) ([]byte, error), metadata *upstream.ExchangeResult, prepare func()) (*flight, bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.closed {
@@ -62,6 +64,9 @@ func (g *flights) joinStatus(k dnscache.Key, refresh bool, work func(context.Con
 	}
 	if g.active == nil {
 		g.active = make(map[dnscache.Key]*flight)
+	}
+	if prepare != nil {
+		prepare()
 	}
 	// The upstream client enforces its configured bounded total timeout. This
 	// context belongs to the shared work, not to any individual client deadline.

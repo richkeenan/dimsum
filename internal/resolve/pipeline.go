@@ -90,7 +90,7 @@ func (p *Pipeline) Resolve(ctx context.Context, r *transport.Request, out []byte
 		effective = snapshot.ClientPolicies().Select(r.Peer.Addr(), mac)
 		route = effective.RouteKey()
 		settings = snapshot.Filtering()
-		if now.IsZero() {
+		if now.IsZero() && (!settings.PauseUntil.IsZero() || !effective.PausedUntil().IsZero()) {
 			now = time.Now()
 		}
 		blocking, _ := effective.Blocking()

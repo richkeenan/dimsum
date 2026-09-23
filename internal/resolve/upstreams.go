@@ -57,19 +57,20 @@ func (p *Pipeline) exchange(ctx context.Context, snapshot *config.Snapshot, rout
 		m.mu.Unlock()
 		return upstream.ExchangeResult{}, net.ErrClosed
 	}
-	// Prune synchronously too: retirement callbacks may be waiting on this lock.
-	for key, old := range m.routes {
-		if key.Err() != nil {
-			old.stop()
-			old.client.Close()
-			delete(m.routes, key)
-			if m.current == old {
-				m.current = nil
-			}
-		}
-	}
 	entry := m.routes[lifetime]
 	if entry == nil {
+		// Existing routes need no admission scan. Before creating a new one,
+		// prune synchronously: retirement callbacks may be waiting on this lock.
+		for key, old := range m.routes {
+			if key.Err() != nil {
+				old.stop()
+				old.client.Close()
+				delete(m.routes, key)
+				if m.current == old {
+					m.current = nil
+				}
+			}
+		}
 		if err := lifetime.Err(); err != nil {
 			m.mu.Unlock()
 			return result, err
