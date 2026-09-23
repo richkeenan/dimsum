@@ -109,14 +109,21 @@ test("profile switching protects drafts and create form manages focus", async ({
   await page
     .getByRole("button", { name: "Create profile", exact: true })
     .click();
-  await expect(page.getByLabel("Name", { exact: true }).first()).toBeFocused();
+  await expect(
+    page.getByRole("dialog", { name: "Create profile" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("dialog", { name: "Create profile" })
+      .getByLabel("Name", { exact: true }),
+  ).toBeFocused();
   await page.getByText("Advanced identification", { exact: true }).click();
   await page.getByLabel("Stable ID", { exact: true }).fill("new-profile");
   await expect(
     page.getByLabel("DNS filtering", { exact: true }),
   ).toBeDisabled();
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByLabel("Profile to edit").selectOption("");
+  await page.keyboard.press("Escape");
   await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
     "new-profile",
   );
@@ -196,6 +203,9 @@ test("successful saves and explicit discard clear navigation protection", async 
   page,
 }) => {
   await fixtureAPI(page);
+  await page.route("**/api/v1/client-policy", (route) =>
+    route.fulfill({ json: activation }),
+  );
   let prompts = 0;
   page.on("dialog", (dialog) => {
     prompts++;

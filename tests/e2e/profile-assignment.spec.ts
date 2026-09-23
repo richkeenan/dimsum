@@ -53,7 +53,8 @@ test("devices can move between visual profile groups and the table reads back th
   await expect(
     group("Network defaults").getByLabel("Profile for Study tablet"),
   ).toHaveValue("");
-  await page.getByLabel("Profile for Study tablet").selectOption("kids");
+  await page.getByRole("searchbox", { name: "Find device" }).fill("STUDY");
+  await page.getByTitle("Drag Study tablet to a profile").dragTo(group("Kids"));
   await expect(
     group("Kids").getByLabel("Profile for Study tablet"),
   ).toHaveValue("kids");

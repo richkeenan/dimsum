@@ -5,6 +5,12 @@ import { ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -304,6 +310,10 @@ export function Profiles() {
   const [tab, setTab] = useState<"network" | "profiles">("network");
   const [creating, setCreating] = useState(false);
   const [editorEpoch, setEditorEpoch] = useState(0);
+  const editor = useRef<HTMLFieldSetElement>(null);
+  const closeCreate = () => {
+    if (draft.confirmLeave()) setCreating(false);
+  };
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
@@ -392,26 +402,42 @@ export function Profiles() {
         </>
       )}
       {profiles.error && <ErrorNotice error={profiles.error} />}
-      {creating && (
-        <CreateOwner
-          scope="profile"
-          onDirty={draft.onCreateDirty}
-          revision={profiles.data?.status.saved_revision ?? ""}
-          cancel={() => {
-            if (!draft.confirmLeave()) return;
-            setCreating(false);
-            requestAnimationFrame(() => createTrigger.current?.focus());
+      <Dialog
+        open={creating}
+        onOpenChange={(open) => {
+          if (!open) closeCreate();
+        }}
+      >
+        <DialogContent
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            createTrigger.current?.focus({ preventScroll: true });
           }}
-          saved={(id) => {
-            draft.onDirty(false);
-            setCreating(false);
-            setSelected(id);
-            void profiles.reload();
-          }}
-        />
-      )}
+        >
+          <DialogTitle>Create profile</DialogTitle>
+          <DialogDescription>
+            Give this profile a name. You can assign devices and customize its
+            settings next.
+          </DialogDescription>
+          <CreateOwner
+            scope="profile"
+            onDirty={draft.onCreateDirty}
+            revision={profiles.data?.status.saved_revision ?? ""}
+            cancel={closeCreate}
+            saved={(id) => {
+              draft.onDirty(false);
+              setCreating(false);
+              setSelected(id);
+              void profiles.reload();
+              requestAnimationFrame(() =>
+                editor.current?.scrollIntoView({ block: "start" }),
+              );
+            }}
+          />
+        </DialogContent>
+      </Dialog>
       {(tab === "network" || selected) && (
-        <fieldset disabled={creating} className="min-w-0">
+        <fieldset ref={editor} disabled={creating} className="min-w-0">
           <PolicyEditor
             key={editorEpoch}
             scope={tab === "profiles" ? "profile" : "network"}
@@ -476,7 +502,7 @@ function CreateOwner({
   }, []);
   return (
     <form
-      className={panelClass}
+      className={scope === "profile" ? "space-y-4" : panelClass}
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
@@ -508,12 +534,12 @@ function CreateOwner({
         }
       }}
     >
-      <h3 className="text-sm font-medium">
-        {scope === "client"
-          ? `Settings for ${observed?.name || observed?.address}`
-          : "New profile"}
-      </h3>
-      <div className="grid gap-3 sm:grid-cols-2">
+      {scope === "client" && (
+        <h3 className="text-sm font-medium">
+          Settings for {observed?.name || observed?.address}
+        </h3>
+      )}
+      <div className="grid gap-3">
         <label className="text-sm">
           Name
           <Input
