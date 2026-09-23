@@ -991,7 +991,10 @@ function PolicyForm({
           {((error instanceof APIError && error.status === 409) ||
             (liveStatus &&
               liveStatus.saved_revision !== read.status.saved_revision)) && (
-            <Button variant="outline" onClick={() => void reload()}>
+            <Button
+              variant="outline"
+              onClick={() => void reload().catch((e: Error) => setError(e))}
+            >
               Reload saved policy
             </Button>
           )}

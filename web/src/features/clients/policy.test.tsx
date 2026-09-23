@@ -276,6 +276,41 @@ it("retains edits and offers reload after a conflict", async () => {
   ).toBeEnabled();
 });
 
+it("surfaces a failed conflict reload without losing the draft or writing again", async () => {
+  const writes = setup(true);
+  fireEvent.change(await screen.findByLabelText("Blocking"), {
+    target: { value: "off" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
+  await screen.findByRole("alert");
+  const previous = globalThis.fetch;
+  vi.stubGlobal("fetch", (url: string, init?: RequestInit) =>
+    url.includes("client-policy?")
+      ? Promise.resolve(
+          Response.json(
+            {
+              error: {
+                code: "unavailable",
+                message: "Saved policy read unavailable",
+              },
+            },
+            { status: 503 },
+          ),
+        )
+      : previous(url, init),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved policy" }));
+  expect(
+    await screen.findByText(
+      "Saved policy read unavailable",
+      {},
+      { timeout: 4000 },
+    ),
+  ).toBeVisible();
+  expect(screen.getByLabelText("Blocking")).toHaveValue("off");
+  expect(writes).toHaveLength(1);
+});
+
 it("keeps the opened revision and draft when a background refresh observes someone else’s edit", async () => {
   const writes = setup();
   fireEvent.change(await screen.findByLabelText("Blocking"), {
