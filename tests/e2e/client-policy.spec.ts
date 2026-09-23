@@ -213,10 +213,13 @@ test("device policy: atomic list, sparse reset, profile, relink and narrow-scree
   expect(writes[4].lease_address).toBe("192.0.2.20");
   expect(writes[4].selectors).toBeUndefined();
   await page.getByLabel("Domain", { exact: true }).fill("ads.example.test");
-  await page
-    .getByRole("button", { name: "Explain domain", exact: true })
-    .click();
-  await expect(page.getByText(/Winning rule: rule-1/)).toBeVisible();
+  await page.getByRole("button", { name: "Check domain", exact: true }).click();
+  await expect(
+    page.getByText("Blocked by current rules", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Domain check details" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Matched rule: rule-1");
+  await page.keyboard.press("Escape");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: testInfo.outputPath("device-policy-desktop.png"),

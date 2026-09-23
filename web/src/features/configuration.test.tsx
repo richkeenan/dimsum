@@ -845,14 +845,15 @@ it("provides a direct backup action and requires an archive before restoring", a
     .mockResolvedValue({ id: "backup-job", kind: "backup", state: "running" });
   render(<Jobs />);
   expect(screen.getByRole("button", { name: "Validate and restore" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Create backup" }));
+  fireEvent.click(screen.getByRole("button", { name: "Download backup" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("jobs", "POST", {
       kind: "backup",
       input: {},
     }),
   );
-  expect(screen.getByRole("status")).toHaveTextContent("Operation in progress");
+  expect(screen.getByRole("button", { name: "Preparing backup…" })).toBeDisabled();
+  expect(screen.getByLabelText("Configuration archive (.tar, up to 2 MiB)")).toBeEnabled();
 });
 
 it("summarises diagnostic health and keeps raw measurements collapsed", () => {
@@ -867,7 +868,7 @@ it("summarises diagnostic health and keeps raw measurements collapsed", () => {
   };
   render(<Diagnostics />);
   expect(screen.getByText("Ready to answer queries")).toBeVisible();
-  expect(screen.getByText("Storage unavailable")).toBeVisible();
+  expect(screen.getByText("Query history is unavailable")).toBeVisible();
   expect(screen.getByText(/Waiting before retry/)).toBeVisible();
   expect(screen.getByText("raw-boot-id")).not.toBeVisible();
 });

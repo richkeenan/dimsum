@@ -78,16 +78,10 @@ test("managed DNS history, cursor filters, observed names, backup download and a
   expect(failures).toEqual([]);
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("link", { name: "Backups", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Create backup", exact: true })
-    .click();
-  const downloadLink = page.getByRole("link", {
-    name: "Download backup",
-    exact: true,
-  });
-  await expect(downloadLink).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await downloadLink.click();
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
   const download = await downloadPromise;
   const archive = testInfo.outputPath("configuration.tar");
   await download.saveAs(archive);

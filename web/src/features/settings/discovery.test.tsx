@@ -2,7 +2,41 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { api } from "@/lib/api";
-import { DiscoverySettings } from "./discovery";
+import { DiscoverySettings, DiscoveryStatus } from "./discovery";
+
+it("keeps recorded discovery failures behind an accessible details button", async () => {
+  const error = "Interface 3: multicast send: IPv4=<nil> IPv6=network is unreachable";
+  render(
+    <DiscoveryStatus
+      value={{ enabled: true, running: true, interfaces: ["eth0"], errors: [error] }}
+    />,
+  );
+  expect(screen.getByText(/Discovery: Running/)).toBeInTheDocument();
+  expect(screen.queryByText(error)).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  const details = screen.getByRole("button", { name: "Device discovery details" });
+  details.focus();
+  await userEvent.keyboard("{Enter}");
+  expect(screen.getByRole("dialog", { name: "Device discovery details" })).toHaveTextContent(error);
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByText(error)).not.toBeInTheDocument();
+  expect(details).toHaveFocus();
+});
+
+it("shows actionable guidance only while enabled discovery is unavailable", () => {
+  const error = "listen udp :5353: bind: address already in use";
+  const view = render(
+    <DiscoveryStatus value={{ enabled: true, running: false, errors: [error] }} />,
+  );
+  expect(screen.getByText(/automatic device naming is unavailable/i)).toBeInTheDocument();
+  expect(screen.getByText(/Settings → Device discovery/)).toBeInTheDocument();
+  expect(screen.queryByText(error)).not.toBeInTheDocument();
+  view.rerender(<DiscoveryStatus value={{ enabled: true, running: true, errors: [error] }} />);
+  expect(screen.queryByText(/automatic device naming is unavailable/i)).not.toBeInTheDocument();
+  view.rerender(<DiscoveryStatus value={{ enabled: false, running: false, errors: [error] }} />);
+  expect(screen.getByText(/Discovery: Disabled/)).toBeInTheDocument();
+  expect(screen.queryByText(/automatic device naming is unavailable/i)).not.toBeInTheDocument();
+});
 
 it("reloads the latest server revision after a conflict", async () => {
   const edit = vi.spyOn(api, "edit").mockRejectedValue(new Error("Configuration changed"));

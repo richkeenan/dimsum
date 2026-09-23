@@ -5,6 +5,7 @@ import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BackupDownload } from "./backup";
 
 export default function Jobs() {
   const [tick, setTick] = useState(0);
@@ -73,27 +74,7 @@ export default function Jobs() {
   }
   return (
     <div className="min-w-0 [&_p]:leading-relaxed">
-      <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
-        <h2 className="mb-3 text-sm font-medium">Back up your configuration</h2>
-        <p className="mb-[18px] text-xs text-muted-foreground">
-          Includes configuration and secrets. Excludes query history, downloaded lists and DHCP
-          leases.
-        </p>
-        <Button disabled={busy} onClick={() => start("backup")}>
-          {busy ? "Working…" : "Create backup"}
-        </Button>
-        {downloadable && (
-          <p className="mt-3 text-xs">
-            <a
-              className="border-0 bg-transparent p-0 text-left text-foreground hover:underline"
-              href={backupURL(jobs.find((j) => j.id === downloadable)?.result)}
-              download="dimsum-config.tar"
-            >
-              Download latest backup
-            </a>
-          </p>
-        )}
-      </section>
+      <BackupDownload jobs={jobs} refresh={() => setTick((t) => t + 1)} pollError={state.error} />
       <section className="mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background p-5">
         <h2 className="mb-3 text-sm font-medium">Restore a backup</h2>
         <p className="mb-[18px] text-xs text-muted-foreground">
@@ -205,7 +186,6 @@ export default function Jobs() {
           <DataTable
             items={jobs}
             initialSorting={[{ id: "created", desc: true }]}
-            sortScope="Sorting applies to the loaded job history."
             columns={[
               {
                 key: "kind",

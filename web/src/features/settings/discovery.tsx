@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { InfoDetails } from "@/components/info-details";
 import { api, type Row, type Settings } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ErrorNotice } from "@/components/data";
@@ -14,21 +15,53 @@ function initial(settings: Settings) {
 }
 export function DiscoveryStatus({ value }: { value?: Row }) {
   if (!value) return null;
+  const enabled = value.enabled === true;
+  const running = value.running === true;
+  const errors = Array.isArray(value.errors) ? value.errors.map(String) : [];
   return (
     <div className="space-y-2 text-xs text-muted-foreground">
-      <p>
-        Discovery:{" "}
-        {value.enabled !== true ? "Disabled" : value.running === true ? "Running" : "Unavailable"}
-      </p>
+      <div className="flex items-center gap-1">
+        <p>Discovery: {!enabled ? "Disabled" : running ? "Running" : "Unavailable"}</p>
+        <InfoDetails label="Device discovery details">
+          <p className="text-muted-foreground">
+            Discovery uses mDNS / Bonjour to learn device names on your local network. Devices that
+            do not advertise a name may still appear by address.
+          </p>
+          {errors.length > 0 ? (
+            <>
+              <p className="mt-3 text-muted-foreground">
+                Some discovery attempts encountered problems. These recorded diagnostics may include
+                past problems or a failed attempt over one protocol while another worked; they do
+                not necessarily mean discovery is unavailable now.
+              </p>
+              <h4 className="mt-3 mb-2 font-medium">Recorded technical details</h4>
+              <ul className="space-y-2">
+                {errors.map((error, i) => (
+                  <li key={i} className="font-mono text-muted-foreground wrap-anywhere">
+                    {error}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-3 text-muted-foreground">No discovery problems recorded.</p>
+          )}
+        </InfoDetails>
+      </div>
+      {enabled && !running && (
+        <div className="space-y-2">
+          <p>Automatic device naming is unavailable.</p>
+          <p>
+            Review LAN interfaces in Settings → Device discovery. If you entered interface names,
+            leave that field empty and save to use active network connections automatically. If
+            discovery remains unavailable, share the technical details with your administrator or
+            support.
+          </p>
+        </div>
+      )}
       {Array.isArray(value.interfaces) && value.interfaces.length > 0 && (
         <p>Interfaces: {value.interfaces.join(", ")}</p>
       )}
-      {Array.isArray(value.errors) &&
-        value.errors.map((error, i) => (
-          <p key={i} className="text-destructive wrap-anywhere">
-            {String(error)}
-          </p>
-        ))}
     </div>
   );
 }

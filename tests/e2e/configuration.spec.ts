@@ -91,7 +91,8 @@ test("timed pause sends an absolute expiry and the saved revision", async ({
   page,
 }) => {
   let body:
-    { revision: string; enabled: boolean; pause_until: string } | undefined;
+    | { revision: string; enabled: boolean; pause_until: string }
+    | undefined;
   await page.route("**/api/v1/blocking", (route) => {
     if (route.request().method() !== "PUT") return route.fallback();
     body = route.request().postDataJSON();
@@ -191,7 +192,11 @@ test("failed backup reports failure without claiming an export", async ({
       : route.fulfill({ json: { items: [] } }),
   );
   await page.goto("/jobs");
-  await page.getByRole("button", { name: "Create backup" }).click();
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
+  await expect(page.getByText(/Couldn’t prepare the backup/)).toBeVisible();
+  await page.getByRole("button", { name: "Backup error details" }).click();
   await expect(
     page.getByText("Backup destination is not writable"),
   ).toBeVisible();
