@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/richkeenan/dimsum/internal/clients"
 	"github.com/richkeenan/dimsum/internal/lists"
 	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/stretchr/testify/assert"
@@ -20,6 +21,73 @@ func TestLegacyClientJSONContract(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &v))
 	assert.Equal(t, "192.0.2.1", v["Address"])
 	assert.Equal(t, "Legacy", v["Name"])
+}
+
+func TestLegacyNamingOnlyAddressAcceptance(t *testing.T) {
+	for _, address := range []string{"fe80::1%en0", "0.0.0.0", "::", "224.0.0.1", "ff02::1"} {
+		t.Run(address, func(t *testing.T) {
+			c := Default()
+			c.Clients = []ClientOverride{{Address: address, Name: "Legacy"}}
+			b, err := yaml.Marshal(c)
+			require.NoError(t, err)
+			d, err := Parse(b)
+			require.NoError(t, err)
+			assert.Equal(t, b, d.Bytes())
+			assert.Equal(t, []clients.Override{{Address: address, Name: "Legacy"}}, d.Config().NamingOverrides())
+			_, err = clients.NewView(c.Naming, c.NamingOverrides(), nil)
+			require.NoError(t, err)
+			v := compileClients(t, c)
+			p, ok := v.Client("address:" + netip.MustParseAddr(address).Unmap().String())
+			require.True(t, ok)
+			assert.Same(t, v.Network().Policy(), p.Policy())
+			assert.Same(t, v.Network(), v.Select(netip.MustParseAddr(address), ""))
+			assert.Same(t, v.Network(), v.Select(netip.Addr{}, ""), "no invalid selector may be installed")
+			c.Clients[0].ID = "rich"
+			assert.ErrorContains(t, Validate(c), "expected unicast address", "rich policy selectors stay strict")
+		})
+	}
+}
+
+func TestScopedRuleIDsDisjointFromNetworkIDs(t *testing.T) {
+	for _, kind := range []policy.ScopeKind{policy.ProfileScope, policy.ClientScope} {
+		t.Run(string(kind), func(t *testing.T) {
+			c := policyFixture()
+			owner := "kids"
+			if kind == policy.ClientScope {
+				owner = "tablet"
+			}
+			rawID := fmt.Sprintf("%s:%d:%s:x", kind, len(owner), owner)
+			c.Rules = []CustomRule{{ID: rawID, Enabled: true, Kind: policy.Exact, Action: "allow", Pattern: "ads.example"}}
+			scoped := []CustomRule{{ID: "x", Enabled: true, Kind: policy.Exact, Action: "deny", Pattern: "ads.example"}}
+			if kind == policy.ProfileScope {
+				c.Profiles[0].Policy.Rules = scoped
+			} else {
+				c.Clients[1].Overrides.Rules = scoped
+			}
+			v := compileClients(t, c)
+			n, err := policy.NormalizeName("ads.example")
+			require.NoError(t, err)
+			network, networkNumber := v.Network().Policy().EvaluateNumber(policy.Query{Original: n, Name: n})
+			device, ok := v.Client("tablet")
+			require.True(t, ok)
+			selected, number := device.Policy().EvaluateNumber(policy.Query{Original: n, Name: n})
+			assert.Equal(t, "custom:"+rawID, network.RuleID)
+			assert.Equal(t, "scoped-custom:"+rawID, selected.RuleID)
+			assert.Equal(t, policy.Allow, network.Result)
+			assert.Equal(t, policy.Block, selected.Result)
+			assert.Equal(t, policy.Scope{Kind: kind, ID: owner}, selected.Scope)
+			assert.NotEqual(t, networkNumber, number)
+			for _, item := range []struct {
+				number   uint32
+				decision policy.Decision
+			}{{networkNumber, network}, {number, selected}} {
+				r, ok := v.Network().Policy().RuleAt(item.number)
+				require.True(t, ok)
+				assert.Equal(t, item.decision.RuleID, r.ID)
+				assert.Equal(t, item.decision.Scope, r.Scope)
+			}
+		})
+	}
 }
 
 func TestClientRouteInheritanceAndOwnership(t *testing.T) {
@@ -151,10 +219,12 @@ func TestClientValidation(t *testing.T) {
 		{"duplicate mapped IP", func(c *Config) { c.Clients[1].Selectors.Addresses = []string{"::ffff:192.0.2.1"} }},
 		{"duplicate ID", func(c *Config) { c.Clients[0].ID = "tablet" }},
 		{"duplicate CIDR", func(c *Config) {
+			c.Clients[0].ID = "peer"
 			c.Clients[0].Selectors.CIDRs = []string{"192.0.2.1/24"}
 			c.Clients[1].Selectors.CIDRs = []string{"192.0.2.0/24"}
 		}},
 		{"duplicate MAC", func(c *Config) {
+			c.Clients[0].ID = "peer"
 			c.Clients[0].Selectors.MACs = []string{"02:00:00:00:00:01"}
 			c.Clients[1].Selectors.MACs = []string{"02-00-00-00-00-01"}
 		}},
@@ -162,8 +232,29 @@ func TestClientValidation(t *testing.T) {
 			c.Clients[1].Overrides.Upstream = &UpstreamRoute{Upstreams: []string{"127.0.0.1:5353"}}
 		}},
 	} {
-		t.Run(tt.name, func(t *testing.T) { c := policyFixture(); tt.change(&c); assert.Error(t, Validate(c)) })
+		t.Run(tt.name, func(t *testing.T) {
+			c := policyFixture()
+			tt.change(&c)
+			err := Validate(c)
+			switch tt.name {
+			case "duplicate CIDR":
+				assert.ErrorContains(t, err, "duplicate selector cidr:192.0.2.0/24")
+			case "duplicate MAC":
+				assert.ErrorContains(t, err, "duplicate selector mac:02:00:00:00:00:01")
+			default:
+				assert.Error(t, err)
+			}
+		})
 	}
+}
+
+func TestDuplicateMappedPrefixSelector(t *testing.T) {
+	c := Default()
+	c.Clients = []ClientOverride{
+		{ID: "v4", Selectors: ClientSelectors{CIDRs: []string{"192.0.2.1/24"}}},
+		{ID: "mapped", Selectors: ClientSelectors{CIDRs: []string{"::ffff:192.0.2.129/120"}}},
+	}
+	assert.ErrorContains(t, Validate(c), "duplicate selector cidr:192.0.2.0/24")
 }
 func TestListApplicationAndScopedConfigRules(t *testing.T) {
 	c := policyFixture()

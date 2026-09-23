@@ -256,6 +256,13 @@ func validateClientPolicy(c Config) error {
 		}
 		for _, s := range addresses {
 			a, e := selectorAddress(s)
+			// Naming-only legacy entries historically accepted any parsed address.
+			// Keep their canonical identity (including zones) for uniqueness; only
+			// policy-suitable addresses enter the selector index at compilation.
+			if p.ID == "" {
+				a, e = netip.ParseAddr(s)
+				a = a.Unmap()
+			}
 			if e != nil {
 				return fmt.Errorf("clients[%d]: %w", i, e)
 			}
@@ -298,7 +305,7 @@ func (c Config) scopedPolicyRules() []policy.Rule {
 				if r.Action == "allow" {
 					class = policy.CustomAllow
 				}
-				out = append(out, policy.Rule{ID: fmt.Sprintf("custom:%s:%d:%s:%s", scope.Kind, len(scope.ID), scope.ID, r.ID), SourceID: "custom", SourceText: r.Pattern, Kind: r.Kind, Class: class, Pattern: r.Pattern, Scope: scope})
+				out = append(out, policy.Rule{ID: fmt.Sprintf("scoped-custom:%s:%d:%s:%s", scope.Kind, len(scope.ID), scope.ID, r.ID), SourceID: "custom", SourceText: r.Pattern, Kind: r.Kind, Class: class, Pattern: r.Pattern, Scope: scope})
 			}
 		}
 	}

@@ -88,3 +88,20 @@ func TestScopedLocalAndPauseHaveNoWinningRule(t *testing.T) {
 		assert.Equal(t, Scope{}, d.Scope)
 	}
 }
+
+func TestScopedCustomOverlayNamespace(t *testing.T) {
+	r := Rule{ID: "scoped-custom:profile:4:kids:x", Scope: Scope{Kind: ProfileScope, ID: "kids"}, Kind: Exact, Class: CustomDeny, Pattern: "ads.example"}
+	base, err := CompileSnapshot(1, nil, DefaultLimits())
+	require.NoError(t, err)
+	s, err := CompileOverlay(2, []Rule{r}, base, DefaultLimits())
+	require.NoError(t, err)
+	n, err := NormalizeName("ads.example")
+	require.NoError(t, err)
+	assert.Equal(t, r.ID, s.WithSelection(NewSelection("kids", "", nil)).Match(n).RuleID)
+	r.Scope = Scope{}
+	r.Class = SubscriptionDeny
+	base, err = CompileSnapshot(1, []Rule{r}, DefaultLimits())
+	require.NoError(t, err)
+	_, err = CompileOverlay(2, nil, base, DefaultLimits())
+	assert.ErrorContains(t, err, "invalid subscription classes or ID namespaces")
+}

@@ -240,8 +240,11 @@ func (c Config) compileClientPolicies(generation uint64, subscriptions *policy.P
 		finish(effective, profileScopes[p.Profile], scope)
 		v.clients[id] = effective
 		if p.Address != "" {
-			a, _ := selectorAddress(p.Address)
-			v.addresses[a] = effective
+			// Unsuitable naming-only legacy addresses retain a descriptor and
+			// naming override, but cannot select policy (or create an invalid key).
+			if a, err := selectorAddress(p.Address); err == nil {
+				v.addresses[a] = effective
+			}
 		}
 		for _, s := range p.Selectors.Addresses {
 			a, _ := selectorAddress(s)

@@ -23,7 +23,7 @@ const (
 )
 
 func ruleNamespace(id string) uint8 {
-	if strings.HasPrefix(id, "custom:") {
+	if strings.HasPrefix(id, "custom:") || strings.HasPrefix(id, "scoped-custom:") {
 		return customNamespace
 	}
 	if strings.HasPrefix(id, "special:") {
@@ -33,8 +33,10 @@ func ruleNamespace(id string) uint8 {
 }
 
 // CompileOverlay compiles only owner rules and shares the immutable subscription
-// indexes. Owner IDs must use custom: (custom allow/deny) or special: (special
-// deny); subscriptions must use neither prefix and only subscription classes.
+// indexes. Owner IDs must use custom: or scoped-custom: (custom allow/deny) or
+// special: (special deny); subscriptions must use none of these prefixes and
+// only subscription classes. Scoped IDs are disjoint from arbitrary legacy
+// network IDs, which always begin with custom:.
 // Nested overlays and nil bases are rejected. Numeric IDs are generation-local:
 // owner entries precede subscription entries in their original compilation order.
 func CompileOverlay(generation uint64, ownerRules []Rule, subscriptions *PolicySnapshot, limits Limits) (*PolicySnapshot, error) {
