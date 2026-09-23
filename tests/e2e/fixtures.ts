@@ -32,6 +32,31 @@ export const settings = {
   status: activation,
   config: { cache: { bytes: 8388608 }, dns: { listen: ["127.0.0.1:5353"] } },
 };
+export const policyFixture = {
+  status: activation,
+  scope: "client",
+  id: "study-laptop",
+  desired: {
+    id: "study-laptop",
+    name: "Study laptop",
+    selectors: { addresses: ["192.0.2.12"] },
+  },
+  effective: {
+    id: "study-laptop",
+    profile_id: "",
+    blocking: { value: true, source: {} },
+    filtering: true,
+    paused_until: "0001-01-01T00:00:00Z",
+    global_paused: false,
+    lists: {},
+    upstream_source: {},
+    route_id: "route",
+    upstream: { upstreams: ["192.0.2.53:53"] },
+    override_count: 0,
+    rules: [],
+  },
+  active: null,
+};
 export const performance = {
   range: summary.range,
   updated_at: summary.updated_at,
@@ -179,6 +204,8 @@ export async function fixtureAPI(page: Page) {
     );
     const values: Record<string, unknown> = {
       tokens: { items: [] },
+      profiles: { status: activation, items: [] },
+      "client-policy": policyFixture,
       summary,
       performance,
       settings,
@@ -257,6 +284,8 @@ export async function fixtureAPI(page: Page) {
           items: [
             {
               address: "192.0.2.12",
+              client_id: "study-laptop",
+              matching_method: "address",
               name: "Study laptop",
               name_source: "manual",
               name_fresh: true,
@@ -269,6 +298,8 @@ export async function fixtureAPI(page: Page) {
         items: [
           {
             name: "Study laptop",
+            policy_id: "study-laptop",
+            id: "study-laptop",
             address: "192.0.2.12",
           },
         ],

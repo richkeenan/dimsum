@@ -10,12 +10,20 @@ test("owner name and discovered device details coexist on mobile", async ({
     route.fulfill({
       json: {
         status: activation,
-        items: [{ address: "192.0.2.20", name: "Owner television" }],
+        items: [
+          {
+            policy_id: "address:192.0.2.20",
+            address: "192.0.2.20",
+            name: "Owner television",
+          },
+        ],
         observed_available: true,
         observed: {
           items: [
             {
               address: "192.0.2.20",
+              client_id: "address:192.0.2.20",
+              matching_method: "address",
               name: "Discovered TV",
               name_source: "dns-sd",
               name_fresh: true,
@@ -59,9 +67,9 @@ test("owner name and discovered device details coexist on mobile", async ({
     window.dispatchEvent(new Event("configuration-changed")),
   );
   await expect(page.getByRole("dialog")).toContainText(model);
-  // The five-second settings poll also re-renders the containing client page.
+  // The live observation window also re-renders the containing client page.
   await page.waitForResponse((response) =>
-    response.url().endsWith("/api/v1/settings"),
+    response.url().includes("/api/v1/clients?"),
   );
   await expect(page.getByRole("dialog")).toBeVisible();
   expect(

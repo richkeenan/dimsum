@@ -60,16 +60,19 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     .getByRole("button", { name: "ads.example.test", exact: true })
     .first()
     .click();
-  await page.getByRole("dialog").getByText("Matched rule details", { exact: true }).click();
-  await expect(page.getByRole("dialog").locator("pre")).toContainText("custom:browser-block");
+  await page
+    .getByRole("dialog")
+    .getByText("Matched rule details", { exact: true })
+    .click();
+  await expect(page.getByRole("dialog").locator("pre")).toContainText(
+    "custom:browser-block",
+  );
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("link", { name: "Devices", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Devices", exact: true, level: 2 }),
+    page.getByRole("heading", { name: "Devices", exact: true, level: 1 }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("cell", { name: "122", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText(/122 queries/)).toBeVisible();
   expect(failures).toEqual([]);
   await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page

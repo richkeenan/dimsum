@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DomainInspector } from "../clients/inspect";
 import { DiscoveryStatus } from "@/features/settings/discovery";
 import { useResource } from "@/lib/hooks";
 import { Details, Resource } from "@/components/data";
@@ -17,6 +18,7 @@ export default function Diagnostics() {
           Refresh measurements
         </Button>
       </div>
+      <DomainInspector />
       <Resource state={state} retry={() => setTick((t) => t + 1)}>
         <div className="mt-3.5 mb-[22px] grid min-w-0 grid-cols-1 gap-4 min-[701px]:grid-cols-2 [&>*]:min-w-0">
           <section className="mb-5 min-w-0 rounded-lg border border-border bg-background p-5">

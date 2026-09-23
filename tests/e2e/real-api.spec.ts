@@ -112,19 +112,188 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
     original.split("\n").filter((l) => l.trim().startsWith("#")),
   );
   await page.getByRole("link", { name: "Devices", exact: true }).click();
-  await page.getByRole("button", { name: "Name an address" }).click();
-  await page.getByLabel("Observed address").fill("192.0.2.12");
+  await page.getByRole("button", { name: "Add device", exact: true }).click();
   await page
-    .getByLabel("Friendly name", { exact: true })
-    .fill("Browser workstation");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+    .getByLabel("Stable ID", { exact: true })
+    .fill("browser-workstation");
+  await page
+    .getByLabel("Matching addresses", { exact: true })
+    .fill("192.0.2.12");
+  await page.getByLabel("Name", { exact: true }).fill("Browser workstation");
+  await page
+    .getByRole("button", { name: "Create device", exact: true })
+    .click();
+  await expect(page).toHaveURL(/device=browser-workstation/);
+  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", {
-      name: "View queries for Browser workstation",
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  let devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.desired.overrides.blocking).toBe(false);
+  expect(devicePolicy.active.blocking).toEqual({
+    value: false,
+    source: { kind: "client", id: "browser-workstation" },
+  });
+  await page
+    .getByRole("button", { name: "Reset Blocking", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.desired.overrides?.blocking).toBeUndefined();
+  expect(devicePolicy.active.blocking.value).toBe(true);
+  await page
+    .getByRole("link", { name: "Profiles & defaults", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Network defaults", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Create profile", exact: true })
+    .click();
+  await page.getByLabel("Stable ID", { exact: true }).fill("browser-profile");
+  await page.getByLabel("Name", { exact: true }).fill("Browser profile");
+  await page
+    .getByRole("button", { name: "Create profile", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Profile: Browser profile",
       exact: true,
     }),
-  ).toContainText(/Browser workstation\s*192\.0\.2\.12/);
+  ).toBeVisible();
+  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  await page.goto("/clients?device=browser-workstation");
+  await page
+    .getByLabel("Profile", { exact: true })
+    .selectOption("browser-profile");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.active.blocking).toEqual({
+    value: false,
+    source: { kind: "profile", id: "browser-profile" },
+  });
+  expect(devicePolicy.desired.overrides?.blocking).toBeUndefined();
+  await page.screenshot({
+    path: testInfo.outputPath("real-device-policy.png"),
+    fullPage: true,
+  });
+  await page.goto("/profiles");
+  await page.getByLabel("Policy to edit").selectOption("browser-profile");
+  await page
+    .getByRole("button", { name: "Delete profile", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm delete", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    /profile|referenced|assigned/i,
+  );
+  await page.goto("/clients?device=browser-workstation");
+  await page.getByLabel("Profile", { exact: true }).selectOption("");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Primary servers", { exact: true })
+    .fill("192.0.2.53:53");
+  await page.getByRole("button", { name: "Pause 5 min", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Save 2 changes", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.active.filtering).toBe(false);
+  expect(devicePolicy.active.upstream.upstreams).toEqual(["192.0.2.53:53"]);
+  await page
+    .getByRole("button", { name: "Reset all overrides", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save 2 changes", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.active.filtering).toBe(true);
+  expect(devicePolicy.desired.overrides?.upstream).toBeUndefined();
+  await page.goto("/profiles");
+  await page.getByLabel("Policy to edit").selectOption("browser-profile");
+  await page
+    .getByRole("button", { name: "Delete profile", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm delete", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Network defaults", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Blocking", { exact: true }).selectOption("off");
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
+  devicePolicy = await page.evaluate(async () =>
+    (
+      await fetch("/api/v1/client-policy?scope=client&id=browser-workstation")
+    ).json(),
+  );
+  expect(devicePolicy.active.blocking).toEqual({ value: false, source: {} });
+  await page
+    .getByRole("button", { name: "Reset Blocking", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Save 1 change", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Save 0 changes", exact: true }),
+  ).toBeVisible();
   await page.getByRole("link", { name: "Custom rules", exact: true }).click();
   await page.getByRole("button", { name: "Add rule" }).click();
   await page

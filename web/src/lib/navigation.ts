@@ -3,6 +3,7 @@ export const pages = [
   "performance",
   "queries",
   "clients",
+  "profiles",
   "lists",
   "rules",
   "records",
@@ -24,6 +25,7 @@ export const filterKeys = [
   "generation",
 ] as const;
 export type ViewSearch = {
+  device?: string;
   range?: string;
   from?: string;
   to?: string;
@@ -47,7 +49,7 @@ export function validateView(raw: Record<string, unknown>): ViewSearch {
     ["1h", "24h", "7d", "custom"].includes(raw.range)
   )
     result.range = raw.range;
-  for (const key of [...filterKeys, "from", "to"] as const)
+  for (const key of [...filterKeys, "from", "to", "device"] as const)
     if (typeof raw[key] === "string" && raw[key].length <= 512)
       result[key] = raw[key];
   if (result.range === "custom") {

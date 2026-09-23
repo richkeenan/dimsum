@@ -51,6 +51,7 @@ import Overview from "./features/overview";
 import Performance from "./features/performance";
 import Queries from "./features/queries";
 import Configuration from "./features/configuration";
+import Clients, { Profiles } from "./features/clients";
 import SettingsView from "./features/settings";
 const Diagnostics = lazy(() => import("./features/diagnostics"));
 const Jobs = lazy(() => import("./features/settings/jobs"));
@@ -60,6 +61,7 @@ const navigation = [
   ["performance", "Performance", Gauge],
   ["queries", "Query log", ListFilter],
   ["clients", "Devices", Users],
+  ["profiles", "Profiles & defaults", ShieldCheck],
   ["lists", "Filter lists", ShieldCheck],
   ["rules", "Custom rules", FileText],
   ["records", "Local DNS", Globe2],
@@ -433,6 +435,14 @@ export default function App() {
                 }
                 liveAllowed={range !== "custom"}
               />
+            ) : page === "clients" ? (
+              <Clients
+                range={rangeParams}
+                selected={search.device}
+                onSelect={(device) => go("clients", { ...rangeSearch, device })}
+              />
+            ) : page === "profiles" ? (
+              <Profiles />
             ) : page === "dhcp" ? (
               <DHCP />
             ) : page === "settings" ? (

@@ -13,7 +13,7 @@ import (
 
 func TestEmbeddedSPA(t *testing.T) {
 	h := Handler()
-	for _, route := range []string{"/", "/queries", "/settings", "/diagnostics", "/performance", "/performance?range=1h", "/dhcp", "/dhcp?tab=leases"} {
+	for _, route := range []string{"/", "/queries", "/settings", "/diagnostics", "/performance", "/performance?range=1h", "/dhcp", "/dhcp?tab=leases", "/profiles", "/clients?device=tablet"} {
 		t.Run(route, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
