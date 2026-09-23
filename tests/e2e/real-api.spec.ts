@@ -169,6 +169,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   );
   expect(devicePolicy.desired.overrides?.blocking).toBeUndefined();
   expect(devicePolicy.active.blocking.value).toBe(true);
+  await page.getByRole("link", { name: "Filtering", exact: true }).click();
   await page
     .getByRole("link", { name: "Profiles & defaults", exact: true })
     .click();

@@ -181,9 +181,7 @@ test("observed device settings survive cancelled navigation", async ({
   await page.getByLabel("Stable ID", { exact: true }).fill("new-tablet");
   await page.getByLabel("Name", { exact: true }).fill("New tablet");
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page
-    .getByRole("link", { name: "Profiles & defaults", exact: true })
-    .click();
+  await page.getByRole("link", { name: "Filtering", exact: true }).click();
   await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
     "new-tablet",
   );

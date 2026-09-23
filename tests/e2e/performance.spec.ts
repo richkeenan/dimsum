@@ -45,8 +45,10 @@ test("dashboard links to same-range performance with charts, keyboard data and r
     .click();
   await expect(page).toHaveURL(/\/performance\?range=1h/);
   await expect(
-    page.getByRole("heading", { name: "Performance", exact: true }),
-  ).toBeVisible();
+    page
+      .getByRole("navigation", { name: "Overview sections" })
+      .getByRole("link", { name: "Performance", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("23,000 queries observed")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "By query outcome" }),

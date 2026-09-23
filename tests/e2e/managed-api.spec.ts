@@ -76,6 +76,7 @@ test("managed DNS history, cursor filters, observed names, backup download and a
     page.getByRole("cell", { name: "122", exact: true }),
   ).toBeVisible();
   expect(failures).toEqual([]);
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("link", { name: "Backups", exact: true }).click();
   await page
     .getByRole("button", { name: "Create backup", exact: true })

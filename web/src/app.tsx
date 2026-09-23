@@ -2,12 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   ArrowDownUp,
-  Database,
-  FileText,
   Globe2,
-  Gauge,
   LayoutDashboard,
   ListFilter,
   LogOut,
@@ -41,18 +37,38 @@ const Jobs = lazy(() => import("./features/settings/jobs"));
 const DHCP = lazy(() => import("./features/dhcp"));
 const navigation = [
   ["overview", "Overview", LayoutDashboard],
-  ["performance", "Performance", Gauge],
   ["queries", "Query log", ListFilter],
   ["clients", "Devices", Users],
-  ["profiles", "Profiles & defaults", ShieldCheck],
-  ["lists", "Filter lists", ShieldCheck],
-  ["rules", "Custom rules", FileText],
+  ["lists", "Filtering", ShieldCheck],
   ["records", "Local DNS", Globe2],
   ["upstreams", "Upstreams", ArrowDownUp],
   ["dhcp", "DHCP", Network],
   ["settings", "Settings", Settings2],
-  ["jobs", "Backups", Database],
-  ["diagnostics", "Diagnostics", Activity],
+] as const;
+const sections = [
+  {
+    parent: "overview",
+    pages: [
+      ["overview", "Summary"],
+      ["performance", "Performance"],
+    ],
+  },
+  {
+    parent: "lists",
+    pages: [
+      ["lists", "Filter lists"],
+      ["rules", "Custom rules"],
+      ["profiles", "Profiles & defaults"],
+    ],
+  },
+  {
+    parent: "settings",
+    pages: [
+      ["settings", "General"],
+      ["jobs", "Backups"],
+      ["diagnostics", "Diagnostics"],
+    ],
+  },
 ] as const;
 
 export default function App() {
@@ -106,7 +122,9 @@ export default function App() {
     5000,
   );
   const historical = ["overview", "performance", "queries", "clients"].includes(page);
-  const title = navigation.find((n) => n[0] === page)?.[1] ?? "Overview";
+  const section = sections.find((s) => s.pages.some(([id]) => id === page));
+  const parent = section?.parent ?? page;
+  const title = navigation.find((n) => n[0] === parent)?.[1] ?? "Overview";
   const { params: rangeParams, resolution } = historyWindow(range, anchor, custom);
   const rangeSearch: ViewSearch = { range, ...custom };
   function go(p: string, next: ViewSearch = rangeSearch) {
@@ -161,7 +179,7 @@ export default function App() {
   useEffect(() => {
     document.title = `${title} · dimsum`;
     setMenu(false);
-  }, [title]);
+  }, [title, path]);
 
   if (auth)
     return (
@@ -223,8 +241,9 @@ export default function App() {
               to="/$page"
               params={{ page: id }}
               search={rangeSearch}
-              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${page === id ? "bg-[#2a4871] font-normal text-white" : "font-light text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${id === "lists" || id === "settings" ? "mt-5" : ""}`}
-              aria-current={page === id ? "page" : undefined}
+              onClick={() => setMenu(false)}
+              className={`flex min-h-11 items-center gap-2.5 rounded-md px-3 text-sm md:min-h-10 ${parent === id ? "bg-[#2a4871] font-normal text-white" : "font-light text-[#c2d0e5] hover:bg-[#233e63] hover:text-white"} ${id === "lists" || id === "settings" ? "mt-5" : ""}`}
+              aria-current={parent === id ? (page === id ? "page" : "true") : undefined}
             >
               <Icon size={18} strokeWidth={1.5} />
               <span>{label}</span>
@@ -315,6 +334,25 @@ export default function App() {
               </Button>
             </div>
           </div>
+          {section && (
+            <nav
+              aria-label={`${title} sections`}
+              className="mb-5 flex flex-wrap gap-x-4 gap-y-1 border-b border-border"
+            >
+              {section.pages.map(([id, label]) => (
+                <Link
+                  key={id}
+                  to="/$page"
+                  params={{ page: id }}
+                  search={rangeSearch}
+                  aria-current={page === id ? "page" : undefined}
+                  className={`inline-flex min-h-11 items-center border-b-2 px-1 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${page === id ? "border-primary font-medium text-primary" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"}`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </nav>
+          )}
           {historical && customOpen && (
             <form
               className="mb-5 flex flex-wrap items-end gap-3 [&>label]:min-w-0 [&>label]:flex-1"
