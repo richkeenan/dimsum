@@ -456,7 +456,6 @@ export default function Configuration({
                             address={text(r.address)}
                             name={r.name ? String(r.name) : undefined}
                             device={r.device as Device | undefined}
-                            stale={r.name_fresh === false}
                             source={
                               r.name_source ? String(r.name_source) : undefined
                             }

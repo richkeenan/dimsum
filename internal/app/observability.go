@@ -43,15 +43,16 @@ type responseNote struct {
 // cache is fixed at 256 descriptions (about 1 MiB); collisions mean unavailable
 // explanation metadata, never another rule's explanation.
 type observability struct {
-	collector *stats.Collector
-	db        *storage.DB
-	boot      string
-	openError error
-	cancel    context.CancelFunc
-	done      chan struct{}
-	mu        sync.Mutex
-	rules     [256]ruleNote
-	aliases   [4096]aliasNote
+	collector   *stats.Collector
+	db          *storage.DB
+	clientNames *clientNamePersistence
+	boot        string
+	openError   error
+	cancel      context.CancelFunc
+	done        chan struct{}
+	mu          sync.Mutex
+	rules       [256]ruleNote
+	aliases     [4096]aliasNote
 	// Fixed ~4 MiB, separate from compact events. Overwritten slots are unavailable.
 	responses [1024]responseNote
 }

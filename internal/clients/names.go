@@ -27,6 +27,7 @@ type Override struct {
 }
 type View struct {
 	settings         Settings
+	scope            string
 	overrides, local map[netip.Addr]string
 }
 
@@ -41,7 +42,7 @@ func NewView(settings Settings, overrides []Override, local map[netip.Addr]strin
 			return nil, fmt.Errorf("naming resolver must be an explicit local unicast IP:port")
 		}
 	}
-	v := &View{settings: settings, overrides: map[netip.Addr]string{}, local: map[netip.Addr]string{}}
+	v := &View{settings: settings, scope: namingScope(settings), overrides: map[netip.Addr]string{}, local: map[netip.Addr]string{}}
 	for _, o := range overrides {
 		a, e := netip.ParseAddr(o.Address)
 		if e != nil || strings.TrimSpace(o.Name) == "" || v.overrides[a.Unmap()] != "" {
@@ -82,18 +83,19 @@ type job struct {
 // Manager has one bounded worker and at most 4096 cached identities. Observe and
 // Get never perform file/network IO. Run is called once by the service lifecycle.
 type Manager struct {
-	mdnsObserve   chan netip.Addr
-	mdnsNames     map[netip.Addr]entry
-	dnsActivity   map[netip.Addr][]DNSActivity
-	diagnostics   DiscoveryDiagnostics
-	openMDNS      func(context.Context, MDNSSettings) (mdnsTransport, []string)
-	lookupSpotify func(context.Context, spotifyEndpoint) (Evidence, error)
-	current       func() *View
-	dhcp          func(*View, netip.Addr) (Name, bool)
-	mu            sync.Mutex
-	cache         map[netip.Addr]entry
-	pending       map[job]bool
-	queue         chan job
+	mdnsObserve      chan netip.Addr
+	mdnsNames        map[netip.Addr]entry
+	dnsActivity      map[netip.Addr][]DNSActivity
+	diagnostics      DiscoveryDiagnostics
+	persistenceError string
+	openMDNS         func(context.Context, MDNSSettings) (mdnsTransport, []string)
+	lookupSpotify    func(context.Context, spotifyEndpoint) (Evidence, error)
+	current          func() *View
+	dhcp             func(*View, netip.Addr) (Name, bool)
+	mu               sync.Mutex
+	cache            map[netip.Addr]entry
+	pending          map[job]bool
+	queue            chan job
 }
 
 func New(current func() *View) *Manager {
@@ -133,7 +135,7 @@ func (m *Manager) Get(address netip.Addr) Name {
 	found := m.mdnsNames[a]
 	activity := m.dnsActivity[a]
 	m.mu.Unlock()
-	if found.view == v {
+	if compatibleNames(found.view, v) {
 		n = mergeDiscovered(n, found.name, time.Now())
 	} else {
 		n = mergeDiscovered(n, Name{}, time.Now())
@@ -165,7 +167,7 @@ func (m *Manager) get(a netip.Addr, v *View) (n Name) {
 	m.mu.Lock()
 	e, ok := m.cache[a]
 	m.mu.Unlock()
-	if ok && e.view == v {
+	if ok && compatibleNames(e.view, v) {
 		n = e.name
 		n.Fresh = time.Now().Before(n.Expires)
 	}

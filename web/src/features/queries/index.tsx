@@ -286,7 +286,6 @@ export default function Queries({
                     address={text(r.client)}
                     name={r.client_name ? String(r.client_name) : undefined}
                     device={r.client_device as Device | undefined}
-                    stale={r.client_name_fresh === false}
                   />
                 ),
               },

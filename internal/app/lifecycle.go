@@ -108,6 +108,12 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 			return err
 		}
 		observations.retention(c.Statistics)
+		if observations.db != nil {
+			observations.clientNames = &clientNamePersistence{db: observations.db, names: names}
+			observations.clientNames.restore(ctx)
+		} else {
+			names.SetPersistenceError(observations.openError)
+		}
 		observations.start()
 		options.Observe = observations.observe
 		pipeline.SetExchangeObserver(observations.exchange)
@@ -123,6 +129,9 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 	err = s.start(ctx, c, server, store, names, func() {
 		pipeline.Close()
 		if observations != nil {
+			if observations.clientNames != nil {
+				observations.clientNames.save(context.Background())
+			}
 			observations.close()
 		}
 	}, observations)
@@ -259,6 +268,8 @@ func (s *Service) start(ctx context.Context, c config.Config, server *transport.
 		if observations != nil && observations.db != nil {
 			workers.Add(1)
 			go func() { defer workers.Done(); runDNSGuesses(runCtx, observations.db, names) }()
+			workers.Add(1)
+			go func() { defer workers.Done(); observations.clientNames.run(runCtx) }()
 		}
 	}
 	if managed != nil {

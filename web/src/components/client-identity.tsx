@@ -44,7 +44,6 @@ type Props = {
   address: string;
   name?: string;
   device?: Device;
-  stale?: boolean;
   source?: string;
   compact?: boolean;
 };
@@ -52,7 +51,6 @@ export function ClientIdentity({
   address,
   name,
   device,
-  stale,
   source,
   compact = false,
 }: Props) {
@@ -93,7 +91,6 @@ export function ClientIdentity({
             title={compact ? address : undefined}
           >
             {address}
-            {stale ? " · stale name" : ""}
           </span>
         )}
       </span>

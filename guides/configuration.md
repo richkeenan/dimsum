@@ -63,13 +63,26 @@ wildcard listeners. DHCP has a [separate guide](dhcp.md).
 When mDNS discovery expires because a device stops responding, dimsum keeps its
 last discovered name and device type for up to **48 hours from the discovery
 confirmation**. Partial expiry of friendly-name or device metadata also keeps
-the richer remembered identity. The dashboard marks the remembered name as stale. It takes
+the richer remembered identity. The name stays visible while discovery refreshes
+in the background, without a transient stale-name badge. Advertisement freshness
+remains available in device details and the API. The remembered identity takes
 priority over DNS-based guesses; newer live discovery replaces it, and explicit
 client names and authoritative local/DHCP names retain priority.
 
 Viewing the dashboard or sending ordinary DNS queries does not extend this
-window. Discovery memory is bounded and in-process: a restart or naming-view
-change clears it. Use an explicit client name for a lasting label.
+window. Discovered names and device evidence are saved in the local
+`history.sqlite` database, separately from query-history retention and never in
+the configuration. They are restored before requests are served after a restart,
+with their original confirmation times and expiry deadlines. Positive hosts-file
+and router-PTR results are also restored while their original TTL remains valid.
+
+Names are checkpointed every five seconds and flushed on graceful shutdown;
+an abrupt interruption can lose discoveries since the last checkpoint. Storage
+failures appear in naming diagnostics while in-memory discovery continues.
+The cache holds at most 4096 multicast identities and 4096 resolved names.
+Changes to discovery-source settings invalidate remembered names; unrelated
+policy or configured-name edits do not. Use an explicit client name for a lasting
+label.
 
 **Last seen** records the client's latest DNS query in the selected history
 range, not its latest name advertisement. A printer can therefore keep a fresh

@@ -231,7 +231,6 @@ function DeviceRow({
       "",
     device: observation?.device,
     source: observation?.name_source,
-    stale: observation?.name_fresh === false,
   };
   return (
     <TableRow>

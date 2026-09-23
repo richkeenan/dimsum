@@ -56,6 +56,9 @@ func (m *Manager) Diagnostics() DiscoveryDiagnostics {
 	d := m.diagnostics
 	d.Interfaces = slices.Clone(d.Interfaces)
 	d.Errors = slices.Clone(d.Errors)
+	if m.persistenceError != "" {
+		d.Errors = append(d.Errors, m.persistenceError)
+	}
 	return d
 }
 
@@ -144,7 +147,17 @@ func (m *Manager) runMDNS(ctx context.Context) {
 				spotify = newSpotifyDiscovery(ctx, m.lookupSpotify)
 			}
 			m.mu.Lock()
-			m.mdnsNames = make(map[netip.Addr]entry)
+			for a, old := range m.mdnsNames {
+				if !compatibleNames(old.view, view) || !retainDiscovered(old.name, now) || !diag.Enabled {
+					delete(m.mdnsNames, a)
+					continue
+				}
+				old.view = view
+				m.mdnsNames[a] = old
+				if len(observed) < 4096 || !observed[a].IsZero() {
+					observed[a] = now
+				}
+			}
 			m.mu.Unlock()
 			report()
 		}
@@ -360,7 +373,7 @@ func (m *Manager) runMDNS(ctx context.Context) {
 					// of a replacement or the original retention deadline.
 					for a, old := range m.mdnsNames {
 						live, exists := names[a]
-						if old.view == view && (exists || len(names) < 4096) {
+						if compatibleNames(old.view, view) && (exists || len(names) < 4096) {
 							n := preferDiscovered(old.name, live.name, now)
 							if n.Name != "" {
 								names[a] = entry{view: view, name: n}
