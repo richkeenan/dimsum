@@ -66,3 +66,36 @@ func TestPolicyFieldsAppendToFlowSequence(t *testing.T) {
 	assert.Contains(t, string(next.Bytes()), "] # retain\n")
 	assert.Len(t, next.Config().Clients, 2)
 }
+
+func TestPolicyFieldsAppendAtEOFWithoutNewline(t *testing.T) {
+	for _, resource := range []string{"clients", "profiles"} {
+		for _, ending := range []string{"plain", "commented"} {
+			t.Run(resource+"/"+ending, func(t *testing.T) {
+				section := "clients:\n  - id: old\n    address: 192.0.2.1"
+				var item any = config.ClientOverride{ID: "new", Selectors: config.ClientSelectors{Addresses: []string{"192.0.2.2"}}}
+				if resource == "profiles" {
+					section = "profiles:\n  - id: old\n    name: Old"
+					item = config.Profile{ID: "new"}
+				}
+				if ending == "commented" {
+					section += " # keep"
+				}
+				source := sample + section
+				d, err := config.Parse([]byte(source))
+				require.NoError(t, err)
+				next, err := d.PolicyFields([]config.PolicyField{{Path: []string{resource}, Append: true, Value: item}})
+				require.NoError(t, err)
+				assert.True(t, strings.HasPrefix(string(next.Bytes()), source+"\n  - id: new\n"), string(next.Bytes()))
+				assert.Equal(t, source, string(d.Bytes()))
+				if resource == "clients" {
+					clients := next.Config().Clients
+					require.Len(t, clients, 2)
+					assert.Equal(t, config.ClientOverride{ID: "old", Address: "192.0.2.1"}, clients[0])
+					assert.Equal(t, item, clients[1])
+				} else {
+					assert.Equal(t, []config.Profile{{ID: "old", Name: "Old"}, {ID: "new"}}, next.Config().Profiles)
+				}
+			})
+		}
+	}
+}

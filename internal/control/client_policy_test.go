@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -252,4 +253,70 @@ func TestClientPolicyUpstreamRoundtripRejectsContradictoryReset(t *testing.T) {
 	after, err := os.ReadFile(s.options.ConfigPath)
 	require.NoError(t, err)
 	assert.Equal(t, before, after)
+}
+
+func TestClientPolicyCreateAtEOFWithoutNewline(t *testing.T) {
+	for _, scope := range []string{"client", "profile"} {
+		for _, ending := range []string{"plain", "commented"} {
+			t.Run(scope+"/"+ending, func(t *testing.T) {
+				s, store := dhcpFixture(t)
+				base, err := os.ReadFile(s.options.ConfigPath)
+				require.NoError(t, err)
+				section := "clients:\n  - id: old\n    overrides:\n      blocking: false\n    address: 192.0.2.1"
+				m := ClientPolicyMutation{Scope: scope, ID: "new", Create: true}
+				if scope == "client" {
+					m.Selectors = &config.ClientSelectors{Addresses: []string{"192.0.2.2"}}
+				} else {
+					section = "profiles:\n  - id: old\n    name: Old"
+				}
+				if ending == "commented" {
+					section += " # keep"
+				}
+				source := string(base) + section
+				require.NoError(t, os.WriteFile(s.options.ConfigPath, []byte(source), 0600))
+				_, err = store.Reload(t.Context())
+				require.NoError(t, err)
+				m.Revision = store.Inspect().SavedRevision
+				result, err := s.MutateClientPolicy(t.Context(), m)
+				require.NoError(t, err)
+				assert.False(t, result.Pending)
+				assert.Empty(t, result.Error)
+				assert.NotEqual(t, m.Revision, result.SavedRevision)
+				assert.Equal(t, result.SavedRevision, result.ActiveRevision)
+				saved, err := os.ReadFile(s.options.ConfigPath)
+				require.NoError(t, err)
+				assert.True(t, strings.HasPrefix(string(saved), source+"\n  - id: new\n"), string(saved))
+				d, err := config.Parse(saved)
+				require.NoError(t, err)
+				assert.Equal(t, d.Revision(), result.SavedRevision)
+				assert.Equal(t, d.Revision(), store.Snapshot().Revision())
+				for _, c := range []config.Config{d.Config(), store.Snapshot().Config()} {
+					if scope == "client" {
+						require.Len(t, c.Clients, 2)
+						assert.Equal(t, "old", c.Clients[0].ID)
+						assert.Equal(t, "192.0.2.1", c.Clients[0].Address)
+						assert.Empty(t, c.Clients[0].Selectors)
+						require.NotNil(t, c.Clients[0].Overrides.Blocking)
+						assert.False(t, *c.Clients[0].Overrides.Blocking)
+						assert.Equal(t, config.ClientOverride{ID: "new", Selectors: *m.Selectors}, c.Clients[1])
+					} else {
+						assert.Equal(t, []config.Profile{{ID: "old", Name: "Old"}, {ID: "new"}}, c.Profiles)
+					}
+				}
+				views := store.Snapshot().ClientPolicies()
+				if scope == "client" {
+					old := views.Select(netip.MustParseAddr("192.0.2.1"), "")
+					created := views.Select(netip.MustParseAddr("192.0.2.2"), "")
+					assert.Equal(t, "old", old.ClientID())
+					assert.Equal(t, "new", created.ClientID())
+					blocking, _ := created.Blocking()
+					assert.True(t, blocking, "new identity must not inherit old device's blocking override")
+				} else {
+					created, ok := views.Profile("new")
+					require.True(t, ok)
+					assert.Equal(t, "new", created.ProfileID())
+				}
+			})
+		}
+	}
 }

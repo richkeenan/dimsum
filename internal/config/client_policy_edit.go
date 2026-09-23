@@ -150,7 +150,11 @@ func (d *Document) policyField(f PolicyField) ([]byte, error) {
 		if e := appendBoundary(d.source, n, pos); e != nil {
 			return nil, e
 		}
-		return d.policySplice(pos, pos, indentItem(b, n.Column-1)), nil
+		text := indentItem(b, n.Column-1)
+		if pos > 0 && d.source[pos-1] != '\n' {
+			text = "\n" + text
+		}
+		return d.policySplice(pos, pos, text), nil
 	}
 	if !f.Reset && n.Kind == yaml.ScalarNode {
 		switch f.Value.(type) {
