@@ -8,6 +8,7 @@ import (
 
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/dnscache"
+	"github.com/richkeenan/dimsum/internal/dnswire"
 	"github.com/richkeenan/dimsum/internal/transport"
 	"github.com/richkeenan/dimsum/internal/upstream"
 )
@@ -17,6 +18,7 @@ type cacheState struct {
 	cache                                                             *dnscache.Cache
 	err                                                               error
 	flights                                                           flights
+	buffers                                                           dnswire.MessageBuffers
 	hits, misses, bypasses, stale, refreshOK, refreshFailed, overflow atomic.Uint64
 	staleAgeSeconds                                                   atomic.Uint64
 }
@@ -42,6 +44,7 @@ func (p *Pipeline) cacheFor(s *config.Snapshot) (*dnscache.Cache, config.Cache, 
 	}
 	p.cache.once.Do(func() {
 		p.cache.cache, p.cache.err = dnscache.New(dnscache.Config{Bytes: cfg.Bytes, Shards: cfg.Shards, MaxNegativeTTL: uint32(cfg.MaxNegativeTTLSeconds)})
+		p.cache.buffers = dnswire.NewMessageBuffers(64)
 	})
 	return p.cache.cache, cfg, p.cache.err
 }
@@ -70,7 +73,9 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, route upstrea
 		if refresh {
 			workCtx = context.WithValue(workCtx, backgroundExchangeKey{}, true)
 		}
-		out := make([]byte, 65535)
+		buffer := p.cache.buffers.Get()
+		defer p.cache.buffers.Put(buffer)
+		out := buffer[:]
 		result, err := p.exchange(workCtx, s, route, wire, out)
 		metadata = result
 		if err == nil {
@@ -86,7 +91,12 @@ func (p *Pipeline) shared(ctx context.Context, s *config.Snapshot, route upstrea
 				p.cache.refreshFailed.Add(1)
 			}
 		}
-		return out, err
+		if err != nil {
+			return nil, err
+		}
+		// Waiters own this immutable response beyond the worker's lifetime. Copy
+		// only the actual message before returning scratch storage to the pool.
+		return append([]byte(nil), out...), nil
 	}, &metadata, func() {
 		// Only a leader needs owned bytes. Copy synchronously before returning
 		// to a stale client or sharing work past the caller's deadline.

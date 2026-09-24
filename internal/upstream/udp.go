@@ -32,6 +32,7 @@ type Options struct {
 }
 type Client struct {
 	options     Options
+	buffers     dnswire.MessageBuffers
 	slots       chan struct{}
 	ids         ids
 	mu          sync.Mutex
@@ -132,7 +133,7 @@ func New(o Options) (*Client, error) {
 		o.RootCAs = o.RootCAs.Clone()
 	}
 	lifetime, cancel := context.WithCancel(context.Background())
-	return &Client{options: o, slots: make(chan struct{}, o.MaxOutstanding), health: make([]endpointHealth, len(o.Endpoints)+len(o.Fallback)), lifetime: lifetime, cancel: cancel, httpClients: make(map[Endpoint]*http.Client)}, nil
+	return &Client{options: o, buffers: dnswire.NewMessageBuffers(min(64, o.MaxOutstanding)), slots: make(chan struct{}, o.MaxOutstanding), health: make([]endpointHealth, len(o.Endpoints)+len(o.Fallback)), lifetime: lifetime, cancel: cancel, httpClients: make(map[Endpoint]*http.Client)}, nil
 }
 func (c *Client) Outstanding() int { return len(c.slots) }
 
@@ -161,7 +162,9 @@ func (c *Client) Exchange(parent context.Context, wire, out []byte) (result Exch
 	if q.Header.Flags&dnswire.FlagRD == 0 {
 		return result, dnswire.ErrUnsupported
 	}
-	buf := make([]byte, 65535)
+	buffer := c.buffers.Get()
+	defer c.buffers.Put(buffer)
+	buf := buffer[:]
 	last := error(ErrResponse)
 	attempts := 0
 	probes := 0

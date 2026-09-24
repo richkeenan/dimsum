@@ -82,3 +82,47 @@ func BenchmarkCoalescedClients(b *testing.B) {
 	b.ReportMetric(float64(exchanges.Load())/float64(10*b.N), "upstream/client")
 	b.ReportMetric(float64(latency.Nanoseconds())/float64(10*b.N), "client-ns/answer")
 }
+
+// Exercises real upstream I/O on every operation. Record-free replies deliberately
+// bypass caching, so per-miss allocation costs cannot disappear into cache hits.
+func BenchmarkUncachedPipeline(b *testing.B) {
+	u, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(req testutil.Request) testutil.Response {
+		wire := append([]byte(nil), req.Wire...)
+		wire[2] |= 0x80
+		return testutil.Response{Wire: wire}
+	})
+	require.NoError(b, err)
+	b.Cleanup(func() { require.NoError(b, u.Close()) })
+	done := make(chan struct{})
+	b.Cleanup(func() { close(done) })
+	go func() {
+		for {
+			select {
+			case <-u.Requests():
+			case <-done:
+				return
+			}
+		}
+	}()
+	c, err := upstream.New(upstream.Options{Endpoints: []upstream.Endpoint{upstream.PlainEndpoint(netip.MustParseAddrPort(u.Address()))}})
+	require.NoError(b, err)
+	p := New(c)
+	b.Cleanup(func() { require.NoError(b, p.Close()) })
+	_, _, err = p.cacheFor(nil)
+	require.NoError(b, err)
+	r := transport.Request{Wire: []byte{0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 'a', 0, 0, 1, 0, 1}}
+	require.NoError(b, dnswire.ParseRequest(r.Wire, &r.Message))
+	out := make([]byte, 65535)
+	var n int
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		n, err = p.Resolve(context.Background(), &r, out)
+		if err != nil {
+			break
+		}
+	}
+	b.StopTimer()
+	require.NoError(b, err)
+	require.Equal(b, len(r.Wire), n)
+}
