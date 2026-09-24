@@ -75,3 +75,22 @@ ignored `docs/` output.
 `go test ./cmd/dimsum -run TestLoginPromptCancellationRestoresTerminal -count=1`
 uses a Go pseudo-terminal fixture on Linux and macOS. It checks hidden password
 entry, terminal restoration, and cancellation through signals and Ctrl-C.
+## Profiling a running instance
+
+For an isolated performance run, `serve` can write CPU and heap/allocation profiles
+to local files:
+
+```sh
+dimsum serve -config benchmark.yaml -cpu-profile cpu.pprof -heap-profile heap.pprof
+```
+
+Stop the process with SIGTERM or Ctrl-C to finish writing the profiles. The files
+must not already exist; they are created with owner-only permissions. Profiling
+is disabled unless requested and opens no network listener. Keep profile files
+private and out of source control. CPU profiling adds overhead, so use separate
+uninstrumented runs for latency comparisons.
+
+```sh
+go tool pprof -top cpu.pprof
+go tool pprof -top -alloc_space heap.pprof
+```

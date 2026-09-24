@@ -50,8 +50,9 @@ func TestForwardCLIServe(t *testing.T) {
 	defer reader.Close()
 	var stderr bytes.Buffer
 	done := make(chan int, 1)
+	heapPath := filepath.Join(filepath.Dir(path), "heap.pprof")
 	go func() {
-		code := run(ctx, []string{"serve", "-config", path}, writer, &stderr)
+		code := run(ctx, []string{"serve", "-config", path, "-heap-profile", heapPath}, writer, &stderr)
 		writer.Close()
 		done <- code
 	}()
@@ -79,6 +80,9 @@ func TestForwardCLIServe(t *testing.T) {
 	select {
 	case code := <-done:
 		assert.Zero(t, code, stderr.String())
+		profile, err := os.Stat(heapPath)
+		require.NoError(t, err)
+		assert.Positive(t, profile.Size())
 	case <-time.After(time.Second):
 		require.FailNow(t, "CLI shutdown stalled")
 	}

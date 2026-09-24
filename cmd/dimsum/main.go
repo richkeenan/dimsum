@@ -21,7 +21,7 @@ var version = "dev"
 var commit = "unknown"
 var date = "unknown"
 
-func run(ctx context.Context, args []string, out, stderr io.Writer) int {
+func run(ctx context.Context, args []string, out, stderr io.Writer) (code int) {
 	if len(args) > 0 && (args[0] == "control" || args[0] == "login" || args[0] == "logout") {
 		return cli.Run(ctx, args, out, stderr)
 	}
@@ -48,6 +48,11 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	path := flags.String("config", "dimsum.yaml", "authoritative configuration file")
 	state := flags.String("state", "", "derived list/recovery directory (default CONFIG.state)")
+	var cpuProfile, heapProfile string
+	if args[0] == "serve" {
+		flags.StringVar(&cpuProfile, "cpu-profile", "", "write CPU profile to a new local file until shutdown")
+		flags.StringVar(&heapProfile, "heap-profile", "", "write heap/allocation profile to a new local file on shutdown")
+	}
 	if err := flags.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -86,6 +91,16 @@ func run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	if err != nil {
 		return fail(err)
 	}
+	stopProfiles, err := startProfiles(cpuProfile, heapProfile)
+	if err != nil {
+		return fail(err)
+	}
+	defer func() {
+		if err := stopProfiles(); err != nil {
+			fmt.Fprintln(stderr, "writing profiles:", err)
+			code = 1
+		}
+	}()
 	s := new(app.Service)
 	if err := s.StartManaged(ctx, store); err != nil {
 		return fail(err)
