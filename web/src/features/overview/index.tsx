@@ -62,7 +62,10 @@ export default function Overview({
               </p>
             }
           >
-            <TrafficChart buckets={series.data?.points ?? []} />
+            <TrafficChart
+              buckets={series.data?.points ?? []}
+              resolution={series.data?.resolution_seconds ?? resolution}
+            />
           </Suspense>
         </Resource>
       </section>

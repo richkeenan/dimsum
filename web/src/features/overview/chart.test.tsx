@@ -4,13 +4,13 @@ import type { Point } from "@/lib/api";
 import TrafficChart from "./chart";
 
 const expectedColours = [
-  ["Local answer", "bg-emerald-500", "fill-emerald-500"],
-  ["Blocked", "bg-red-600", "fill-red-600"],
-  ["Cached", "bg-teal-400", "fill-teal-400"],
-  ["Cached (stale)", "bg-amber-400", "fill-amber-400"],
-  ["Forwarded", "bg-blue-600", "fill-blue-600"],
-  ["Failed", "bg-rose-900", "fill-rose-900"],
-  ["Rejected", "bg-orange-500", "fill-orange-500"],
+  ["Local answer", "var(--color-emerald-500)"],
+  ["Blocked", "var(--color-red-600)"],
+  ["Cached", "var(--color-teal-400)"],
+  ["Cached (stale)", "var(--color-amber-400)"],
+  ["Forwarded", "var(--color-blue-600)"],
+  ["Failed", "var(--color-rose-900)"],
+  ["Rejected", "var(--color-orange-500)"],
 ] as const;
 
 it("uses a distinct semantic colour for every outcome in the legend and graph", () => {
@@ -31,11 +31,11 @@ it("uses a distinct semantic colour for every outcome in the legend and graph", 
     },
   } satisfies Point;
 
-  const { container } = render(<TrafficChart buckets={[bucket]} />);
-  const bars = [...container.querySelectorAll("rect")];
+  const { container } = render(<TrafficChart buckets={[bucket]} resolution={3600} />);
+  const bars = [...container.querySelectorAll('rect[data-ts-key^="queries:"]')];
 
-  expectedColours.forEach(([label, swatchClass, fillClass], index) => {
-    expect(screen.getByText(label).querySelector("i")).toHaveClass(swatchClass);
-    expect(bars[index]).toHaveClass(fillClass);
+  expectedColours.forEach(([label, colour], index) => {
+    expect(screen.getByText(label).querySelector("i")).toHaveStyle({ background: colour });
+    expect(bars[index]).toHaveAttribute("fill", colour);
   });
 });
