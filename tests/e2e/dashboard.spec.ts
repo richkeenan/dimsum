@@ -1,6 +1,45 @@
 import { test, expect } from "../../web/e2e";
 import { fixtureAPI, query, summary } from "./fixtures";
 test.beforeEach(async ({ page }) => fixtureAPI(page));
+for (const preset of ["1h", "24h", "7d", "custom"]) {
+  test(`reload of settled ${preset} history issues one request per current resource`, async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
+    const requests: URL[] = [];
+    page.on("request", (request) => {
+      if (/\/(summary|rankings|timeseries|performance)\?/.test(request.url()))
+        requests.push(new URL(request.url()));
+    });
+    const params = new URLSearchParams({ range: preset });
+    if (preset === "custom") {
+      params.set("from", "2026-09-10T12:00:00.000Z");
+      params.set("to", "2026-09-11T12:00:00.000Z");
+    }
+    await page.goto("/overview?" + params);
+    await expect(page.getByText("48,216")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    for (const now of ["2026-09-24T12:01:00Z", "2026-09-24T12:01:00Z"]) {
+      requests.length = 0;
+      await page.clock.setFixedTime(new Date(now));
+      await page.getByRole("button", { name: "Reload displayed data" }).click();
+      await page.waitForLoadState("networkidle");
+      expect(requests).toHaveLength(4);
+      expect(new Set(requests.map((url) => url.pathname)).size).toBe(4);
+      for (const url of requests) {
+        expect(url.searchParams.get("to")).toBe(
+          preset === "custom" ? params.get("to") : "2026-09-24T12:01:00.000Z",
+        );
+        const hours = { "1h": 1, "24h": 24, "7d": 168 }[preset];
+        const from = hours
+          ? new Date(Date.parse(now) - hours * 3600000).toISOString()
+          : params.get("from");
+        expect(url.searchParams.get("from")).toBe(from);
+      }
+    }
+  });
+}
+
 test("changing a settled preset requests only the newly selected range", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
   const requests: URL[] = [];
@@ -27,6 +66,94 @@ test("changing a settled preset requests only the newly selected range", async (
   }
 });
 
+test("reloading an in-flight fixed window reuses its requests", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
+  await page.goto("/overview?range=custom&from=2026-09-10T12:00:00Z&to=2026-09-11T12:00:00Z");
+  await expect(page.getByText("48,216")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requests: string[] = [];
+  const cancelled: string[] = [];
+  const history = /\/api\/v1\/(summary|rankings|timeseries|performance)\?/;
+  page.on("requestfailed", (request) => {
+    if (history.test(request.url())) cancelled.push(request.url());
+  });
+  await page.route(history, async (route) => {
+    requests.push(route.request().url());
+    await held;
+    await route.fallback();
+  });
+  try {
+    await page.getByRole("button", { name: "Reload displayed data" }).click();
+    await expect.poll(() => requests.length).toBe(4);
+    await page.getByRole("button", { name: "Reload displayed data" }).click();
+  } finally {
+    release();
+  }
+  await page.waitForLoadState("networkidle");
+  expect(requests).toHaveLength(4);
+  expect(cancelled).toEqual([]);
+});
+
+test("live Overview polling issues only one group for the advanced window", async ({ page }) => {
+  await page.clock.install();
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (/\/(summary|rankings|timeseries|performance)\?/.test(request.url()))
+      requests.push(new URL(request.url()));
+  });
+  await page.goto("/overview?range=7d");
+  await expect(page.getByText("48,216")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const previousEnd = requests[0].searchParams.get("to")!;
+  requests.length = 0;
+  await page.clock.fastForward(30100);
+  await page.waitForLoadState("networkidle");
+  expect(requests).toHaveLength(4);
+  expect(new Set(requests.map((url) => url.pathname)).size).toBe(4);
+  expect(new Set(requests.map((url) => url.searchParams.get("to"))).size).toBe(1);
+  expect(Date.parse(requests[0].searchParams.get("to")!)).toBeGreaterThan(Date.parse(previousEnd));
+});
+
+test("toolbar reload preserves a frozen query page and its cursor", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (/\/queries\?/.test(request.url())) requests.push(new URL(request.url()));
+  });
+  await page.goto("/queries?range=7d");
+  await expect(page.getByRole("button", { name: query.name, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.getByText("Page 2 · up to 100 queries")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const frozen = requests.at(-1)!.search;
+  requests.length = 0;
+  await page.clock.setFixedTime(new Date("2026-09-24T12:01:00Z"));
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
+  await page.waitForLoadState("networkidle");
+  expect(requests).toHaveLength(1);
+  expect(requests[0].search).toBe(frozen);
+  await expect(page.getByText("Page 2 · up to 100 queries")).toBeVisible();
+});
+
+test("toolbar reload refreshes shared non-history resources once", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
+  let settings = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/v1/settings") settings++;
+  });
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  settings = 0;
+  await page.getByRole("button", { name: "Reload displayed data" }).click();
+  await page.waitForLoadState("networkidle");
+  expect(settings).toBe(1);
+});
+
 test("loading, empty, and offline states are distinct", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-09-21T12:00:00Z"));
   let release!: () => void;
@@ -38,14 +165,10 @@ test("loading, empty, and offline states are distinct", async ({ page }) => {
     await route.fulfill({ json: { items: [], complete: true } });
   });
   await page.goto("/queries");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Loading…" }),
-  ).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Loading…" })).toBeVisible();
   release();
   await page.getByRole("button", { name: "Pause live" }).click();
-  await expect(
-    page.getByRole("cell", { name: "No results for this selection." }),
-  ).toBeVisible();
+  await expect(page.getByRole("cell", { name: "No results for this selection." })).toBeVisible();
   await page.route("**/api/v1/queries?**", (route) => route.abort());
   await page.getByRole("button", { name: "Reload displayed data" }).click();
   await expect(
@@ -68,9 +191,7 @@ test("desktop dashboard, range consistency, dark mode and small screen", async (
   });
   await page.goto("/");
   await expect(page.getByText("48,216")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Top clients" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Top clients" })).toBeVisible();
   await expect(page.getByText("Study laptop")).toBeVisible();
   await expect(page.getByRole("img", { name: /DNS outcomes/ })).toBeVisible();
   expect(new Set(ranges).size).toBe(1);
@@ -85,22 +206,14 @@ test("desktop dashboard, range consistency, dark mode and small screen", async (
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(
-    page.getByRole("heading", { name: "Overview", exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({
     path: testInfo.outputPath("mobile.png"),
     fullPage: true,
   });
 });
-test("filtered cursors preserve detail position and scope is explicit", async ({
-  page,
-}) => {
+test("filtered cursors preserve detail position and scope is explicit", async ({ page }) => {
   const requests: URL[] = [];
   await page.route("**/api/v1/queries?**", (route) => {
     const u = new URL(route.request().url());
@@ -119,36 +232,24 @@ test("filtered cursors preserve detail position and scope is explicit", async ({
   });
   await page.goto("/queries");
   await page.getByLabel("Filter name").fill("telemetry");
-  await expect
-    .poll(() => requests.at(-1)?.searchParams.get("name"))
-    .toBe("telemetry");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("name")).toBe("telemetry");
   await page.getByRole("button", { name: "Next", exact: true }).click();
-  await expect
-    .poll(() => requests.at(-1)?.searchParams.get("cursor"))
-    .toBe("second-page");
+  await expect.poll(() => requests.at(-1)?.searchParams.get("cursor")).toBe("second-page");
   expect(requests.at(-1)?.searchParams.get("name")).toBe("telemetry");
   await page.getByRole("button", { name: "Previous" }).click();
   await page.getByRole("button", { name: query.name, exact: true }).click();
-  await expect(
-    page.getByText("Subdomains are not included.", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText("Subdomains are not included.", { exact: false })).toBeVisible();
   await page.getByLabel("Match scope").selectOption("suffix");
-  await expect(
-    page.getByText("and every descendant", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByText("and every descendant", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByText("Page 1 · up to 100 queries")).toBeVisible();
 });
-test("expired authentication returns to real data after login", async ({
-  page,
-}) => {
+test("expired authentication returns to real data after login", async ({ page }) => {
   let authenticated = false;
   await page.route("**/api/v1/summary?**", (route) =>
     route.fulfill({
       status: authenticated ? 200 : 401,
-      json: authenticated
-        ? summary
-        : { code: "unauthorized", message: "Session expired" },
+      json: authenticated ? summary : { code: "unauthorized", message: "Session expired" },
     }),
   );
   await page.route("**/session", (route) => {
@@ -162,9 +263,7 @@ test("expired authentication returns to real data after login", async ({
   await expect(page.getByRole("heading", { name: "Welcome to dimsum" })).not.toBeVisible();
   await expect(page.getByText("48,216")).toBeVisible();
 });
-test("incomplete history and unavailable statistics do not imply DNS outage", async ({
-  page,
-}) => {
+test("incomplete history and unavailable statistics do not imply DNS outage", async ({ page }) => {
   await page.route("**/api/v1/summary?**", (route) =>
     route.fulfill({ json: { ...summary, complete: false } }),
   );
@@ -182,13 +281,20 @@ test("incomplete history and unavailable statistics do not imply DNS outage", as
   await expect(page.getByText("DNS is not ready.", { exact: true })).not.toBeVisible();
 });
 
-test("header copies a DNS IP without its port and exposes nonstandard ports", async ({ page, context }) => {
+test("header copies a DNS IP without its port and exposes nonstandard ports", async ({
+  page,
+  context,
+}) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
-    dns_ready: true,
-    dns_addresses: ["192.0.2.53:53", "[2001:db8::53]:5353"],
-    storage: { available: true },
-  } }));
+  await page.route("**/api/v1/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        dns_ready: true,
+        dns_addresses: ["192.0.2.53:53", "[2001:db8::53]:5353"],
+        storage: { available: true },
+      },
+    }),
+  );
   await page.goto("/");
   await expect(page.getByText("192.0.2.53", { exact: true })).not.toBeVisible();
   const trigger = page.getByRole("button", { name: "DNS server", exact: true });
@@ -210,7 +316,7 @@ test("header copies a DNS IP without its port and exposes nonstandard ports", as
 
 test("paused filtering can be resumed from any page", async ({ page }) => {
   let enabled = false;
-  await page.route("**/api/v1/blocking", route => {
+  await page.route("**/api/v1/blocking", (route) => {
     if (route.request().method() === "PUT") enabled = route.request().postDataJSON().enabled;
     return route.fulfill({ json: { enabled, pause_until: "2026-09-21T12:30:00Z" } });
   });
@@ -223,11 +329,15 @@ test("paused filtering can be resumed from any page", async ({ page }) => {
 
 test("DNS popover fits a narrow screen and keeps IPv6 copy accessible", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 700 });
-  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
-    dns_ready: true,
-    dns_addresses: ["[2001:db8:1234:5678:abcd:1234:5678:abcd]:53"],
-    storage: { available: true },
-  } }));
+  await page.route("**/api/v1/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        dns_ready: true,
+        dns_addresses: ["[2001:db8:1234:5678:abcd:1234:5678:abcd]:53"],
+        storage: { available: true },
+      },
+    }),
+  );
   await page.goto("/");
   await page.getByRole("button", { name: "Open navigation", exact: true }).click();
   await page.getByRole("button", { name: "DNS server", exact: true }).click();
@@ -241,24 +351,34 @@ test("DNS popover fits a narrow screen and keeps IPv6 copy accessible", async ({
 });
 
 test("DNS popover explains when no client-facing address exists", async ({ page }) => {
-  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
-    dns_ready: true,
-    dns_addresses: [],
-    storage: { available: true },
-  } }));
+  await page.route("**/api/v1/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        dns_ready: true,
+        dns_addresses: [],
+        storage: { available: true },
+      },
+    }),
+  );
   await page.goto("/");
   await page.getByRole("button", { name: "DNS server", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "DNS addresses" })).toContainText("No client-facing address");
+  await expect(page.getByRole("dialog", { name: "DNS addresses" })).toContainText(
+    "No client-facing address",
+  );
   await expect(page.getByRole("button", { name: /^Copy DNS address/ })).toHaveCount(0);
 });
 
 test("service faults appear and clear when diagnostics recover", async ({ page }) => {
   let healthy = false;
-  await page.route("**/api/v1/diagnostics", route => route.fulfill({ json: {
-    dns_ready: healthy,
-    dns_addresses: ["192.0.2.53:53"],
-    storage: { available: healthy },
-  } }));
+  await page.route("**/api/v1/diagnostics", (route) =>
+    route.fulfill({
+      json: {
+        dns_ready: healthy,
+        dns_addresses: ["192.0.2.53:53"],
+        storage: { available: healthy },
+      },
+    }),
+  );
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("DNS is not ready.");
   await expect(page.getByRole("alert")).toContainText("Statistics are unavailable.");
@@ -270,7 +390,9 @@ test("service faults appear and clear when diagnostics recover", async ({ page }
 test("DNS copying works without the secure-context Clipboard API", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
-  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }));
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true }),
+  );
   await page.getByRole("button", { name: "DNS server", exact: true }).click();
   await page.getByRole("button", { name: "Copy DNS address 192.0.2.53", exact: true }).click();
   await expect(page.getByText("Copied", { exact: true })).toBeVisible();
@@ -311,7 +433,9 @@ test("live polling defaults on only for newest uninspected queries", async ({ pa
   await expect.poll(() => requests).toBeGreaterThan(before);
 });
 
-test("ordinary numeric URL filters preserve exact identities and round-trip edits", async ({ page }) => {
+test("ordinary numeric URL filters preserve exact identities and round-trip edits", async ({
+  page,
+}) => {
   const requests: URL[] = [];
   page.on("request", (request) => {
     if (request.url().includes("/api/v1/queries?")) requests.push(new URL(request.url()));
@@ -333,7 +457,9 @@ test("ordinary numeric URL filters preserve exact identities and round-trip edit
   await expect.poll(() => requests.at(-1)?.searchParams.has("rule_id")).toBe(false);
 });
 
-test("query filters update automatically with a searchable client picker and aligned advanced fields", async ({ page }, testInfo) => {
+test("query filters update automatically with a searchable client picker and aligned advanced fields", async ({
+  page,
+}, testInfo) => {
   await page.goto("/queries");
   const domain = page.getByLabel("Filter name");
   const client = page.getByRole("combobox", { name: "Filter client" });
@@ -352,13 +478,20 @@ test("query filters update automatically with a searchable client picker and ali
   const before = await domain.boundingBox();
   await page.getByText("Advanced filters", { exact: true }).click();
   expect((await domain.boundingBox())?.y).toBe(before?.y);
-  expect((await page.getByLabel("Filter qtype").boundingBox())!.y).toBeGreaterThan(before!.y + before!.height);
+  expect((await page.getByLabel("Filter qtype").boundingBox())!.y).toBeGreaterThan(
+    before!.y + before!.height,
+  );
   for (const theme of ["light", "dark"]) {
     if (theme === "dark") await page.getByRole("button", { name: "Dark appearance" }).click();
-    const backgrounds = await page.locator('form [data-slot="input"], form select').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
+    const backgrounds = await page
+      .locator('form [data-slot="input"], form select')
+      .evaluateAll((els) => els.map((el) => getComputedStyle(el).backgroundColor));
     expect(new Set(backgrounds).size).toBe(1);
     expect(backgrounds[0]).not.toBe("rgba(0, 0, 0, 0)");
-    await page.screenshot({ path: testInfo.outputPath(`query-filters-${theme}.png`), fullPage: true });
+    await page.screenshot({
+      path: testInfo.outputPath(`query-filters-${theme}.png`),
+      fullPage: true,
+    });
   }
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -379,7 +512,9 @@ test("changing the range on page two resets the cursor and frozen bounds", async
   await expect.poll(() => requests.at(-1)?.searchParams.get("cursor")).toBe("second-page");
   await page.getByLabel("Time range").selectOption("1h");
   await expect(page.getByText("Page 1 · up to 100 queries")).toBeVisible();
-  await expect.poll(() => requests.at(-1)?.searchParams.get("from")).toBe("2026-09-21T11:00:00.000Z");
+  await expect
+    .poll(() => requests.at(-1)?.searchParams.get("from"))
+    .toBe("2026-09-21T11:00:00.000Z");
   expect(requests.at(-1)?.searchParams.get("to")).toBe("2026-09-21T12:00:00.000Z");
   expect(requests.at(-1)?.searchParams.get("cursor")).toBeNull();
   expect(requests.at(-1)?.searchParams.get("name")).toBe(query.name);
@@ -389,14 +524,21 @@ test("changing the range on page two resets the cursor and frozen bounds", async
 test("custom range controls follow direct URLs, reload, and browser history", async ({ page }) => {
   const from = "2026-09-20T12:00:00.000Z";
   const to = "2026-09-21T12:00:00.000Z";
-  await page.goto(`/queries?range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-  const local = await page.evaluate(({ from, to }) => {
-    const input = (value: string) => {
-      const date = new Date(value);
-      return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    };
-    return { from: input(from), to: input(to) };
-  }, { from, to });
+  await page.goto(
+    `/queries?range=custom&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+  );
+  const local = await page.evaluate(
+    ({ from, to }) => {
+      const input = (value: string) => {
+        const date = new Date(value);
+        return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16);
+      };
+      return { from: input(from), to: input(to) };
+    },
+    { from, to },
+  );
   for (const reload of [false, true]) {
     if (reload) await page.reload();
     await expect(page.getByLabel("Time range")).toHaveValue("custom");

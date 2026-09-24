@@ -8,14 +8,12 @@ export function ClientFilter({
   value,
   onChange,
   range,
-  refresh,
 }: {
   value: string;
   onChange: (value: string) => void;
   range: string;
-  refresh: number;
 }) {
-  const clients = useResource<ClientsResponse>("clients?" + range + "&limit=200", refresh);
+  const clients = useResource<ClientsResponse>("clients?" + range + "&limit=200");
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);

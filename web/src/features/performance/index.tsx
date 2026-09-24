@@ -9,14 +9,10 @@ import { estimate, formatLatency, outcomeLabels } from "./format";
 export type PerformanceProps = {
   range: string;
   resolution: number;
-  refresh: number;
 };
 
-export function usePerformance({ range, resolution, refresh }: PerformanceProps) {
-  return useResource<PerformanceData>(
-    `performance?${range}&resolution_seconds=${resolution}`,
-    refresh,
-  );
+export function usePerformance({ range, resolution }: PerformanceProps) {
+  return useResource<PerformanceData>(`performance?${range}&resolution_seconds=${resolution}`);
 }
 
 const panel = "mb-5 min-w-0 overflow-hidden rounded-lg border border-border bg-background";

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,7 +17,8 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { api, historyWindow, type Row, type Settings } from "./lib/api";
+import { api, type Row, type Settings } from "./lib/api";
+import { useHistoryWindow } from "./lib/history-window";
 import { filterKeys, type ViewSearch } from "./lib/navigation";
 import { useLive } from "./lib/hooks";
 import { Button } from "./components/ui/button";
@@ -86,15 +87,12 @@ export default function App() {
     () => Object.fromEntries(filterKeys.filter((k) => search[k]).map((k) => [k, search[k]!])),
     [search],
   );
-  const [anchor, setAnchor] = useState(() => Date.now());
-  const [anchorRange, setAnchorRange] = useState(range);
-  // Navigation applies asynchronously. Reset the clock with the applied range,
-  // before children render, rather than fetching the old range with a new clock.
-  if (anchorRange !== range) {
-    setAnchorRange(range);
-    setAnchor(Date.now());
-  }
-  const [refresh, setRefresh] = useState(0);
+  const {
+    params: rangeParams,
+    resolution,
+    advance: liveTick,
+    reload,
+  } = useHistoryWindow(range, custom);
   const [auth, setAuth] = useState(
     () => typeof sessionStorage === "undefined" || !sessionStorage.getItem("dimsum-csrf"),
   );
@@ -122,7 +120,6 @@ export default function App() {
     setTo(localInput(search.to));
     setRangeError("");
   }, [range, search.from, search.to]);
-  const liveTick = useCallback(() => setAnchor(Date.now()), []);
   useLive(
     !auth && ["overview", "performance", "clients"].includes(page) && range !== "custom",
     liveTick,
@@ -132,7 +129,6 @@ export default function App() {
   const section = sections.find((s) => s.pages.some(([id]) => id === page));
   const parent = section?.parent ?? page;
   const title = navigation.find((n) => n[0] === parent)?.[1] ?? "Overview";
-  const { params: rangeParams, resolution } = historyWindow(range, anchor, custom);
   const rangeSearch: ViewSearch = { range, ...custom };
   function go(p: string, next: ViewSearch = rangeSearch) {
     setMenu(false);
@@ -201,7 +197,7 @@ export default function App() {
             onSuccess={() => {
               queryClient.clear();
               setAuth(false);
-              setAnchor(Date.now());
+              liveTick();
             }}
           />
         </section>
@@ -330,11 +326,7 @@ export default function App() {
                 variant="outline"
                 aria-label="Reload displayed data"
                 title="Reload displayed data"
-                onClick={() => {
-                  setRefresh((v) => v + 1);
-                  setAnchor(Date.now());
-                  void queryClient.invalidateQueries({ queryKey: ["api"] });
-                }}
+                onClick={reload}
               >
                 <RefreshCw size={16} />
               </Button>
@@ -429,18 +421,16 @@ export default function App() {
               <Overview
                 resolution={resolution}
                 range={rangeParams}
-                refresh={refresh}
                 onPerformance={() => go("performance")}
                 drill={(key, value) => go("queries", { ...rangeSearch, [key]: value })}
               />
             ) : page === "performance" ? (
-              <Performance range={rangeParams} resolution={resolution} refresh={refresh} />
+              <Performance range={rangeParams} resolution={resolution} />
             ) : page === "queries" ? (
               <Queries
                 key={`${range}:${search.from ?? ""}:${search.to ?? ""}`}
                 onLiveTick={liveTick}
                 range={rangeParams}
-                refresh={refresh}
                 initialFilter={filter}
                 onFilterChange={(next) => go("queries", { ...rangeSearch, ...next })}
                 liveAllowed={range !== "custom"}

@@ -39,7 +39,6 @@ it("syncs URL filters and debounces edits, cancelling pending edits on clear", (
   const onFilterChange = vi.fn();
   const props = {
     range: "from=one&to=two",
-    refresh: 0,
     onLiveTick: vi.fn(),
     onFilterChange,
   };
@@ -67,7 +66,6 @@ it("selects a client by name with the keyboard and immediately resets pagination
     <Queries
       range="from=one&to=two"
       initialFilter={{}}
-      refresh={0}
       onLiveTick={vi.fn()}
       onFilterChange={onFilterChange}
     />,
@@ -88,7 +86,6 @@ it("waits for scope before sending an advanced identity filter", () => {
     <Queries
       range="from=one&to=two"
       initialFilter={{}}
-      refresh={0}
       onLiveTick={vi.fn()}
       onFilterChange={onFilterChange}
     />,
@@ -114,7 +111,7 @@ it("waits for scope before sending an advanced identity filter", () => {
 });
 
 it("captures cursor range and pauses polling until returning to the newest page", () => {
-  const props = { initialFilter: {}, refresh: 0, onLiveTick: vi.fn() };
+  const props = { initialFilter: {}, onLiveTick: vi.fn() };
   const view = render(<Queries {...props} range="from=one&to=two" />);
   expect(mocks.live).toHaveBeenLastCalledWith(true, expect.any(Function));
   fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -138,7 +135,6 @@ it("keeps scoped identifiers exact when filtering from query details", () => {
     <Queries
       range="from=one&to=two"
       initialFilter={{}}
-      refresh={0}
       onLiveTick={vi.fn()}
       onFilterChange={onFilterChange}
     />,
@@ -159,7 +155,6 @@ it("does not poll or advance fixed historical ranges", () => {
     <Queries
       range="from=one&to=two"
       initialFilter={{}}
-      refresh={0}
       onLiveTick={onLiveTick}
       liveAllowed={false}
     />,

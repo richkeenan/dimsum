@@ -14,14 +14,12 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 export default function Queries({
   range,
   initialFilter,
-  refresh,
   onLiveTick,
   onFilterChange,
   liveAllowed = true,
 }: {
   range: string;
   initialFilter: Record<string, string>;
-  refresh: number;
   onLiveTick: () => void;
   onFilterChange?: (filters: Record<string, string>) => void;
   liveAllowed?: boolean;
@@ -36,8 +34,8 @@ export default function Queries({
   const [snapshot, setSnapshot] = useState<string>();
   const [tick, setTick] = useState(0);
   const invalidate = useCallback(() => {
-    setTick((v) => v + 1);
     if (liveAllowed && cursors.length === 1 && !selected) onLiveTick();
+    else setTick((v) => v + 1);
   }, [onLiveTick, liveAllowed, cursors.length, selected]);
   const connection = useLive(liveAllowed && live && !selected && cursors.length === 1, invalidate);
   const filterKey = JSON.stringify(Object.entries(initialFilter).sort());
@@ -86,7 +84,7 @@ export default function Queries({
     applyFilters(next);
     setSelected(undefined);
   }
-  const state = useResource<Page>("queries?" + (snapshot ?? range) + "&" + query, refresh + tick);
+  const state = useResource<Page>("queries?" + (snapshot ?? range) + "&" + query, tick);
   return (
     <>
       <form
@@ -104,7 +102,6 @@ export default function Queries({
                 <ClientFilter
                   value={draft.client ?? ""}
                   range={range}
-                  refresh={refresh}
                   onChange={(value) => changeFilter("client", value, true)}
                 />
               </div>

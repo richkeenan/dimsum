@@ -39,7 +39,6 @@ it("shows the uncapped active-client count without fetching the device inventory
       <Overview
         range={new URLSearchParams(range).toString()}
         resolution={3600}
-        refresh={0}
         drill={() => {}}
         onPerformance={() => {}}
       />
