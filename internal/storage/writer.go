@@ -80,8 +80,22 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		return err
 	}
 	for _, r := range o.Rules {
-		if _, err = tx.ExecContext(ctx, "INSERT INTO rule_versions(boot_id,generation,rule_id,description,source_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", boot, r.Generation, r.RuleID, r.Description, r.SourceID); err != nil {
+		inserted, err := tx.ExecContext(ctx, "INSERT INTO rule_versions(boot_id,generation,rule_id,description,source_id) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING", boot, r.Generation, r.RuleID, r.Description, r.SourceID)
+		if err != nil {
 			return err
+		}
+		n, err := inserted.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			rowid, err := inserted.LastInsertId()
+			if err != nil {
+				return err
+			}
+			if err := noteRuleForSweep(ctx, tx, rowid); err != nil {
+				return err
+			}
 		}
 		var text, source string
 		if err = tx.QueryRowContext(ctx, "SELECT description,source_id FROM rule_versions WHERE boot_id=? AND generation=? AND rule_id=?", boot, r.Generation, r.RuleID).Scan(&text, &source); err != nil {
