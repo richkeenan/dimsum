@@ -119,6 +119,16 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		bin                int
 	}
 	latencies := make(map[latencyKey]uint64)
+	domains, err := prepareDimension(ctx, tx, "domains", "name")
+	if err != nil {
+		return err
+	}
+	defer domains.close()
+	clients, err := prepareDimension(ctx, tx, "clients", "address")
+	if err != nil {
+		return err
+	}
+	defer clients.close()
 	for _, e := range events {
 		if e.Sequence <= watermark {
 			continue
@@ -137,11 +147,11 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		// Each tier has its own retention boundary; expired detail must not
 		// discard a still-retained hourly or daily observation.
 		if e.Timestamp >= cutoffs[0] {
-			domain, er := dimension(ctx, tx, "domains", "name", e.QName[:e.QNameLength])
+			domain, er := domains.resolve(ctx, e.QName[:e.QNameLength])
 			if er != nil {
 				return er
 			}
-			client, er := dimension(ctx, tx, "clients", "address", e.Client[:])
+			client, er := clients.resolve(ctx, e.Client[:])
 			if er != nil {
 				return er
 			}
@@ -222,12 +232,43 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 	return tx.Commit()
 }
 
-func dimension(ctx context.Context, tx *sql.Tx, table, column string, value []byte) (int64, error) {
-	if _, err := tx.ExecContext(ctx, "INSERT INTO "+table+"("+column+") VALUES(?) ON CONFLICT DO NOTHING", value); err != nil {
+// Dictionary IDs are memoized only within this transaction: rollback and
+// retention may invalidate them between batches. Memory is bounded by MaxBatch.
+type batchDimension struct {
+	insert, selectID *sql.Stmt
+	ids              map[string]int64
+}
+
+func prepareDimension(ctx context.Context, tx *sql.Tx, table, column string) (*batchDimension, error) {
+	insert, err := tx.PrepareContext(ctx, "INSERT INTO "+table+"("+column+") VALUES(?) ON CONFLICT DO NOTHING")
+	if err != nil {
+		return nil, err
+	}
+	selectID, err := tx.PrepareContext(ctx, "SELECT id FROM "+table+" WHERE "+column+"=?")
+	if err != nil {
+		_ = insert.Close()
+		return nil, err
+	}
+	return &batchDimension{insert: insert, selectID: selectID, ids: make(map[string]int64)}, nil
+}
+
+func (d *batchDimension) close() {
+	_ = d.insert.Close()
+	_ = d.selectID.Close()
+}
+
+func (d *batchDimension) resolve(ctx context.Context, value []byte) (int64, error) {
+	if id, ok := d.ids[string(value)]; ok {
+		return id, nil
+	}
+	if _, err := d.insert.ExecContext(ctx, value); err != nil {
 		return 0, err
 	}
 	var id int64
-	err := tx.QueryRowContext(ctx, "SELECT id FROM "+table+" WHERE "+column+"=?", value).Scan(&id)
+	err := d.selectID.QueryRowContext(ctx, value).Scan(&id)
+	if err == nil {
+		d.ids[string(value)] = id
+	}
 	return id, err
 }
 
