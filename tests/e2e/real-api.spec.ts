@@ -219,6 +219,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   // Exercise the actual shared list API through the UI, including saved YAML
   // and active membership rather than only intercepted browser responses.
   await page.goto("/lists");
+  await page.getByRole("button", { name: /Compatibility.*used by default/ }).click();
   await page.getByRole("checkbox", { name: "Work tools compatibility", exact: true }).check();
   await page.getByRole("button", { name: "Edit domains", exact: true }).click();
   const builtinDialog = page.getByRole("dialog", { name: "Work tools compatibility" });

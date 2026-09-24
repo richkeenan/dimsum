@@ -2276,10 +2276,15 @@ export interface components {
       label: string;
       description: string;
       /**
-       * @description Optional list-purpose classification. Parental-control lists block adult content and are opt-in.
+       * @description Optional list-purpose classification used for catalogue groups and badges. Parental-control lists block adult content and are opt-in. Uncategorized subscriptions can be presented as custom lists.
        * @enum {string}
        */
-      category?: "parental-control" | "compatibility";
+      category?:
+        | "ads-trackers"
+        | "security"
+        | "social-gambling"
+        | "parental-control"
+        | "compatibility";
       /** Format: uri */
       url: string;
       /** @enum {string} */

@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { api, collectionRows, count, rows, text, type Row } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import { DataTable, Details, ErrorNotice } from "@/components/data";
+import { Details, ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { BuiltinListEditor } from "./builtin-list";
+import { GroupedListTable, ListCategoryBadge } from "./list-groups";
 import type { Schema } from "./clients/model";
 
 export type ListToggle = { id: unknown; enabled: boolean };
@@ -100,8 +100,9 @@ export function ListSubscriptions({
       {catalog.loading && (
         <p className="px-4 py-3 text-xs text-muted-foreground">Loading available lists…</p>
       )}
-      <DataTable
+      <GroupedListTable
         items={items}
+        pending={pending}
         columns={[
           {
             key: "enabled",
@@ -135,9 +136,7 @@ export function ListSubscriptions({
               <div className="min-w-48 max-w-96 whitespace-normal">
                 <div className="flex flex-wrap items-center gap-2 font-medium">
                   {listLabel(row)}
-                  {row.category === "parental-control" && (
-                    <Badge variant="destructive">Adult content</Badge>
-                  )}
+                  <ListCategoryBadge category={row.category} />
                 </div>
                 {!!row.description && (
                   <p className="mt-1 text-xs text-muted-foreground">{text(row.description)}</p>

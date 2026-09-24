@@ -173,6 +173,14 @@ health are shown separately in Clients and Filter lists.
 
 ### Optional curated lists
 
+**Filter lists** groups subscriptions by the catalogue API's `category`: Ads &
+Trackers, Security & Scams, Social & Gambling, Adult Content, and Compatibility.
+Subscriptions without a recognized category appear under Custom Lists. Each
+heading shows the list count, how many are used by default, and any source errors.
+Sections start collapsed and remember your expanded sections in this browser;
+use **Expand all** or **Collapse all** to change the whole view. Badges use the
+same categories, including the red Adult content badge.
+
 The catalogue includes these opt-in [HaGeZi lists](https://github.com/hagezi/dns-blocklists)
 alongside its ad-blocking, threat-intelligence, and adult-content choices:
 

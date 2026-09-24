@@ -1053,8 +1053,8 @@ components:
         description: {type: string}
         category:
           type: string
-          enum: [parental-control, compatibility]
-          description: Optional list-purpose classification. Parental-control lists block adult content and are opt-in.
+          enum: [ads-trackers, security, social-gambling, parental-control, compatibility]
+          description: Optional list-purpose classification used for catalogue groups and badges. Parental-control lists block adult content and are opt-in. Uncategorized subscriptions can be presented as custom lists.
         url: {type: string, format: uri}
         dialect: {type: string, enum: [hosts, domains, dns-adblock]}
         domain_kind: {type: string, enum: [exact, suffix]}

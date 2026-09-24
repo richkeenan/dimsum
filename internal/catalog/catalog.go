@@ -47,10 +47,10 @@ func Entries() []Entry {
 		{ID: "hagezi-light", Label: "HaGeZi Light", Description: "Light DNS blocklist", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/light.txt", Family: "base"},
 		{ID: "hagezi-normal", Label: "HaGeZi Normal", Description: "Recommended alternative balanced preset", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/multi.txt", Family: "base"},
 		{ID: "hagezi-pro", Label: "HaGeZi Pro", Description: "More aggressive DNS blocklist", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/pro.txt", Family: "base"},
-		{ID: "hagezi-tif-mini", Label: "HaGeZi Threat Intelligence Mini", Description: "Optional threats feed", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt"},
-		{ID: "hagezi-social", Label: "HaGeZi Social Media", Description: "Blocks social networks, including Facebook, Instagram, TikTok, X, and Snapchat; excludes messaging and streaming platforms", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/social.txt"},
-		{ID: "hagezi-gambling", Label: "HaGeZi Gambling", Description: "Blocks gambling and betting sites", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/gambling.txt"},
-		{ID: "hagezi-fake", Label: "HaGeZi Scams & Fake Stores", Description: "Blocks fake shops, fake streaming sites, subscription traps, and similar scams", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/fake.txt"},
+		{ID: "hagezi-tif-mini", Label: "HaGeZi Threat Intelligence Mini", Description: "Optional threats feed", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/tif.mini.txt", Category: "security"},
+		{ID: "hagezi-social", Label: "HaGeZi Social Media", Description: "Blocks social networks, including Facebook, Instagram, TikTok, X, and Snapchat; excludes messaging and streaming platforms", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/social.txt", Category: "social-gambling"},
+		{ID: "hagezi-gambling", Label: "HaGeZi Gambling", Description: "Blocks gambling and betting sites", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/gambling.txt", Category: "social-gambling"},
+		{ID: "hagezi-fake", Label: "HaGeZi Scams & Fake Stores", Description: "Blocks fake shops, fake streaming sites, subscription traps, and similar scams", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/fake.txt", Category: "security"},
 		{ID: "oisd-small", Label: "OISD Small", Description: "Small DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://small.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
 		{ID: "oisd-big", Label: "OISD Big", Description: "Expanded DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://big.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
 		{ID: "hagezi-nsfw", Label: "HaGeZi NSFW", Description: "Parental control: blocks adult-content domains", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nsfw.txt", Category: "parental-control"},
@@ -60,6 +60,9 @@ func Entries() []Entry {
 	for i := range entries {
 		e := &entries[i]
 		e.UpdateInterval = 24 * time.Hour
+		if e.Family == "base" {
+			e.Category = "ads-trackers"
+		}
 		if len(e.ID) >= 7 && e.ID[:7] == "hagezi-" {
 			e.Homepage = "https://github.com/hagezi/dns-blocklists"
 			e.Attribution = "HaGeZi and upstream contributors; GPL-3.0 repository license, upstream source attribution in repository"

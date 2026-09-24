@@ -311,6 +311,7 @@ export async function fixtureAPI(page: Page) {
           {
             id: "privacy",
             label: "Fixture privacy",
+            category: "ads-trackers",
             url: "https://example.test/list",
             dialect: "domains",
             domain_kind: "exact",
@@ -321,6 +322,7 @@ export async function fixtureAPI(page: Page) {
           {
             id: "unavailable",
             label: "Unavailable fixture",
+            category: "ads-trackers",
             available: false,
             unavailable_reason: "Not available on this installation",
           },

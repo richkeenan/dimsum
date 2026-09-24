@@ -28,6 +28,7 @@ vi.mock("@/lib/hooks", () => ({
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  localStorage.clear();
   resources.values = {
     settings: {
       loading: false,
@@ -54,6 +55,7 @@ beforeEach(() => {
           {
             id: "recommended",
             label: "Recommended domains",
+            category: "ads-trackers",
             description: "A balanced list",
             url: "https://example.com/domains",
             dialect: "dns-adblock",
@@ -109,6 +111,7 @@ it("requires explicit list assignments to be reset before offering deletion, inc
   };
   resources.values.profiles = { loading: false, data: { items: [] } };
   render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   const dialog = await screen.findByRole("dialog");
   expect(within(dialog).getByRole("button", { name: "Delete list" })).toBeDisabled();
@@ -304,6 +307,7 @@ it("validates custom upstreams locally and formats IPv6 with the default port", 
 it("subscribes directly from the catalog with its parser settings", async () => {
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   await waitFor(() =>
     expect(send).toHaveBeenCalledWith("lists", "POST", {
@@ -339,6 +343,7 @@ it.each([true, false])(
     };
     const send = vi.spyOn(api, "send").mockResolvedValue({});
     render(<Configuration kind="lists" range="" />);
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(screen.getAllByRole("checkbox")).toHaveLength(1);
     fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
     await waitFor(() =>
@@ -362,6 +367,7 @@ it("shows download progress then the source failure without claiming it is activ
       }) as never,
   );
   const view = render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   expect(screen.getByText("Downloading…")).toBeInTheDocument();
   expect(screen.getByRole("checkbox")).toBeDisabled();
@@ -393,6 +399,7 @@ it("keeps a failed checkbox mutation unchecked and surfaces the conflict", async
     new APIError(409, "revision_conflict", "Changed on disk"),
   );
   render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("checkbox", { name: "Recommended domains" }));
   expect(await screen.findByRole("alert")).toBeInTheDocument();
   expect(screen.getByRole("checkbox")).not.toBeChecked();
@@ -442,6 +449,7 @@ it("keeps a retained source visibly active when its update fails", () => {
     },
   };
   render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   expect(screen.getByRole("checkbox", { name: "example.org/hosts" })).toBeChecked();
   expect(screen.getByText("Downloaded · update failed")).toBeInTheDocument();
   expect(screen.getByText("Retained previous source after HTTP 503")).toBeInTheDocument();
@@ -464,6 +472,7 @@ it("keeps a catalog choice distinct from a source with the same ID and an edited
       }) as never,
   );
   render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   const choice = screen.getByRole("checkbox", { name: "Recommended domains" });
   const configured = screen.getByRole("checkbox", {
     name: "example.org/edited",
@@ -626,6 +635,7 @@ it("preserves an existing ID and the editing revision while background data chan
   };
   const send = vi.spyOn(api, "send").mockResolvedValue({});
   const view = render(<Configuration kind="lists" range="" />);
+  fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.change(screen.getByRole("textbox", { name: /List URL/ }), {
     target: { value: "https://example.com/new" },

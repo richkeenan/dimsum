@@ -37,6 +37,7 @@ test("shared built-in list editor saves, restores and resets at desktop and mobi
           {
             id: "work",
             label: "Work tools compatibility",
+            category: "compatibility",
             url: "builtin://work-compatibility",
             available: true,
             dialect: "dns-adblock",
@@ -105,6 +106,7 @@ test("shared built-in list editor saves, restores and resets at desktop and mobi
   await expect(dialog.getByText("125 allowed domains · Shipped defaults")).toBeVisible();
   await dialog.getByRole("button", { name: "Done", exact: true }).click();
   await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: /Compatibility.*used by default/ }).click();
   await page.getByRole("button", { name: "Edit domains" }).click();
   await expect(dialog).toBeVisible();
   await page.keyboard.press("Escape");

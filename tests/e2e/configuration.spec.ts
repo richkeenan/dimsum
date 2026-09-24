@@ -72,6 +72,7 @@ test("list toggle shows pending activation and failed refresh preserves configur
     }),
   );
   await page.goto("/lists");
+  await page.getByRole("button", { name: /Ads & Trackers/ }).click();
   await page
     .getByRole("checkbox", { name: "Fixture privacy", exact: true })
     .uncheck();
@@ -253,6 +254,7 @@ test("custom list editor waits for its revision and fits desktop and mobile", as
     page.getByRole("button", { name: "Add custom URL" }),
   ).toBeDisabled();
   release();
+  await page.getByRole("button", { name: /Ads & Trackers/ }).click();
   await expect(
     page.getByRole("checkbox", { name: "Unavailable fixture" }),
   ).toBeDisabled();
@@ -335,6 +337,7 @@ test("network list selection persists without disabling downloads used by profil
     });
   });
   await page.goto("/lists");
+  await page.getByRole("button", { name: /Ads & Trackers/ }).click();
   const checkbox = page.getByRole("checkbox", {
     name: "Fixture privacy",
     exact: true,
