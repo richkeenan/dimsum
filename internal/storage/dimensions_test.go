@@ -38,6 +38,27 @@ CREATE TRIGGER client_attempt BEFORE INSERT ON clients BEGIN INSERT INTO dimensi
 	}
 }
 
+func TestBatchExistingDimensionsAvoidInsertAttempts(t *testing.T) {
+	d := openTest(t)
+	ctx := context.Background()
+	require.NoError(t, d.WriteBatch(ctx, "existing", []stats.QueryEvent{event(1)}))
+	_, err := d.write.Exec(`CREATE TABLE existing_attempts(kind TEXT);
+CREATE TRIGGER existing_domain BEFORE INSERT ON domains BEGIN INSERT INTO existing_attempts VALUES('domain'); END;
+CREATE TRIGGER existing_client BEFORE INSERT ON clients BEGIN INSERT INTO existing_attempts VALUES('client'); END;`)
+	require.NoError(t, err)
+	require.NoError(t, d.WriteBatch(ctx, "existing", []stats.QueryEvent{event(2), event(3)}))
+	var attempts int
+	require.NoError(t, d.read.QueryRow("SELECT COUNT(*) FROM existing_attempts").Scan(&attempts))
+	assert.Zero(t, attempts, "existing dictionary entries should be read without invoking the insertion path")
+	page, err := d.Query(ctx, QueryOptions{Start: testStart, End: testStart.Add(time.Hour)})
+	require.NoError(t, err)
+	require.Len(t, page.Rows, 3)
+	for _, row := range page.Rows {
+		assert.Equal(t, event(1).QName, row.Event.QName)
+		assert.Equal(t, event(1).Client, row.Event.Client)
+	}
+}
+
 func TestBatchCombinesAggregateUpdatesWithoutLosingEvents(t *testing.T) {
 	d := openTest(t)
 	_, err := d.write.Exec(`CREATE TABLE aggregate_attempts(kind TEXT);

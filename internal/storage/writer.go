@@ -279,7 +279,7 @@ type batchDimension struct {
 }
 
 func prepareDimension(ctx context.Context, tx *sql.Tx, table, column string) (*batchDimension, error) {
-	insert, err := tx.PrepareContext(ctx, "INSERT INTO "+table+"("+column+") VALUES(?) ON CONFLICT DO NOTHING")
+	insert, err := tx.PrepareContext(ctx, "INSERT INTO "+table+"("+column+") VALUES(?)")
 	if err != nil {
 		return nil, err
 	}
@@ -300,11 +300,17 @@ func (d *batchDimension) resolve(ctx context.Context, value []byte) (int64, erro
 	if id, ok := d.ids[string(value)]; ok {
 		return id, nil
 	}
-	if _, err := d.insert.ExecContext(ctx, value); err != nil {
-		return 0, err
-	}
 	var id int64
 	err := d.selectID.QueryRowContext(ctx, value).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		// The writer transaction serializes dictionary creation. Existing names
+		// need only an indexed read; a new name's INSERT supplies its own ID.
+		inserted, insertErr := d.insert.ExecContext(ctx, value)
+		if insertErr != nil {
+			return 0, insertErr
+		}
+		id, err = inserted.LastInsertId()
+	}
 	if err == nil {
 		d.ids[string(value)] = id
 	}
