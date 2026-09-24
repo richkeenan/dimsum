@@ -101,7 +101,7 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		return err
 	}
 	defer roll.Close()
-	rank, err := tx.PrepareContext(ctx, `INSERT INTO rankings_hour VALUES(?,?,?,1) ON CONFLICT(bucket,kind,key) DO UPDATE SET count=count+1`)
+	rank, err := tx.PrepareContext(ctx, `INSERT INTO rankings_hour VALUES(?,?,?,?) ON CONFLICT(bucket,kind,key) DO UPDATE SET count=count+excluded.count`)
 	if err != nil {
 		return err
 	}
@@ -119,6 +119,23 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 		bin                int
 	}
 	latencies := make(map[latencyKey]uint64)
+	type rollupKey struct {
+		resolution, bucket int64
+		outcome            stats.Outcome
+	}
+	type rollupValue struct {
+		count, duration uint64
+		histogram       [8]uint64
+	}
+	type rankingKey struct {
+		bucket int64
+		kind   int
+		key    string
+	}
+	// Fold repeated aggregate rows in memory, bounded by MaxBatch, just as for
+	// latency bins below. Detail rows and sequence/watermark handling stay per-event.
+	rollups := make(map[rollupKey]rollupValue)
+	rankings := make(map[rankingKey]uint64)
 	domains, err := prepareDimension(ctx, tx, "domains", "name")
 	if err != nil {
 		return err
@@ -172,28 +189,36 @@ func (d *DB) WriteBatch(ctx context.Context, boot string, events []stats.QueryEv
 				return err
 			}
 		}
-		var hist [8]int
-		hist[stats.HistogramIndex(e.Duration)] = 1
 		for i, width := range []time.Duration{time.Minute, time.Hour, 24 * time.Hour} {
 			if stats.UTCBucket(e.Timestamp, width)+width.Microseconds() <= cutoffs[i+1] {
 				continue
 			}
-			if _, err = roll.ExecContext(ctx, int64(width/time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, 1, e.Duration, hist[0], hist[1], hist[2], hist[3], hist[4], hist[5], hist[6], hist[7]); err != nil {
-				return err
-			}
+			key := rollupKey{int64(width / time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome}
+			value := rollups[key]
+			value.count++
+			value.duration += uint64(e.Duration)
+			value.histogram[stats.HistogramIndex(e.Duration)]++
+			rollups[key] = value
 			if e.Outcome != stats.AdmissionRejected {
 				latencies[latencyKey{int64(width / time.Second), stats.UTCBucket(e.Timestamp, width), e.Outcome, stats.LatencyIndex(e.Duration)}]++
 			}
 		}
 		if e.Outcome != stats.AdmissionRejected && stats.UTCBucket(e.Timestamp, time.Hour)+time.Hour.Microseconds() > cutoffs[2] {
-			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 0, e.Client[:]); err != nil {
-				return err
-			}
+			rankings[rankingKey{stats.UTCBucket(e.Timestamp, time.Hour), 0, string(e.Client[:])}]++
 		}
 		if e.Outcome == stats.PolicyBlock && stats.UTCBucket(e.Timestamp, time.Hour)+time.Hour.Microseconds() > cutoffs[2] {
-			if _, err = rank.ExecContext(ctx, stats.UTCBucket(e.Timestamp, time.Hour), 1, e.QName[:e.QNameLength]); err != nil {
-				return err
-			}
+			rankings[rankingKey{stats.UTCBucket(e.Timestamp, time.Hour), 1, string(e.QName[:e.QNameLength])}]++
+		}
+	}
+	for key, value := range rollups {
+		h := value.histogram
+		if _, err = roll.ExecContext(ctx, key.resolution, key.bucket, key.outcome, value.count, value.duration, h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]); err != nil {
+			return err
+		}
+	}
+	for key, count := range rankings {
+		if _, err = rank.ExecContext(ctx, key.bucket, key.kind, []byte(key.key), count); err != nil {
+			return err
 		}
 	}
 	latency, err := tx.PrepareContext(ctx, `INSERT INTO latency_bins VALUES(?,?,?,?,?) ON CONFLICT(resolution,bucket,outcome,bin) DO UPDATE SET count=count+excluded.count`)
