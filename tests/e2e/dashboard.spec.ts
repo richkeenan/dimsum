@@ -1,6 +1,32 @@
 import { test, expect } from "../../web/e2e";
 import { fixtureAPI, query, summary } from "./fixtures";
 test.beforeEach(async ({ page }) => fixtureAPI(page));
+test("changing a settled preset requests only the newly selected range", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-09-24T12:00:00Z"));
+  const requests: URL[] = [];
+  page.on("request", (request) => {
+    if (/\/(summary|rankings|timeseries|performance)\?/.test(request.url()))
+      requests.push(new URL(request.url()));
+  });
+  await page.goto("/overview?range=24h");
+  await expect(page.getByText("48,216")).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  requests.length = 0;
+
+  // Advance the clock without firing polling timers: no request is in flight.
+  await page.clock.setFixedTime(new Date("2026-09-24T12:01:00Z"));
+  await page.getByLabel("Time range", { exact: true }).selectOption("7d");
+  await expect(page).toHaveURL(/range=7d/);
+  await page.waitForLoadState("networkidle");
+
+  expect(requests).toHaveLength(4);
+  expect(new Set(requests.map((url) => url.pathname)).size).toBe(4);
+  for (const url of requests) {
+    expect(url.searchParams.get("from")).toBe("2026-09-17T12:01:00.000Z");
+    expect(url.searchParams.get("to")).toBe("2026-09-24T12:01:00.000Z");
+  }
+});
+
 test("loading, empty, and offline states are distinct", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-09-21T12:00:00Z"));
   let release!: () => void;

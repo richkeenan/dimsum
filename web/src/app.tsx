@@ -87,6 +87,13 @@ export default function App() {
     [search],
   );
   const [anchor, setAnchor] = useState(() => Date.now());
+  const [anchorRange, setAnchorRange] = useState(range);
+  // Navigation applies asynchronously. Reset the clock with the applied range,
+  // before children render, rather than fetching the old range with a new clock.
+  if (anchorRange !== range) {
+    setAnchorRange(range);
+    setAnchor(Date.now());
+  }
   const [refresh, setRefresh] = useState(0);
   const [auth, setAuth] = useState(
     () => typeof sessionStorage === "undefined" || !sessionStorage.getItem("dimsum-csrf"),
@@ -303,7 +310,6 @@ export default function App() {
                     onChange={(e) => {
                       setCustomOpen(e.target.value === "custom");
                       if (e.target.value !== "custom") {
-                        setAnchor(Date.now());
                         go(page, {
                           ...search,
                           range: e.target.value,
