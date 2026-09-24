@@ -213,3 +213,66 @@ func TestCacheIntegrationConservativeEDNSBypass(t *testing.T) {
 		})
 	}
 }
+
+func TestCacheIntegrationCrossZoneCNAMENODATA(t *testing.T) {
+	for _, qtype := range []uint16{dns.TypeA, dns.TypeAAAA, dns.TypeHTTPS} {
+		t.Run(dns.TypeToString[qtype], func(t *testing.T) {
+			var calls atomic.Int32
+			workerErrors := make(chan error, 8)
+			u, err := testutil.NewUpstream(testutil.NewClock(time.Now()), func(r testutil.Request) testutil.Response {
+				calls.Add(1)
+				var q dns.Msg
+				if err := q.Unpack(r.Wire); err != nil {
+					workerErrors <- err
+					return testutil.Response{Drop: true}
+				}
+				m := new(dns.Msg)
+				m.SetReply(&q)
+				m.Compress, m.RecursionAvailable = true, true
+				m.Answer = []dns.RR{&dns.CNAME{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 120}, Target: "edge.example.net."}}
+				m.Ns = []dns.RR{&dns.SOA{Hdr: dns.RR_Header{Name: "example.net.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 200}, Ns: "ns.example.net.", Mbox: "hostmaster.example.net.", Serial: 1, Minttl: 60}}
+				m.SetEdns0(1232, false)
+				wire, err := m.Pack()
+				if err != nil {
+					workerErrors <- err
+					return testutil.Response{Drop: true}
+				}
+				return testutil.Response{Wire: wire}
+			})
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, u.Close())
+				close(workerErrors)
+				for err := range workerErrors {
+					assert.NoError(t, err)
+				}
+			})
+			store, _, _ := cacheIntegrationStore(t, u, "cache:\n  stale_mode: off\n")
+			p := resolve.NewWithStore(nil, store)
+			t.Cleanup(func() { assert.NoError(t, p.Close()) })
+			q := new(dns.Msg)
+			q.SetQuestion("alias.example.com.", qtype)
+			q.SetEdns0(1232, false)
+			for i := range 3 {
+				q.Id = uint16(100 + i)
+				if i > 0 {
+					q.Question[0].Name = "ALIAS.Example.COM."
+				}
+				if i == 2 {
+					q.RecursionDesired = false
+				}
+				got := cacheIntegrationResolve(t, p, q)
+				assert.Equal(t, dns.RcodeSuccess, got.Rcode)
+				require.Len(t, got.Answer, 1)
+				require.Len(t, got.Ns, 1)
+				assert.Equal(t, "edge.example.net.", got.Answer[0].(*dns.CNAME).Target)
+				assert.Equal(t, "example.net.", got.Ns[0].Header().Name)
+				if i > 0 {
+					assert.LessOrEqual(t, got.Ns[0].Header().Ttl, uint32(60))
+				}
+			}
+			assert.EqualValues(t, 1, calls.Load(), "repeated negative aliases must not re-query the upstream")
+			assert.EqualValues(t, 2, p.CacheStats().Hits)
+		})
+	}
+}
