@@ -332,14 +332,24 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   await expect(page.getByRole("row").nth(3)).toContainText("192.0.2.53:53");
   const reordered = await (await page.request.get("/api/v1/upstreams")).json();
   expect(reordered.items.slice(-2)).toEqual(["192.0.2.53:53", "8.8.4.4:53"]);
-  expect(reordered.status.active_revision).toBe(reordered.status.saved_revision);
+  await expect
+    .poll(async () => {
+      const current = await (await page.request.get("/api/v1/upstreams")).json();
+      return current.status.active_revision;
+    })
+    .toBe(reordered.status.saved_revision);
   await page.getByLabel("Selection mode").selectOption("adaptive");
   await expect(page.getByRole("button", { name: /Move .* up/ })).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel("Selection mode")).toHaveValue("adaptive");
   const adaptive = await (await page.request.get("/api/v1/settings")).json();
   expect(adaptive.config.dns.upstream_policy.mode).toBe("adaptive");
-  expect(adaptive.status.active_revision).toBe(adaptive.status.saved_revision);
+  await expect
+    .poll(async () => {
+      const current = await (await page.request.get("/api/v1/settings")).json();
+      return current.status.active_revision;
+    })
+    .toBe(adaptive.status.saved_revision);
   await page.screenshot({
     path: testInfo.outputPath("upstream-adaptive-desktop.png"),
   });
