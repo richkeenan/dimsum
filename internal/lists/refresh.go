@@ -46,6 +46,16 @@ func parseWarning(r Result) string {
 // calls sources serially: one download/parser/build at a time, no unbounded jobs.
 func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offline bool) (Version, error) {
 	source := Source{ID: s.ID, Dialect: s.Dialect, DomainKind: s.DomainKind}
+	if s.URL == WorkCompatibilityURL {
+		if s.Dialect != Adblock || s.DomainKind != policy.Suffix {
+			return Version{}, fmt.Errorf("source %s: built-in work list requires dns-adblock and suffix", s.ID)
+		}
+		parsed, err := Parse(strings.NewReader(workCompatibility), source, DefaultLimits())
+		if err != nil {
+			return Version{}, fmt.Errorf("source %s: %w", s.ID, err)
+		}
+		return Version{Rules: parsed.Rules, SHA256: parsed.SHA256, Warning: parseWarning(parsed)}, nil
+	}
 	identity, _ := json.Marshal(struct {
 		Source Source
 		URL    string

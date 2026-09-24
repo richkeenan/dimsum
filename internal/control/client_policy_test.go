@@ -63,6 +63,35 @@ func TestClientPolicyAtomicSubscribePreviewAndConflict(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestBuiltinWorkSubscriptionActivatesOnlyForProfile(t *testing.T) {
+	s, store := dhcpFixture(t)
+	m := ClientPolicyMutation{
+		Revision: store.Inspect().SavedRevision, Scope: "profile", ID: "work", Create: true,
+		Subscribe: []PolicySubscription{{ID: "work-tools", URL: "builtin://work-compatibility", Dialect: "dns-adblock", DomainKind: "suffix", Enabled: true}},
+		Fields:    []config.PolicyField{{Path: []string{"lists", "work-tools"}, Value: true}, {Path: []string{"blocking"}, Value: true}},
+	}
+	preview, err := s.PreviewClientPolicy(m)
+	require.NoError(t, err)
+	assert.Empty(t, preview.DownloadsPending)
+	_, err = s.MutateClientPolicy(t.Context(), m)
+	require.NoError(t, err)
+	state := store.Inspect()
+	assert.False(t, state.Pending)
+	require.Len(t, state.Sources, 1)
+	assert.True(t, state.Sources[0].Usable)
+	assert.Positive(t, state.Sources[0].Rules)
+	assert.Empty(t, state.Sources[0].Error)
+	profile := "work"
+	_, err = s.MutateClientPolicy(t.Context(), ClientPolicyMutation{Revision: state.SavedRevision, Scope: "client", ID: "laptop", Create: true, Profile: &profile, Selectors: &config.ClientSelectors{Addresses: []string{"192.0.2.10"}}})
+	require.NoError(t, err)
+	laptop, ok := store.Snapshot().ClientPolicies().Client("laptop")
+	require.True(t, ok)
+	on, _ := laptop.List("work-tools")
+	assert.True(t, on)
+	on, _ = store.Snapshot().ClientPolicies().Network().List("work-tools")
+	assert.False(t, on)
+}
+
 func TestClientPolicyReenableListPreservesNetworkApplication(t *testing.T) {
 	for _, explicit := range []bool{false, true} {
 		t.Run(map[bool]string{false: "legacy-default", true: "explicit-off"}[explicit], func(t *testing.T) {

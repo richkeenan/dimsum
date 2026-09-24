@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,4 +80,26 @@ func TestFetchBoundsAndArtifactCorruption(t *testing.T) {
 	require.NoError(t, os.WriteFile(p, []byte("corrupt"), 0600))
 	_, err = ReadArtifact(p, 100)
 	assert.Error(t, err)
+}
+
+func TestBuiltinWorkListLoadsWithoutNetworkOrArtifacts(t *testing.T) {
+	for _, offline := range []bool{false, true} {
+		t.Run(fmt.Sprint(offline), func(t *testing.T) {
+			// A nil fetcher and an unusable artifact path catch accidental HTTP or disk access.
+			var f *Fetcher
+			dir := filepath.Join(t.TempDir(), "not-a-directory")
+			require.NoError(t, os.WriteFile(dir, []byte("fixture"), 0600))
+			spec := Subscription{ID: "work", URL: "builtin://work-compatibility", Dialect: Adblock, DomainKind: policy.Suffix, Enabled: true}
+			v, err := f.Refresh(t.Context(), dir, spec, offline)
+			require.NoError(t, err)
+			require.NotEmpty(t, v.Rules)
+			assert.NotEmpty(t, v.SHA256)
+			assert.Empty(t, v.Warning)
+			for _, rule := range v.Rules {
+				assert.Equal(t, policy.SubscriptionAllow, rule.Class)
+				assert.Equal(t, policy.Suffix, rule.Kind)
+				assert.Equal(t, "work", rule.SourceID)
+			}
+		})
+	}
 }

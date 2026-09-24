@@ -36,7 +36,7 @@ func TestSyntheticCatalogDialectFixtures(t *testing.T) {
 
 func TestCatalog(t *testing.T) {
 	entries := Entries()
-	require.Len(t, entries, 9)
+	require.Len(t, entries, 10)
 	seen := map[string]bool{}
 	enabled := 0
 	for _, e := range entries {
@@ -61,7 +61,12 @@ func TestCatalog(t *testing.T) {
 		assert.Positive(t, e.UpdateInterval)
 		u, err := url.Parse(e.URL)
 		require.NoError(t, err)
-		assert.Equal(t, "https", u.Scheme)
+		if e.ID == "work-compatibility" {
+			assert.Equal(t, "builtin", u.Scheme)
+			assert.False(t, e.DefaultEnabled)
+		} else {
+			assert.Equal(t, "https", u.Scheme)
+		}
 		assert.NotEmpty(t, u.Host)
 		assert.NotEmpty(t, e.Homepage)
 		if e.DefaultEnabled {

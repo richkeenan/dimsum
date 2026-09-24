@@ -299,6 +299,15 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
+	var builtinsChanged bool
+	subs, builtinsChanged, err = s.recoverBuiltins(d.value, subs)
+	if err != nil {
+		return err
+	}
+	if builtinsChanged {
+		m.Generation++
+		m.Sources = subs.sources
+	}
 	clientPolicies, err := d.value.compileClientPolicies(m.Generation, subs.policy)
 	if err != nil {
 		return err
@@ -311,7 +320,7 @@ func (s *Store) recover() error {
 	if err != nil {
 		return err
 	}
-	if legacy {
+	if legacy || builtinsChanged {
 		stage, err := s.stageManifest(d, m.Generation, subs)
 		if err != nil {
 			return err

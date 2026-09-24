@@ -52,6 +52,7 @@ func Entries() []Entry {
 		{ID: "oisd-big", Label: "OISD Big", Description: "Expanded DNS blocklist", Homepage: "https://oisd.nl/", URL: "https://big.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Family: "base", Dialect: lists.Adblock, Available: true},
 		{ID: "hagezi-nsfw", Label: "HaGeZi NSFW", Description: "Parental control: blocks adult-content domains", URL: "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/nsfw.txt", Category: "parental-control"},
 		{ID: "oisd-nsfw", Label: "OISD NSFW", Description: "Parental control: blocks pornographic, shock, and adult-content domains", Homepage: "https://oisd.nl/", URL: "https://nsfw.oisd.nl/", Attribution: "OISD / sjhgvr and upstream contributors; see publisher terms at https://oisd.nl/", Category: "parental-control", Dialect: lists.Adblock, Available: true},
+		{ID: "work-compatibility", Label: "Work tools compatibility", Description: "Built-in allowlist for analytics, marketing, attribution, and monitoring tools. Best effort; allows tracking by these services. Updated with dimsum releases.", Homepage: "https://github.com/richkeenan/dimsum", URL: lists.WorkCompatibilityURL, Attribution: "Dimsum contributors; vendor documentation references included in the list", Category: "compatibility", Dialect: lists.Adblock, Available: true},
 	}
 	for i := range entries {
 		e := &entries[i]

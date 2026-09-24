@@ -51,9 +51,15 @@ func validatePolicy(c Config) error {
 			return fmt.Errorf("lists[%d].id: empty, reserved or duplicate", i)
 		}
 		seen[s.ID] = true
-		u, e := url.Parse(s.URL)
-		if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
-			return fmt.Errorf("lists[%d].url: expected HTTP(S) URL without credentials", i)
+		if s.URL == lists.WorkCompatibilityURL {
+			if s.Dialect != lists.Adblock || s.DomainKind != policy.Suffix {
+				return fmt.Errorf("lists[%d]: built-in work list requires dns-adblock and suffix", i)
+			}
+		} else {
+			u, e := url.Parse(s.URL)
+			if e != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+				return fmt.Errorf("lists[%d].url: expected HTTP(S) URL without credentials or a known built-in list", i)
+			}
 		}
 		if s.Dialect != lists.Hosts && s.Dialect != lists.Domains && s.Dialect != lists.Adblock {
 			return fmt.Errorf("lists[%d].dialect: unsupported", i)

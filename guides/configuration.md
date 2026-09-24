@@ -171,6 +171,41 @@ no usable membership even if assignment is On. A later refresh failure can retai
 previously downloaded usable rules. Saved policy, active policy and download
 health are shown separately in Clients and Filter lists.
 
+### Built-in work compatibility list
+
+The **Work tools compatibility** catalogue choice is an independent, best-effort
+allowlist for common analytics, marketing, attribution, experimentation, and
+monitoring services. It is embedded in the executable, works offline, and updates
+with dimsum rather than downloading from a list publisher. Its source and vendor
+references live in `internal/lists/builtin/work-compatibility.adblock`.
+
+Apply it to a Work profile alongside your existing blocking lists, with filtering
+enabled. It permits the listed domains and their subdomains, including tracking
+by those services. Other domains continue to follow the profile's blocking lists.
+Custom domains and self-hosted deployments may need additional exceptions.
+
+For example, merge these entries into the existing `lists` and `profiles`
+collections; keep your existing blocklist subscriptions:
+
+```yaml
+lists:
+  - id: work-compatibility
+    url: builtin://work-compatibility
+    dialect: dns-adblock
+    domain_kind: suffix
+    enabled: true
+    default_apply: false
+profiles:
+  - id: work
+    name: Work
+    policy:
+      blocking: true
+      lists: {work-compatibility: true}
+```
+
+The shared client-policy API, CLI, and MCP accept this built-in URL just like a
+subscription URL. No hosting or external download is required.
+
 ### Identity and portability
 
 The stable `id`, selectors, profile and overrides live in YAML and survive

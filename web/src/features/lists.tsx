@@ -21,6 +21,11 @@ function listLabel(row: Row) {
 
 function listStatus(row: Row, pending?: ListToggle) {
   const source = row.source as Row | undefined;
+  if (String(row.url).startsWith("builtin://")) {
+    if (row.enabled !== true) return "Built in";
+    if (source?.error) return "Activation failed";
+    return source?.usable === true ? "Built in · active" : "Waiting for activation";
+  }
   if (pending?.id === row.id && pending?.enabled) return "Downloading…";
   if (row.enabled !== true) {
     return row.__index === undefined
@@ -76,8 +81,9 @@ export function ListSubscriptions({
     <>
       {catalog.error && <ErrorNotice error={catalog.error} />}
       <p className="px-4 py-3 text-xs text-muted-foreground">
-        Choose lists to use across your network. Lists download and update automatically. You can
-        choose different lists in a profile or a device’s settings.
+        Choose lists to use across your network. Subscriptions download and update automatically;
+        built-in lists update with dimsum. You can choose different lists in a profile or a device’s
+        settings.
       </p>
       {catalog.loading && (
         <p className="px-4 py-3 text-xs text-muted-foreground">Loading available lists…</p>

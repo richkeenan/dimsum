@@ -1,0 +1,4 @@
+[Adblock Plus 2.0]
+! Synthetic compatibility-list parser fixture.
+@@||analytics.example^
+@@||monitoring.example^

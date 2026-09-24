@@ -1,0 +1,236 @@
+[Adblock Plus 2.0]
+! Title: Work tools compatibility - built-in trial v1
+! Assembled: 2026-09-24
+! Independent allowlist: not derived from, or intersected with, any blocklist.
+! Every rule permits the named domain and its subdomains.
+! Intended application: Work profile only, with ordinary blocking enabled.
+! Best-effort starter; vendor roots are deliberately broader than individual SDK endpoints.
+! Documentation sources identify services/endpoints, not a guarantee of complete coverage.
+! Customer-owned custom domains and self-hosted deployments are not enumerated.
+
+! Vendor: Amplitude
+! Source: https://amplitude.com/docs/web-experiment/implementation
+@@||amplitude.com^
+
+! Vendor: Braze
+! Source: https://github.com/braze-inc/braze-docs/blob/develop/_docs/_developer_guide/platforms/web/content_security_policy.md
+@@||braze.com^
+@@||braze.eu^
+@@||appboy-images.com^
+@@||braze-images.com^
+
+! Vendor: Mixpanel
+! Source: https://docs.mixpanel.com/docs/tracking-methods/sdks/javascript
+@@||mixpanel.com^
+@@||mxpnl.com^
+
+! Vendor: Twilio Segment
+! Source: https://www.twilio.com/docs/segment/connections/sources/catalog/libraries/website/javascript/faq
+@@||segment.com^
+@@||segment.io^
+
+! Vendor: RudderStack
+! Source: https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-javascript-sdk/service-worker/usage-in-chrome-extensions/
+@@||rudderstack.com^
+@@||rudderlabs.com^
+
+! Vendor: PostHog
+! Source: https://posthog.com/docs/advanced/content-security-policy
+@@||posthog.com^
+
+! Vendor: Heap
+! Source: https://developers.heap.io/docs/web
+@@||heap.io^
+@@||heapanalytics.com^
+@@||heap-api.com^
+
+! Vendor: Google Analytics and Tag Manager
+! Source: https://developers.google.com/tag-platform/security/guides/csp
+! Product-specific Google hosts; advertising destinations still follow blocking lists.
+@@||google-analytics.com^
+@@||googletagmanager.com^
+@@||analytics.google.com^
+@@||tagmanager.google.com^
+@@||tagassistant.google.com^
+
+! Vendor: Microsoft Clarity
+! Source: https://learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-csp
+@@||clarity.ms^
+@@||clarity.microsoft.com^
+
+! Vendor: Adobe Analytics and Experience Cloud
+! Source: https://experienceleague.adobe.com/en/docs/id-service/using/reference/csp
+! Includes identity/audience tracking required by this ecosystem.
+@@||analytics.adobe.com^
+@@||experience.adobe.com^
+@@||adobedtm.com^
+@@||omtrdc.net^
+@@||2o7.net^
+@@||demdex.net^
+
+! Vendor: Hotjar
+! Source: https://stackoverflow.com/questions/77717379/hotjar-is-unable-to-collect-data-due-to-csp-issue
+! Secondary-source endpoint evidence; trial inclusion.
+@@||hotjar.com^
+@@||hotjar.io^
+
+! Vendor: Contentsquare
+! Source: https://docs.contentsquare.com/en/web/content-security-policy/
+@@||contentsquare.com^
+@@||contentsquare.net^
+
+! Vendor: Fullstory
+! Source: https://help.fullstory.com/hc/en-us/articles/360020622854-Can-I-use-Content-Security-Policy-CSP-with-Fullstory
+@@||fullstory.com^
+
+! Vendor: Pendo
+! Source: https://support.pendo.io/hc/en-us/articles/360032209131-Content-Security-Policy-CSP
+! Dedicated storage bucket hostnames, rather than all of storage.googleapis.com.
+@@||pendo.io^
+@@||pendo-io-static.storage.googleapis.com^
+@@||pendo-us1-static.storage.googleapis.com^
+@@||pendo-eu-static.storage.googleapis.com^
+@@||pendo-jp-prod-static.storage.googleapis.com^
+@@||pendo-au-prod-static.storage.googleapis.com^
+
+! Vendor: LaunchDarkly
+! Source: https://launchdarkly.com/docs/sdk/concepts/domain-list
+@@||launchdarkly.com^
+
+! Vendor: Statsig
+! Source: https://docs.statsig.com/client/javascript-sdk
+! Vendor-documented alternate service domains included; shared public DNS omitted.
+@@||statsig.com^
+@@||statsigapi.net^
+@@||statsigcdn.com^
+@@||featuregates.org^
+@@||featureassets.org^
+@@||assetsconfigcdn.org^
+@@||prodregistryv2.org^
+@@||beyondwickedmapping.org^
+
+! Vendor: Optimizely
+! Source: https://support.optimizely.com/hc/en-us/articles/4410289675149-Update-your-site-s-Content-Security-Policies-CSP
+@@||optimizely.com^
+
+! Vendor: VWO
+! Source: https://vwo.com/product-updates/reverse-proxy/
+@@||vwo.com^
+@@||visualwebsiteoptimizer.com^
+
+! Vendor: Intercom
+! Source: https://www.intercom.com/help/en/articles/3894-using-intercom-with-content-security-policy
+@@||intercom.com^
+@@||intercom.io^
+@@||intercom.help^
+@@||intercomcdn.com^
+@@||intercomcdn.eu^
+@@||intercomassets.com^
+@@||intercomassets.eu^
+@@||intercomusercontent.com^
+@@||intercom-messenger.com^
+@@||intercom-sheets.com^
+@@||intercom-reporting.com^
+@@||intercom-attachments.eu^
+@@||au.intercom-attachments.com^
+@@||intercom-attachments-1.com^
+@@||intercom-attachments-2.com^
+@@||intercom-attachments-3.com^
+@@||intercom-attachments-4.com^
+@@||intercom-attachments-5.com^
+@@||intercom-attachments-6.com^
+@@||intercom-attachments-7.com^
+@@||intercom-attachments-8.com^
+@@||intercom-attachments-9.com^
+
+! Vendor: HubSpot
+! Source: https://knowledge.hubspot.com/domains-and-urls/ssl-and-domain-security-in-hubspot
+! Includes HubSpot analytics, forms, messaging, and advertising measurement.
+@@||hubspot.com^
+@@||hubspot.net^
+@@||hubapi.com^
+@@||hsappstatic.net^
+@@||hs-scripts.com^
+@@||hs-analytics.net^
+@@||hsadspixel.net^
+@@||hscta.net^
+@@||hs-sites.com^
+@@||hs-sites-eu1.com^
+@@||usemessages.com^
+@@||hs-banner.com^
+@@||hubspotvideo.com^
+@@||hscollectedforms.net^
+@@||hsleadflows.net^
+@@||hsforms.net^
+@@||hsforms.com^
+@@||hubspotfeedback.com^
+@@||hubspotusercontent-na1.net^
+@@||hubspotusercontent00.net^
+@@||hubspotusercontent10.net^
+@@||hubspotusercontent20.net^
+@@||hubspotusercontent30.net^
+@@||hubspotusercontent40.net^
+
+! Vendor: Customer.io
+! Source: https://docs.customer.io/integrations/data-in/connections/javascript/legacy-js/content-security-policy/
+@@||customer.io^
+@@||customerioforms.com^
+@@||gist.build^
+
+! Vendor: Klaviyo
+! Source: https://developers.klaviyo.com/en/docs/integrate_with_a_shopify_hydrogen_store
+@@||klaviyo.com^
+
+! Vendor: Iterable
+! Source: https://support.iterable.com/hc/en-us/articles/41384623554452-Integrating-Iterable-s-SDK-into-Shopify-Custom-or-Headless
+@@||iterable.com^
+
+! Vendor: Sentry
+! Source: https://docs.sentry.io/platforms/javascript/troubleshooting/
+@@||sentry.io^
+@@||sentry-cdn.com^
+
+! Vendor: Datadog
+! Source: https://docs.datadoghq.com/integrations/content_security_policy_logs/
+! Secondary intake reference: https://www.netify.ai/resources/domains/browser-intake-datadoghq.com
+! Initial US/EU coverage; other regional intake domains need a follow-up pass.
+@@||datadoghq.com^
+@@||datadoghq.eu^
+@@||datadoghq-browser-agent.com^
+@@||browser-intake-datadoghq.com^
+
+! Vendor: New Relic
+! Source: https://docs.newrelic.com/docs/browser/new-relic-browser/getting-started/compatibility-requirements-browser-monitoring/
+@@||newrelic.com^
+@@||nr-data.net^
+
+! Vendor: AppsFlyer
+! Source: https://support.appsflyer.com/hc/en-us/articles/43485611331473-Integrate-AppsFlyer-Web-SDK
+! Source: https://support.appsflyer.com/hc/en-us/articles/207447163-About-link-structure-and-parameters
+@@||appsflyer.com^
+@@||appsflyersdk.com^
+@@||onelink.me^
+
+! Vendor: Branch
+! Source: https://help.branch.io/developer-hub/docs/implement-content-security-protocol-csp
+@@||branch.io^
+@@||app.link^
+
+! Vendor: Adjust
+! Source: https://dev.adjust.com/en/sdk/migration/unity/v4-to-v5/
+@@||adjust.com^
+@@||adjust.net.in^
+@@||adjust.world^
+@@||adjust.cn^
+
+! Vendor: impact.com
+! Source: https://help.impact.com/brand/what-would-you-like-to-learn-about/platform-features/tracking/set-up-tracking/determine-your-programs-itp-compliance
+@@||impact.com^
+@@||pxf.io^
+@@||sjv.io^
+
+! Vendor: Awin
+! Source: https://help.awin.com/developers/docs/implementing-sales-tracking
+@@||awin.com^
+@@||awin1.com^
+@@||dwin1.com^

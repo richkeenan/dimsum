@@ -538,7 +538,9 @@ function PolicyForm({
               )}
             </div>
           }
-          <p className="text-xs text-muted-foreground">Choose which lists of domains to block.</p>
+          <p className="text-xs text-muted-foreground">
+            Choose blocking lists and compatibility allowlists to apply.
+          </p>
           {Object.entries({
             ...Object.fromEntries(
               subscriptions.map((s) => [
@@ -552,15 +554,21 @@ function PolicyForm({
             ...(effective?.lists ?? read.effective.lists),
           }).map(([id, value]) => {
             const source = read.status.sources.find((s) => s.id === id);
+            const choice = availableLists?.find((c) => c.id === id);
+            const builtin = choice?.url.startsWith("builtin://");
             return boolRow(
-              availableLists?.find((c) => c.id === id)?.label ?? id,
+              choice?.label ?? id,
               ["lists", id],
               own.lists?.[id],
               value,
               subscriptions.some((s) => s.id === id)
-                ? "Downloads on save"
+                ? builtin
+                  ? "Built in · activates on save"
+                  : "Downloads on save"
                 : !source?.enabled
-                  ? "Not downloaded"
+                  ? builtin
+                    ? "Built in · not active"
+                    : "Not downloaded"
                   : !source.usable
                     ? "Source not active"
                     : source.error
@@ -591,6 +599,9 @@ function PolicyForm({
                     <div key={c.id} className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0 flex-1 wrap-anywhere text-sm">
                         {c.label}
+                        {c.description && (
+                          <p className="text-xs text-muted-foreground">{c.description}</p>
+                        )}
                         {!c.available && (
                           <p className="text-xs text-muted-foreground">{c.unavailable_reason}</p>
                         )}
@@ -624,7 +635,7 @@ function PolicyForm({
           }
           {subscriptions.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              New lists download on save. Applied only to this{" "}
+              New lists load on save; built-in lists need no download. Applied only to this{" "}
               {read.scope === "client" ? "device" : read.scope}; existing network application is
               retained.
             </p>

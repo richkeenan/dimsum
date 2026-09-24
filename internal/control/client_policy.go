@@ -584,7 +584,7 @@ func (s *Service) PreviewClientPolicy(m ClientPolicyMutation) (ClientPolicyPrevi
 				found = true
 			}
 		}
-		if l.Enabled && !found {
+		if l.Enabled && !found && l.URL != lists.WorkCompatibilityURL {
 			result.DownloadsPending = append(result.DownloadsPending, l.ID)
 		}
 	}
