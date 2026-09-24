@@ -171,6 +171,23 @@ no usable membership even if assignment is On. A later refresh failure can retai
 previously downloaded usable rules. Saved policy, active policy and download
 health are shown separately in Clients and Filter lists.
 
+### Optional curated lists
+
+The catalogue includes these opt-in [HaGeZi lists](https://github.com/hagezi/dns-blocklists)
+alongside its ad-blocking, threat-intelligence, and adult-content choices:
+
+| Choice | Subscription ID | Coverage |
+| --- | --- | --- |
+| Social Media | `hagezi-social` | Social networks such as Facebook, Instagram, TikTok, X, and Snapchat; excludes messaging and streaming platforms. |
+| Gambling | `hagezi-gambling` | Gambling and betting sites, using the full gambling list. |
+| Scams & Fake Stores | `hagezi-fake` | Fake shops, fake streaming sites, subscription traps, and similar scams. |
+
+These lists are maintained upstream and use DNS-adblock format, with a 24-hour
+catalogue refresh interval. They are off by default. Select them in **Filter lists**,
+or discover them with `dimsum control catalog` and subscribe through the shared
+control API. Apply them to the network, a profile, or individual devices as
+described above.
+
 ### Built-in work compatibility list
 
 The **Work tools compatibility** catalogue choice is an independent, best-effort

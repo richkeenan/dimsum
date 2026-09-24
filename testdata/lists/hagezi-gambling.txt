@@ -1,0 +1,4 @@
+[Adblock Plus]
+! Synthetic gambling domain fixture, authored for dimsum under MIT.
+||gambling.example.test^
+||betting.example.test^

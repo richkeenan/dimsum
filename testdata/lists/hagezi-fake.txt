@@ -1,0 +1,4 @@
+[Adblock Plus]
+! Synthetic scam domain fixture, authored for dimsum under MIT.
+||fake-store.example.test^
+||subscription-trap.example.test^

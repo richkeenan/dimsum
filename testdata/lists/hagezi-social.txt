@@ -1,0 +1,4 @@
+[Adblock Plus]
+! Synthetic social-media domain fixture, authored for dimsum under MIT.
+||social.example.test^
+||social-cdn.example.test^
