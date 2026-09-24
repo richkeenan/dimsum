@@ -1003,7 +1003,7 @@ components:
         description: {type: string}
         category:
           type: string
-          enum: [parental-control]
+          enum: [parental-control, compatibility]
           description: Optional list-purpose classification. Parental-control lists block adult content and are opt-in.
         url: {type: string, format: uri}
         dialect: {type: string, enum: [hosts, domains, dns-adblock]}

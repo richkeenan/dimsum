@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/richkeenan/dimsum/internal/control"
 	"github.com/richkeenan/dimsum/internal/mcpserver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,35 @@ func TestAdministrationInstructions(t *testing.T) {
 	assert.Contains(t, instructions, "add_client")
 	assert.Contains(t, instructions, "revision")
 	assert.Contains(t, instructions, "read back")
+}
+
+func TestCatalogMatchesAdvertisedSchema(t *testing.T) {
+	// Validate the real catalogue, so new categories cannot silently break MCP.
+	service := &control.Service{}
+	body, err := json.Marshal(service.Catalog())
+	require.NoError(t, err)
+	session := connect(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	list, err := session.ListTools(t.Context(), nil)
+	require.NoError(t, err)
+	var output any
+	for _, tool := range list.Tools {
+		if tool.Name == "get_catalog" {
+			output = tool.OutputSchema
+		}
+	}
+	require.NotNil(t, output)
+	encoded, err := json.Marshal(output)
+	require.NoError(t, err)
+	var schema jsonschema.Schema
+	require.NoError(t, json.Unmarshal(encoded, &schema))
+	resolved, err := schema.Resolve(nil)
+	require.NoError(t, err)
+	result := call(t, session, "get_catalog", map[string]any{})
+	require.False(t, result.IsError)
+	assert.NoError(t, resolved.Validate(result.StructuredContent))
 }
 
 func TestClientDeviceCategoriesMatchAdvertisedSchema(t *testing.T) {
