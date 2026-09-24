@@ -107,11 +107,12 @@ type rankedDomain struct {
 	Count string `json:"count"`
 }
 type historyRankings struct {
-	Clients   []rankedClient `json:"clients"`
-	Domains   []rankedDomain `json:"domains"`
-	Complete  bool           `json:"complete"`
-	Range     historyRange   `json:"range"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	ActiveClients string         `json:"active_clients"`
+	Clients       []rankedClient `json:"clients"`
+	Domains       []rankedDomain `json:"domains"`
+	Complete      bool           `json:"complete"`
+	Range         historyRange   `json:"range"`
+	UpdatedAt     time.Time      `json:"updated_at"`
 }
 type historyPoint struct {
 	Time       time.Time         `json:"time"`
@@ -550,7 +551,7 @@ func (h *historyProvider) Rankings(ctx context.Context, q url.Values) (any, erro
 	if e != nil {
 		return nil, historyError(e)
 	}
-	result := historyRankings{Clients: []rankedClient{}, Domains: []rankedDomain{}, Complete: rankings.Complete, Range: window, UpdatedAt: h.now().UTC()}
+	result := historyRankings{ActiveClients: decimal(rankings.ActiveClients), Clients: []rankedClient{}, Domains: []rankedDomain{}, Complete: rankings.Complete, Range: window, UpdatedAt: h.now().UTC()}
 	for _, row := range rankings.Clients {
 		b := []byte(row.Key)
 		if len(b) != 16 {

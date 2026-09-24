@@ -191,9 +191,8 @@ type Summary struct {
 	Complete                                                      bool
 }
 
-// Summary uses the longest retained resolution aligned with both boundaries,
-// falling back to detail for sub-minute windows. Process lifetime snapshots are
-// separately available through Counters and are never added to these totals.
+// Summary combines full day/hour/minute rollups with exact sub-minute edges
+// in one snapshot. Process lifetime counters are never added to these totals.
 func (d *DB) Summary(ctx context.Context, start, end time.Time) (Summary, error) {
 	var s Summary
 	if err := validateWindow(start, end); err != nil {
@@ -201,30 +200,23 @@ func (d *DB) Summary(ctx context.Context, start, end time.Time) (Summary, error)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	source := "SELECT outcome,1 AS n,duration FROM query_events WHERE timestamp>=? AND timestamp<? AND timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')"
 	view, err := d.read.BeginTx(ctx, nil)
 	if err != nil {
 		return s, err
 	}
 	defer view.Rollback()
-	cutoff := "detail_cutoff"
-	args := []any{stats.AdmissionRejected, stats.PolicyBlock, stats.FreshCache, stats.StaleCache, stats.AdmissionRejected, stats.AdmissionRejected, start.UnixMicro(), end.UnixMicro()}
-	for _, v := range []struct {
-		width time.Duration
-		key   string
-	}{{24 * time.Hour, "day_cutoff"}, {time.Hour, "hour_cutoff"}, {time.Minute, "minute_cutoff"}} {
-		if stats.UTCBucket(start.UnixMicro(), v.width) == start.UnixMicro() && stats.UTCBucket(end.UnixMicro(), v.width) == end.UnixMicro() {
-			cutoff = v.key
-			source = "SELECT outcome,count AS n,duration FROM rollups WHERE bucket>=? AND bucket<? AND resolution=? AND bucket+resolution*1000000>(SELECT value FROM storage_meta WHERE key=?)"
-			args = append(args, int64(v.width/time.Second), cutoff)
-			break
-		}
+	cutoffs, err := aggregateCutoffs(ctx, view)
+	if err != nil {
+		return s, err
 	}
+	spans := aggregateWindow(start, end, cutoffs, 24*time.Hour, time.Hour, time.Minute)
+	source, sourceArgs := summarySource(spans)
+	args := append([]any{stats.AdmissionRejected, stats.PolicyBlock, stats.FreshCache, stats.StaleCache, stats.AdmissionRejected, stats.AdmissionRejected}, sourceArgs...)
 	err = view.QueryRowContext(ctx, `SELECT COALESCE(SUM(CASE WHEN outcome<>? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome=? THEN n ELSE 0 END),0),COALESCE(SUM(CASE WHEN outcome<>? THEN duration ELSE 0 END),0) FROM (`+source+`)`, args...).Scan(&s.Admitted, &s.Blocked, &s.FreshCache, &s.StaleCache, &s.Rejected, &s.Duration)
 	if err != nil {
 		return s, err
 	}
-	s.Complete, err = complete(ctx, view, start, end, cutoff)
+	s.Complete, err = aggregateComplete(ctx, view, spans)
 	return s, err
 }
 
@@ -244,49 +236,47 @@ func (d *DB) Counters(ctx context.Context, boot string) (stats.Snapshot, error) 
 	return s, err
 }
 
-// Rankings returns top ten exact clients and blocked domains, with stable byte
-// ties. Hour-aligned windows use independently retained exact hourly dimensions;
-// other windows use detail and its retention/completeness boundary.
-func (d *DB) Rankings(ctx context.Context, start, end time.Time) (stats.Rankings, error) {
-	r := stats.Rankings{Clients: []stats.Ranking{}, BlockedDomains: []stats.Ranking{}}
+type RankedWindow struct {
+	stats.Rankings
+	ActiveClients uint64
+}
+
+// Rankings merges exact hourly dimensions with partial-hour detail before
+// selecting the top ten. Every read, including coverage, shares one snapshot.
+func (d *DB) Rankings(ctx context.Context, start, end time.Time) (RankedWindow, error) {
+	r := RankedWindow{Rankings: stats.Rankings{Clients: []stats.Ranking{}, BlockedDomains: []stats.Ranking{}}}
 	if err := validateWindow(start, end); err != nil {
 		return r, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	s, e := start.UnixMicro(), end.UnixMicro()
-	hourly := stats.UTCBucket(s, time.Hour) == s && stats.UTCBucket(e, time.Hour) == e
 	view, err := d.read.BeginTx(ctx, nil)
 	if err != nil {
 		return r, err
 	}
 	defer view.Rollback()
+	cutoffs, err := aggregateCutoffs(ctx, view)
+	if err != nil {
+		return r, err
+	}
+	spans := aggregateWindow(start, end, cutoffs, time.Hour)
 	for kind := 0; kind < 2; kind++ {
-		var q string
-		var args []any
-		if hourly {
-			q = "SELECT key,SUM(count) n FROM rankings_hour WHERE bucket>=? AND bucket<? AND kind=? AND bucket+3600000000>(SELECT value FROM storage_meta WHERE key='hour_cutoff') GROUP BY key ORDER BY n DESC,key LIMIT 10"
-			args = []any{s, e, kind}
-		} else if kind == 0 {
-			q = "SELECT c.address,COUNT(*) n FROM query_events e JOIN clients c ON c.id=e.client_id WHERE timestamp>=? AND timestamp<? AND outcome<>? AND timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff') GROUP BY c.address ORDER BY n DESC,c.address LIMIT 10"
-			args = []any{s, e, stats.AdmissionRejected}
-		} else {
-			q = "SELECT d.name,COUNT(*) n FROM query_events e JOIN domains d ON d.id=e.domain_id WHERE timestamp>=? AND timestamp<? AND outcome=? AND timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff') GROUP BY d.name ORDER BY n DESC,d.name LIMIT 10"
-			args = []any{s, e, stats.PolicyBlock}
-		}
+		source, args := rankingSource(spans, kind)
+		q := "SELECT key,SUM(n) AS total,COUNT(*) OVER () FROM (" + source + ") GROUP BY key ORDER BY total DESC,key LIMIT 10"
 		rows, err := view.QueryContext(ctx, q, args...)
 		if err != nil {
 			return r, err
 		}
 		for rows.Next() {
 			var key []byte
-			var n uint64
-			if err = rows.Scan(&key, &n); err != nil {
+			var n, keys uint64
+			if err = rows.Scan(&key, &n, &keys); err != nil {
 				rows.Close()
 				return r, err
 			}
 			v := stats.Ranking{Key: string(key), Count: n}
 			if kind == 0 {
+				r.ActiveClients = keys
 				r.Clients = append(r.Clients, v)
 			} else {
 				r.BlockedDomains = append(r.BlockedDomains, v)
@@ -298,11 +288,7 @@ func (d *DB) Rankings(ctx context.Context, start, end time.Time) (stats.Rankings
 			return r, err
 		}
 	}
-	cutoff := "detail_cutoff"
-	if hourly {
-		cutoff = "hour_cutoff"
-	}
-	r.Complete, err = complete(ctx, view, start, end, cutoff)
+	r.Complete, err = aggregateComplete(ctx, view, spans)
 	return r, err
 }
 

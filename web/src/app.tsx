@@ -119,7 +119,7 @@ export default function App() {
   useLive(
     !auth && ["overview", "performance", "clients"].includes(page) && range !== "custom",
     liveTick,
-    5000,
+    range === "7d" ? 30_000 : 5000,
   );
   const historical = ["overview", "performance", "queries", "clients"].includes(page);
   const section = sections.find((s) => s.pages.some(([id]) => id === page));

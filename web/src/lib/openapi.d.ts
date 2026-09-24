@@ -935,7 +935,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Retained admitted-query totals; rejected admissions are separate. Missing history is 503. */
+    /**
+     * @description Retained admitted-query totals; rejected admissions are separate. Full
+     *     day/hour/minute buckets use aggregates, with exact detail for sub-minute
+     *     edges, in one snapshot. Retention or observation gaps set complete=false;
+     *     the requested window is never expanded. Unavailable history is 503.
+     */
     get: {
       parameters: {
         query?: {
@@ -1080,7 +1085,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Top ten clients by admitted requests and exact domains by blocks; stable identity ties. */
+    /**
+     * @description Top ten clients by admitted requests and exact domains by blocks, with
+     *     stable identity ties. Full hourly aggregates and exact partial-hour detail
+     *     are merged before ranking. active_clients counts all distinct retained
+     *     admitted client addresses before the top-ten limit. Retention or observation
+     *     gaps set complete=false; partial edges never expand the requested window.
+     */
     get: {
       parameters: {
         query?: {
@@ -2530,6 +2541,8 @@ export interface components {
       updated_at: string;
     };
     HistoryRankings: {
+      /** @description Distinct client addresses with retained admitted queries across the whole range before the top-ten limit. Coverage is indicated by complete. */
+      active_clients: components["schemas"]["Decimal"];
       clients: {
         device?: components["schemas"]["DeviceEnrichment"];
         address: string;

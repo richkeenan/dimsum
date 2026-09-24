@@ -429,7 +429,11 @@ paths:
     x-mcp-tools:
       get: {name: get_summary, description: Get retained query totals and observation completeness}
     get:
-      description: Retained admitted-query totals; rejected admissions are separate. Missing history is 503.
+      description: |
+        Retained admitted-query totals; rejected admissions are separate. Full
+        day/hour/minute buckets use aggregates, with exact detail for sub-minute
+        edges, in one snapshot. Retention or observation gaps set complete=false;
+        the requested window is never expanded. Unavailable history is 503.
       parameters: &rangeParameters
         - {$ref: '#/components/parameters/From'}
         - {$ref: '#/components/parameters/To'}
@@ -491,7 +495,12 @@ paths:
     x-mcp-tools:
       get: {name: get_rankings, description: Get top clients and blocked domains for a history window}
     get:
-      description: Top ten clients by admitted requests and exact domains by blocks; stable identity ties.
+      description: |
+        Top ten clients by admitted requests and exact domains by blocks, with
+        stable identity ties. Full hourly aggregates and exact partial-hour detail
+        are merged before ranking. active_clients counts all distinct retained
+        admitted client addresses before the top-ten limit. Retention or observation
+        gaps set complete=false; partial edges never expand the requested window.
       parameters: *rangeParameters
       responses:
         '200':
@@ -1282,8 +1291,9 @@ components:
             updated_at: {type: string, format: date-time}
     HistoryRankings:
       type: object
-      required: [clients, domains, complete, range, updated_at]
+      required: [active_clients, clients, domains, complete, range, updated_at]
       properties:
+        active_clients: {$ref: '#/components/schemas/Decimal', description: Distinct client addresses with retained admitted queries across the whole range before the top-ten limit. Coverage is indicated by complete.}
         clients:
           type: array
           maxItems: 10

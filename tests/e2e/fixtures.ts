@@ -235,6 +235,7 @@ export async function fixtureAPI(page: Page) {
         })),
       } satisfies Series,
       rankings: {
+        active_clients: "10",
         complete: true,
         range: summary.range,
         updated_at: summary.updated_at,

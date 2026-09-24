@@ -128,6 +128,42 @@ func TestHistoryProviderRealSQLitePresentationAndConsistentDefaults(t *testing.T
 	assert.Equal(t, "1", observed.Items[0].Blocked)
 }
 
+func TestRankingsExposeDistinctActiveClientsBeyondTopTen(t *testing.T) {
+	h, _ := historyFixture(t)
+	var events []stats.QueryEvent
+	for i := 0; i < 205; i++ {
+		e := historyEvent(uint64(i+1), stats.FreshCache)
+		e.Client = netip.AddrFrom4([4]byte{192, 0, 2, byte(i + 1)}).As16()
+		events = append(events, e)
+	}
+	// Repeated addresses count once; rejected admissions do not add clients.
+	for i, outcome := range []stats.Outcome{stats.PolicyBlock, stats.AdmissionRejected} {
+		e := historyEvent(uint64(206+i), outcome)
+		if outcome == stats.AdmissionRejected {
+			e.Client = netip.MustParseAddr("198.51.100.1").As16()
+		}
+		events = append(events, e)
+	}
+	require.NoError(t, h.db.WriteBatch(t.Context(), "boot", events))
+	for _, q := range []url.Values{{}, {"from": {historyStart.Add(time.Second).Format(time.RFC3339Nano)}, "to": {historyEnd.Add(time.Second).Format(time.RFC3339Nano)}}} {
+		v, err := h.Rankings(t.Context(), q)
+		require.NoError(t, err)
+		require.Len(t, v.(historyRankings).Clients, 10)
+		blob, err := json.Marshal(v)
+		require.NoError(t, err)
+		var response map[string]any
+		require.NoError(t, json.Unmarshal(blob, &response))
+		assert.Equal(t, "205", response["active_clients"])
+	}
+	v, err := h.Rankings(t.Context(), url.Values{"from": {historyEnd.Format(time.RFC3339)}, "to": {historyEnd.Add(time.Hour).Format(time.RFC3339)}})
+	require.NoError(t, err)
+	blob, err := json.Marshal(v)
+	require.NoError(t, err)
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(blob, &response))
+	assert.Equal(t, "0", response["active_clients"])
+}
+
 func TestHistoryCursorPinsDefaultWindowAndNormalizedFilters(t *testing.T) {
 	h, _ := historyFixture(t)
 	var events []stats.QueryEvent

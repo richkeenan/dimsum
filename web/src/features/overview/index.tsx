@@ -2,16 +2,7 @@ import { lazy, Suspense } from "react";
 import { ClientIdentity } from "@/components/client-identity";
 import type { Device } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
-import {
-  count,
-  percentage,
-  rows,
-  text,
-  type Summary,
-  type Series,
-  type Rankings,
-  type ClientsResponse,
-} from "@/lib/api";
+import { count, percentage, rows, text, type Summary, type Series, type Rankings } from "@/lib/api";
 import { DataTable, Resource } from "@/components/data";
 import { OverviewPerformance } from "@/features/performance";
 const TrafficChart = lazy(() => import("./chart"));
@@ -34,7 +25,6 @@ export default function Overview({
     refresh,
   );
   const rankings = useResource<Rankings>("rankings?" + range, refresh);
-  const clients = useResource<ClientsResponse>("clients?" + range + "&limit=200", refresh);
   const s = summary.data;
   return (
     <>
@@ -45,13 +35,7 @@ export default function Overview({
             ["Blocked queries", count(s?.blocked)],
             ["Blocked %", percentage(s?.blocked, s?.queries)],
             ["Answered from cache", percentage(s?.fresh, s?.queries)],
-            [
-              "Active clients",
-              clients.data?.observed
-                ? (clients.data.observed.truncated ? "≥ " : "") +
-                  count(String(clients.data.observed.items?.length ?? 0))
-                : "—",
-            ],
+            ["Active clients", rankings.data ? count(rankings.data.active_clients) : "—"],
           ].map(([label, value]) => (
             <div
               className="min-w-0 border-border px-4 py-4 max-[1100px]:border-b max-[1100px]:odd:border-r max-[1100px]:last:col-span-2 max-[1100px]:last:border-b-0 max-[1100px]:last:border-r-0 min-[1101px]:border-r min-[1101px]:last:border-r-0 min-[1051px]:px-5"
@@ -69,13 +53,6 @@ export default function Overview({
             Rejected queries <b>{count(s?.rejected)}</b>
           </span>
         </div>
-      </Resource>
-      <Resource state={clients}>
-        {clients.data?.observed?.truncated && (
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            Client count shows the first 200 observed addresses.
-          </p>
-        )}
       </Resource>
       <OverviewPerformance
         range={range}
