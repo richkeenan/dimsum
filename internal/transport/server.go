@@ -89,7 +89,7 @@ func New(o Options, h Handler) (*Server, error) {
 }
 
 // StorageBytes counts slot payloads only; UDP adds 65535 scratch bytes and one
-// 65535 output per worker/listener; each TCP connection adds one 65535 output.
+// 65535 output per worker/listener; each TCP connection adds one 65537 framed output.
 func (s *Server) StorageBytes() int { return s.pool.bytes() }
 func (s *Server) Stats() Stats {
 	return Stats{s.stats.slotDrops.Load(), s.stats.largeReceived.Load(), s.stats.largeDrops.Load(), s.stats.connectionDrops.Load(), s.stats.connections.Load(), s.stats.invalid.Load(), s.stats.writeErrors.Load()}

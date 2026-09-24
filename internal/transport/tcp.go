@@ -45,7 +45,10 @@ func (s *Server) serveConn(ctx context.Context, c net.Conn) {
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	defer stop()
 	peer, _ := netip.ParseAddrPort(c.RemoteAddr().String())
-	out := make([]byte, 65535)
+	// Reserve the framing prefix so a normal reply needs one stream write.
+	// TCP_NODELAY is already Go's default; this also avoids a tiny prefix segment.
+	frame := make([]byte, 2+65535)
+	out := frame[2:]
 	var prefix [2]byte
 	for ctx.Err() == nil {
 		c.SetReadDeadline(time.Now().Add(s.opts.ReadTimeout))
@@ -72,12 +75,8 @@ func (s *Server) serveConn(ctx context.Context, c net.Conn) {
 			return
 		}
 		c.SetWriteDeadline(time.Now().Add(s.opts.WriteTimeout))
-		binary.BigEndian.PutUint16(prefix[:], uint16(size))
-		if err := writeAll(c, prefix[:]); err != nil {
-			s.stats.writeErrors.Add(1)
-			return
-		}
-		if err := writeAll(c, out[:size]); err != nil {
+		binary.BigEndian.PutUint16(frame[:2], uint16(size))
+		if err := writeAll(c, frame[:size+2]); err != nil {
 			s.stats.writeErrors.Add(1)
 			return
 		}
