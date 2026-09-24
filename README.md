@@ -18,6 +18,12 @@ blocked domains, or manage local DNS. You can also use the web dashboard or CLI.
 A single executable includes the dashboard. Configuration lives in a
 comment-preserving YAML file; statistics, leases, and downloaded lists live separately.
 
+## Dashboard preview
+
+See DNS traffic, blocked queries, cache usage, and response times at a glance.
+
+![dimsum dashboard in dark mode showing query totals, response times, and DNS activity](guides/assets/overview.png)
+
 ## Run your DNS through your agent
 
 Your agent can inspect and change dimsum's configuration through its built-in
