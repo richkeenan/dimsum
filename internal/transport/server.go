@@ -61,7 +61,11 @@ func New(o Options, h Handler) (*Server, error) {
 		o.LargeSlots = 16
 	}
 	if o.Workers == 0 {
-		o.Workers = 4
+		// Workers include time spent waiting for upstream I/O, not just CPU work.
+		// Keep room for local/cache replies during ordinary bursts of misses.
+		// The fixed pool remains bounded (64 * 65535 bytes of reply storage per
+		// listener); request slots and upstream flights enforce separate limits.
+		o.Workers = 64
 	}
 	if o.MaxConnections == 0 {
 		o.MaxConnections = 128
