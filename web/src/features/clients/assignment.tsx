@@ -132,7 +132,7 @@ export function ProfileMap({
   profiles: Schema["PolicyProfile"][];
   reload: () => void | Promise<unknown>;
   disabled?: boolean;
-  onEdit: (id: string) => void;
+  onEdit: (id: string, trigger: HTMLButtonElement) => void;
   liveStatus?: Schema["Activation"];
 }) {
   const { status, error, busy, save } = useAssignment(reload);
@@ -232,7 +232,7 @@ export function ProfileMap({
                     <button
                       className="underline decoration-border underline-offset-4 hover:decoration-primary"
                       aria-label={`Edit ${profile.name || profile.id} profile`}
-                      onClick={() => onEdit(profile.id)}
+                      onClick={(event) => onEdit(profile.id, event.currentTarget)}
                     >
                       {profile.name || profile.id}
                     </button>

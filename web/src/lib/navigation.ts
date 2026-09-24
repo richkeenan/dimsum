@@ -26,6 +26,7 @@ export const filterKeys = [
 ] as const;
 export type ViewSearch = {
   device?: string;
+  edit?: string;
   range?: string;
   from?: string;
   to?: string;
@@ -46,7 +47,7 @@ export function validateView(raw: Record<string, unknown>): ViewSearch {
   const result: ViewSearch = {};
   if (typeof raw.range === "string" && ["1h", "24h", "7d", "custom"].includes(raw.range))
     result.range = raw.range;
-  for (const key of [...filterKeys, "from", "to", "device"] as const)
+  for (const key of [...filterKeys, "from", "to", "device", "edit"] as const)
     if (typeof raw[key] === "string" && raw[key].length <= 512) result[key] = raw[key];
   if (result.range === "custom") {
     const from = Date.parse(result.from ?? ""),

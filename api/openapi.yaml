@@ -27,6 +27,31 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/v1/builtin-lists/{id}:
+    x-mcp-tools:
+      get: {name: get_builtin_list, description: Read the installed built-in baseline and saved shared domain additions and exclusions for an explicit subscription ID}
+      patch: {name: update_builtin_list, description: 'Revision-checked add, remove, restore, or reset of shared built-in subscription exceptions. Changes affect every scope selecting this subscription. Removal restores normal matching, not an explicit deny. Reset uses the installed baseline. Read back saved revision and activation status.'}
+    get:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, minLength: 1}}
+      responses:
+        '200':
+          description: Saved membership relative to the baseline in the installed executable; remote and unknown subscriptions return not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BuiltinListRead'}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, minLength: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BuiltinListMutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/client-policy:
     x-mcp-tools:
       get: {name: get_client_policy, description: Read desired and active effective policy with inherited field sources and subscription health for an explicit client ID or profile ID or the network}
@@ -779,6 +804,31 @@ components:
     session: {type: apiKey, in: cookie, name: dimsum_session, description: Browser-session authentication; mutations also require Origin and X-CSRF-Token}
     bearer: {type: http, scheme: bearer, description: Opaque full-administrator token with independent lifetime until explicit revocation; checked on every HTTP request including MCP requests; no browser Origin/CSRF credentials required}
   schemas:
+    BuiltinListRead:
+      type: object
+      required: [id, revision, status, entries, customized]
+      properties:
+        id: {type: string}
+        revision: {type: string}
+        status: {$ref: '#/components/schemas/Activation'}
+        customized: {type: boolean}
+        entries:
+          type: array
+          items:
+            type: object
+            required: [domain, origin, removed]
+            properties:
+              domain: {type: string}
+              origin: {type: string, enum: [builtin, custom]}
+              removed: {type: boolean}
+    BuiltinListMutation:
+      type: object
+      additionalProperties: false
+      required: [revision, action]
+      properties:
+        revision: {type: string, minLength: 1}
+        action: {type: string, enum: [add, remove, restore, reset]}
+        domain: {type: string, description: 'Plain domain required for add/remove/restore; omitted for reset. Case and trailing root dot are normalized.'}
     PolicyScope:
       type: object
       description: Empty object means network; otherwise the owning profile or client ID

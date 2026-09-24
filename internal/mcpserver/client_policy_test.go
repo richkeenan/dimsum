@@ -65,4 +65,10 @@ func TestClientPolicyMCPRealResponseSchemas(t *testing.T) {
 	run("explain_domain", map[string]any{"body": map[string]any{"name": "adult.example", "client_id": "phone"}})
 	result := call(t, session, "update_client_policy", map[string]any{"body": body})
 	assert.True(t, result.IsError)
+	run("update_client_policy", map[string]any{"body": map[string]any{"revision": store.Inspect().SavedRevision, "scope": "network", "subscribe": []any{map[string]any{"id": "work", "url": "builtin://work-compatibility", "dialect": "dns-adblock", "domain_kind": "suffix", "enabled": true}}}})
+	builtin := run("get_builtin_list", map[string]any{"id": "work"})
+	assert.Equal(t, false, builtin["customized"])
+	run("update_builtin_list", map[string]any{"id": "work", "body": map[string]any{"revision": builtin["revision"], "action": "add", "domain": "custom.example"}})
+	builtin = run("get_builtin_list", map[string]any{"id": "work"})
+	assert.Equal(t, true, builtin["customized"])
 }

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { api, APIError, type Activation } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
@@ -63,12 +64,16 @@ export function PolicyEditor({
   onDeleted,
   onPromoted,
   onDirty,
+  onBusy,
+  actionsTarget,
 }: {
   scope: PolicyScope;
   id?: string;
   onDeleted?: () => void;
   onPromoted?: (id: string) => void;
   onDirty?: (dirty: boolean) => void;
+  onBusy?: (busy: boolean) => void;
+  actionsTarget?: HTMLElement | null;
 }) {
   const state = useResource<PolicyRead>(
     `client-policy?${new URLSearchParams({ scope, ...(id ? { id } : {}) })}`,
@@ -125,6 +130,8 @@ export function PolicyEditor({
           }}
           onDeleted={onDeleted}
           onPromoted={onPromoted}
+          onBusy={onBusy}
+          actionsTarget={actionsTarget}
         />
       )}
     </Resource>
@@ -138,6 +145,8 @@ function PolicyForm({
   reload,
   onDeleted,
   onPromoted,
+  onBusy,
+  actionsTarget,
 }: {
   read: PolicyRead;
   liveStatus?: Activation;
@@ -145,6 +154,8 @@ function PolicyForm({
   reload: () => Promise<void>;
   onDeleted?: () => void;
   onPromoted?: (id: string) => void;
+  onBusy?: (busy: boolean) => void;
+  actionsTarget?: HTMLElement | null;
 }) {
   const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const catalog = useResource<Schema["Catalog"]>("catalog");
@@ -165,6 +176,10 @@ function PolicyForm({
   const [extra, setExtra] = useState<Partial<PolicyMutation>>({});
   const [subscriptions, setSubscriptions] = useState<Schema["PolicySubscription"][]>([]);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    onBusy?.(busy);
+  }, [busy, onBusy]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
   const [error, setError] = useState<Error>();
   const [status, setStatus] = useState<Activation>();
   const [preview, setPreview] = useState<Preview>();
@@ -354,6 +369,20 @@ function PolicyForm({
             {health ? `${read.scope !== "network" ? " · " : ""}${health}` : ""}
           </p>
           {path[0] === "lists" &&
+            lists.data?.items.some(
+              (s) => s.id === path[1] && s.url === "builtin://work-compatibility",
+            ) && (
+              <p className="text-xs text-muted-foreground">
+                <a
+                  href={`/lists?edit=${encodeURIComponent(path[1])}`}
+                  className="inline-flex min-h-10 items-center underline underline-offset-4"
+                >
+                  Edit shared list
+                </a>
+                <span className="block">Shared changes affect everyone using this list.</span>
+              </p>
+            )}
+          {path[0] === "lists" &&
             lists.data?.items.some((s) => s.id === path[1] && !s.enabled) &&
             !subscriptions.some((s) => s.id === path[1]) && (
               <Button
@@ -430,7 +459,7 @@ function PolicyForm({
       <fieldset disabled={busy || !!status} className="flex min-w-0 flex-col gap-4">
         <section className={panelClass}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-medium">{scopeName}</h2>
+            <h2 className="text-base font-medium">{actionsTarget ? "General" : scopeName}</h2>
           </div>
           <p className="text-xs text-muted-foreground">
             {read.scope === "network"
@@ -515,6 +544,8 @@ function PolicyForm({
           <p className="text-xs text-muted-foreground">
             When on, DNS filtering blocks domains using the filter lists and custom rules below.
           </p>
+        </section>
+        <section className={panelClass}>
           {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-medium">Filter lists</h3>
@@ -930,9 +961,9 @@ function PolicyForm({
             </details>
           </section>
         )}
-        <details className={panelClass}>
+        <details className={panelClass} open={actionsTarget ? true : undefined}>
           <summary className="cursor-pointer text-sm font-medium">
-            Advanced: upstream servers
+            {actionsTarget ? "Upstreams" : "Advanced: upstream servers"}
           </summary>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-medium">Upstream servers</h3>
@@ -980,49 +1011,57 @@ function PolicyForm({
             </label>
           </div>
         </details>
-        <section
-          className={`space-y-2 rounded-lg border border-border bg-background p-3 sm:p-4 ${changed ? "sticky bottom-2 z-10 shadow-sm" : ""}`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 wrap-anywhere text-sm">
-              <strong>
-                {changed} {changed === 1 ? "change" : "changes"}
-              </strong>{" "}
-              · {scopeName}
-              {preview && (
-                <p className="mt-1 max-h-16 overflow-y-auto wrap-anywhere text-xs text-muted-foreground">
-                  {preview.changed_clients.length} affected devices
-                  {preview.network_changed ? " · network changed" : ""}
-                  {preview.changed_clients.length ? `: ${preview.changed_clients.join(", ")}` : ""}
-                  {preview.downloads_pending.length
-                    ? ` · downloads pending: ${preview.downloads_pending.join(", ")}`
-                    : ""}
-                </p>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(changed > 0 || unstaged) && (
-                <Button variant="ghost" aria-label="Discard staged changes" onClick={discard}>
-                  Discard
+        <PolicyActions target={actionsTarget} disabled={busy || !!status}>
+          <section
+            className={
+              actionsTarget
+                ? "space-y-2"
+                : `space-y-2 rounded-lg border border-border bg-background p-3 sm:p-4 ${changed ? "sticky bottom-2 z-10 shadow-sm" : ""}`
+            }
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 wrap-anywhere text-sm">
+                <strong>
+                  {changed} {changed === 1 ? "change" : "changes"}
+                </strong>{" "}
+                · {scopeName}
+                {preview && (
+                  <p className="mt-1 max-h-16 overflow-y-auto wrap-anywhere text-xs text-muted-foreground">
+                    {preview.changed_clients.length} affected devices
+                    {preview.network_changed ? " · network changed" : ""}
+                    {preview.changed_clients.length
+                      ? `: ${preview.changed_clients.join(", ")}`
+                      : ""}
+                    {preview.downloads_pending.length
+                      ? ` · downloads pending: ${preview.downloads_pending.join(", ")}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {(changed > 0 || unstaged) && (
+                  <Button variant="ghost" aria-label="Discard staged changes" onClick={discard}>
+                    Discard
+                  </Button>
+                )}
+                <Button disabled={!changed || busy} onClick={() => void save()}>
+                  {busy ? "Saving…" : `Save ${changed} ${changed === 1 ? "change" : "changes"}`}
                 </Button>
-              )}
-              <Button disabled={!changed || busy} onClick={() => void save()}>
-                {busy ? "Saving…" : `Save ${changed} ${changed === 1 ? "change" : "changes"}`}
-              </Button>
+              </div>
             </div>
-          </div>
-          {previewError && <ErrorNotice error={previewError} />}
-          {error && <ErrorNotice error={error} />}
-          {((error instanceof APIError && error.status === 409) ||
-            (liveStatus && liveStatus.saved_revision !== read.status.saved_revision)) && (
-            <Button
-              variant="outline"
-              onClick={() => void reload().catch((e: Error) => setError(e))}
-            >
-              Reload saved policy
-            </Button>
-          )}
-        </section>
+            {previewError && <ErrorNotice error={previewError} />}
+            {error && <ErrorNotice error={error} />}
+            {((error instanceof APIError && error.status === 409) ||
+              (liveStatus && liveStatus.saved_revision !== read.status.saved_revision)) && (
+              <Button
+                variant="outline"
+                onClick={() => void reload().catch((e: Error) => setError(e))}
+              >
+                Reload saved policy
+              </Button>
+            )}
+          </section>
+        </PolicyActions>
         {read.scope !== "network" && (
           <Button
             variant="ghost"
@@ -1095,4 +1134,23 @@ function PolicyForm({
       )}
     </div>
   );
+}
+
+function PolicyActions({
+  target,
+  disabled,
+  children,
+}: {
+  target?: HTMLElement | null;
+  disabled: boolean;
+  children: ReactNode;
+}) {
+  return target
+    ? createPortal(
+        <fieldset disabled={disabled} className="min-w-0">
+          {children}
+        </fieldset>,
+        target,
+      )
+    : children;
 }

@@ -47,6 +47,9 @@ func validatePolicy(c Config) error {
 	}
 	seen := map[string]bool{}
 	for i, s := range c.Lists {
+		if err := lists.ValidateBuiltinOverrides(s); err != nil {
+			return fmt.Errorf("lists[%d]: %w", i, err)
+		}
 		if s.ID == "" || s.ID == "custom" || seen[s.ID] {
 			return fmt.Errorf("lists[%d].id: empty, reserved or duplicate", i)
 		}

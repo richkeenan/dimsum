@@ -103,7 +103,7 @@ func validateMembership(c Config, rules []policy.Rule, statuses []SourceStatus) 
 		}
 		if status.Usable {
 			h, err := hex.DecodeString(status.SHA256)
-			if !status.Enabled || status.Rules == 0 || err != nil || len(h) != sha256.Size {
+			if !status.Enabled || status.Rules == 0 && sub.URL != lists.WorkCompatibilityURL || err != nil || len(h) != sha256.Size {
 				return fmt.Errorf("recovery: invalid usable source")
 			}
 		} else if status.Rules != 0 || status.SHA256 != "" {

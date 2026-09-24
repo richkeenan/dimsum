@@ -54,7 +54,7 @@ func (s *Store) prepareSubscriptions(ctx context.Context, c Config, refresh bool
 				v, err = fetcher.Refresh(ctx, filepath.Join(s.state, "sources"), sub, s.options.Offline)
 			}
 			prior, wasUsable := s.previousSource(sub)
-			if !reused && err == nil && wasUsable && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
+			if !reused && err == nil && wasUsable && sub.URL != lists.WorkCompatibilityURL && !sub.AllowLargeDeletion && len(v.Rules) <= prior.Rules/2 {
 				err = fmt.Errorf("source deletion requires review: %d -> %d rules", prior.Rules, len(v.Rules))
 			}
 			if err != nil && wasUsable {

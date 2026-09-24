@@ -5,6 +5,8 @@ import { useResource } from "@/lib/hooks";
 import { DataTable, Details, ErrorNotice } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { BuiltinListEditor } from "./builtin-list";
 import type { Schema } from "./clients/model";
 
 export type ListToggle = { id: unknown; enabled: boolean };
@@ -58,6 +60,16 @@ export function ListSubscriptions({
   const clients = useResource<Schema["ClientsResponse"]>("clients");
   const profiles = useResource<{ items: Schema["PolicyProfile"][] }>("profiles");
   const configured = collectionRows(data);
+  const [builtin, setBuiltin] = useState<string>();
+  const [builtinBusy, setBuiltinBusy] = useState(false);
+  const openedFromURL = useRef(false);
+  useEffect(() => {
+    if (openedFromURL.current || !data) return;
+    openedFromURL.current = true;
+    const id = new URLSearchParams(window.location.search).get("edit");
+    if (id && configured.some((row) => row.id === id && String(row.url).startsWith("builtin://")))
+      setBuiltin(id);
+  }, [data, configured]);
   const presets = rows(catalog.data);
   // Match by URL rather than ID: existing/custom subscriptions may use any ID.
   const items = [
@@ -208,6 +220,16 @@ export function ListSubscriptions({
             align: "right",
             render: (row) => (
               <div className="flex items-start justify-end gap-2">
+                {row.__index !== undefined && String(row.url).startsWith("builtin://") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled}
+                    onClick={() => setBuiltin(String(row.sourceID))}
+                  >
+                    Edit domains
+                  </Button>
+                )}
                 {row.__index !== undefined && (
                   <Button
                     size="sm"
@@ -227,7 +249,7 @@ export function ListSubscriptions({
                       })
                     }
                   >
-                    Edit
+                    {String(row.url).startsWith("builtin://") ? "Settings" : "Edit"}
                   </Button>
                 )}
                 <details className="group min-w-0 text-left">
@@ -253,6 +275,25 @@ export function ListSubscriptions({
         ]}
         empty="No blocklists available. Add a custom URL to get started."
       />
+      <Dialog
+        open={!!builtin}
+        onOpenChange={(open) => {
+          if (!open && !builtinBusy) setBuiltin(undefined);
+        }}
+      >
+        <DialogContent className="flex h-dvh max-h-dvh max-w-full flex-col rounded-none sm:h-[85dvh] sm:max-w-3xl sm:rounded-lg">
+          <DialogTitle>Work tools compatibility</DialogTitle>
+          <DialogDescription>Shared built-in allowlist</DialogDescription>
+          {builtin && (
+            <BuiltinListEditor
+              key={builtin}
+              id={builtin}
+              close={() => setBuiltin(undefined)}
+              onBusy={setBuiltinBusy}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

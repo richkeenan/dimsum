@@ -37,12 +37,56 @@ func TestBuiltinListValidation(t *testing.T) {
 	}
 }
 
+func TestBuiltinCustomizationConfigIsImmutable(t *testing.T) {
+	d := denyDoc(t)
+	d, err := d.Append([]string{"lists"}, lists.Subscription{ID: "work", URL: lists.WorkCompatibilityURL, Dialect: lists.Adblock, DomainKind: policy.Suffix, BuiltinOverrides: &lists.BuiltinOverrides{Additions: []string{"custom.example"}, Exclusions: []string{"excluded.example"}}})
+	require.NoError(t, err)
+	c := d.Config()
+	c.Lists[0].BuiltinOverrides.Additions[0] = "changed.example"
+	c.Lists[0].BuiltinOverrides.Exclusions[0] = "changed.example"
+	assert.Equal(t, []string{"custom.example"}, d.Config().Lists[0].BuiltinOverrides.Additions)
+	assert.Equal(t, []string{"excluded.example"}, d.Config().Lists[0].BuiltinOverrides.Exclusions)
+}
+
+func TestBuiltinEmptyMembershipSurvivesRecovery(t *testing.T) {
+	path, state := fixtureStore(t)
+	d := denyDoc(t)
+	sub := lists.Subscription{ID: "work", URL: lists.WorkCompatibilityURL, Dialect: lists.Adblock, DomainKind: policy.Suffix, Enabled: true}
+	entries, err := lists.BuiltinEntries(sub)
+	require.NoError(t, err)
+	d, err = d.Append([]string{"lists"}, sub)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, d.Bytes(), 0600))
+	s, err := OpenStore(t.Context(), path, state, StoreOptions{Offline: true})
+	require.NoError(t, err)
+	o := lists.BuiltinOverrides{}
+	for _, entry := range entries {
+		o.Exclusions = append(o.Exclusions, entry.Domain)
+	}
+	next, err := d.PolicyFields([]PolicyField{{Path: []string{"lists", "0", "builtin_overrides"}, Value: o}})
+	require.NoError(t, err)
+	a, err := s.Save(t.Context(), d.Revision(), next)
+	require.NoError(t, err)
+	require.False(t, a.Pending)
+	require.Len(t, a.Sources, 1)
+	assert.True(t, a.Sources[0].Usable)
+	assert.Zero(t, a.Sources[0].Rules)
+	assert.Empty(t, a.Sources[0].Error)
+	restarted, err := OpenStore(t.Context(), path, state, StoreOptions{Offline: true})
+	require.NoError(t, err)
+	assert.Equal(t, a.Sources, restarted.Inspect().Sources)
+}
+
 func TestRecoveryUpdatesBuiltinMembershipWithoutDownloadingExternalSources(t *testing.T) {
 	path, state := fixtureStore(t)
 	d := denyDoc(t)
+	base, e := lists.BuiltinEntries(lists.Subscription{ID: "work", URL: lists.WorkCompatibilityURL})
+	require.NoError(t, e)
+	require.NotEmpty(t, base)
+	excluded := base[0].Domain
 	var err error
 	for _, sub := range []lists.Subscription{
-		{ID: "work", URL: "builtin://work-compatibility", Dialect: lists.Adblock, DomainKind: policy.Suffix, Enabled: true},
+		{ID: "work", URL: "builtin://work-compatibility", Dialect: lists.Adblock, DomainKind: policy.Suffix, Enabled: true, BuiltinOverrides: &lists.BuiltinOverrides{Additions: []string{"custom.example"}, Exclusions: []string{excluded}}},
 		{ID: "external", URL: "https://example.test/list", Dialect: lists.Domains, DomainKind: policy.Suffix, Enabled: true},
 	} {
 		d, err = d.Append([]string{"lists"}, sub)
@@ -82,6 +126,8 @@ func TestRecoveryUpdatesBuiltinMembershipWithoutDownloadingExternalSources(t *te
 		result policy.Result
 	}{
 		{"old-0.example", policy.Forward},
+		{"custom.example", policy.Allow},
+		{excluded, policy.Forward},
 		{"blocked.example", policy.Block},
 	} {
 		name, err := policy.NormalizeName(tc.name)

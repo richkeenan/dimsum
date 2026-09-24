@@ -206,6 +206,54 @@ profiles:
 The shared client-policy API, CLI, and MCP accept this built-in URL just like a
 subscription URL. No hosting or external download is required.
 
+You can edit the exceptions shared by every network, profile, or device that
+selects a built-in subscription. The installed baseline stays in the executable;
+only your changes are saved in authoritative YAML:
+
+```yaml
+    builtin_overrides:
+      additions: [metrics.example.com]
+      exclusions: [segment.io]
+```
+
+Add this field to the subscription, alongside `default_apply`. Domains must be
+canonical lowercase names without a trailing dot in YAML. Each exception allows
+the domain and its subdomains. Excluding an entry removes that exception and
+restores normal policy matching; it does not create a deny rule. A broader allow
+exception or another selected allowlist can still allow the domain.
+
+Read `GET /api/v1/builtin-lists/{id}`, using the configured subscription ID rather
+than the built-in URL. It returns `id`, `revision`, `status`, `entries`, and
+`customized`. Each entry contains `domain`, `origin` (`builtin` or `custom`), and
+`removed`. Entries are sorted by domain. This endpoint does not edit remote lists.
+
+Send `PATCH` to the same URL with the current `revision`, an `action`, and a
+`domain` for single-domain operations:
+
+- `add`: add a suffix exception, or re-enable an excluded baseline entry.
+- `remove`: exclude a baseline exception, or delete a custom addition.
+- `restore`: clear a baseline exclusion.
+- `reset`: omit `domain`; clear all additions and exclusions to use the installed
+  baseline.
+
+The API normalizes case and a trailing root dot. Saves return the usual activation
+status; stale revisions fail with HTTP 409. Inspect the returned status or read
+back before assuming activation. CLI equivalents are:
+
+```sh
+dimsum control builtin-list work-compatibility
+dimsum control patch builtin-lists/work-compatibility \
+  '{"revision":"REVISION_FROM_GET","action":"add","domain":"metrics.example.com"}'
+dimsum control patch builtin-lists/work-compatibility \
+  '{"revision":"CURRENT_REVISION","action":"reset"}'
+```
+
+MCP exposes these operations as `get_builtin_list` and `update_builtin_list`.
+Customizations survive restart, recovery, backup/restore, and binary updates.
+Recovery reapplies them to the installed baseline. Exclusions remain saved even
+when a release no longer ships that domain, so a later release cannot silently
+restore it. Reset always uses the baseline in the installed executable.
+
 ### Identity and portability
 
 The stable `id`, selectors, profile and overrides live in YAML and survive

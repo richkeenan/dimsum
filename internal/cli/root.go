@@ -19,6 +19,8 @@ Read operations (JSON):
   summary | timeseries | performance | queries | rankings [--query 'from=...&to=...']
   settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
   client-policy [--query 'scope=client&id=stable-id'] | profiles
+  builtin-list ID            inspect installed baseline and shared customizations
+  patch builtin-lists/ID JSON revision, action add/remove/restore/reset, optional domain
   query ID
   dhcp | dhcp-status | dhcp-leases | dhcp-reservations
   get dhcp|dhcp-status|dhcp-leases|dhcp-reservations
@@ -96,6 +98,11 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 	}
 	bad := func() int { fmt.Fprintln(stderr, "invalid arguments; run dimsum control help"); return 2 }
 	switch args[0] {
+	case "builtin-list":
+		if len(args) != 2 || args[1] == "" || strings.ContainsAny(args[1], "/\\") || args[1] == "." || args[1] == ".." {
+			return bad()
+		}
+		path = "/api/v1/builtin-lists/" + url.PathEscape(args[1])
 	case "get":
 		if len(args) != 2 {
 			return bad()

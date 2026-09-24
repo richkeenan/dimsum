@@ -4,6 +4,62 @@
  */
 
 export interface paths {
+  "/api/v1/builtin-lists/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Saved membership relative to the baseline in the installed executable; remote and unknown subscriptions return not found. */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["BuiltinListRead"];
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["BuiltinListMutation"];
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    trace?: never;
+  };
   "/api/v1/client-policy": {
     parameters: {
       query?: never;
@@ -2005,6 +2061,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    BuiltinListRead: {
+      id: string;
+      revision: string;
+      status: components["schemas"]["Activation"];
+      customized: boolean;
+      entries: {
+        domain: string;
+        /** @enum {string} */
+        origin: "builtin" | "custom";
+        removed: boolean;
+      }[];
+    };
+    BuiltinListMutation: {
+      revision: string;
+      /** @enum {string} */
+      action: "add" | "remove" | "restore" | "reset";
+      /** @description Plain domain required for add/remove/restore; omitted for reset. Case and trailing root dot are normalized. */
+      domain?: string;
+    };
     /** @description Empty object means network; otherwise the owning profile or client ID */
     PolicyScope: {
       /** @enum {string} */

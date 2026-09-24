@@ -67,73 +67,110 @@ test("device drafts survive cancelled navigation and warn on browser unload", as
   ).toBeVisible();
 });
 
-test("profile switching protects drafts and create form manages focus", async ({
-  page,
-}) => {
-  await fixtureAPI(page);
-  await page.route("**/api/v1/profiles", (route) =>
-    route.fulfill({
-      json: { status: activation, items: [{ id: "family", name: "Family" }] },
-    }),
-  );
-  await page.route("**/api/v1/client-policy?*", (route) => {
-    const profile =
-      new URL(route.request().url()).searchParams.get("scope") === "profile";
-    return route.fulfill({
-      json: {
-        ...policyFixture,
-        scope: profile ? "profile" : "network",
-        id: profile ? "family" : "",
-        desired: profile ? { id: "family", name: "Family", policy: {} } : {},
-      },
+for (const width of [390, 1440]) {
+  test(`profile dialog protects drafts and retains actions at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await fixtureAPI(page);
+    await page.route("**/api/v1/profiles", (route) =>
+      route.fulfill({
+        json: { status: activation, items: [{ id: "family", name: "Family" }] },
+      }),
+    );
+    await page.route("**/api/v1/client-policy?*", (route) => {
+      const profile =
+        new URL(route.request().url()).searchParams.get("scope") === "profile";
+      return route.fulfill({
+        json: {
+          ...policyFixture,
+          scope: profile ? "profile" : "network",
+          id: profile ? "family" : "",
+          desired: profile ? { id: "family", name: "Family", policy: {} } : {},
+        },
+      });
     });
+    await page.goto("/profiles");
+    await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
+    // Clicking the current tab must not clear protection for the still-visible draft.
+    await page
+      .getByRole("button", { name: "Network defaults", exact: true })
+      .click();
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("button", { name: "Profiles", exact: true }).click();
+    await expect(page.getByLabel("Profile to edit")).toHaveCount(0);
+    await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveValue(
+      "off",
+    );
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Profiles", exact: true }).click();
+    await page.getByRole("button", { name: "Edit Family profile" }).click();
+    await expect(
+      page.getByRole("dialog", { name: "Edit Family profile" }),
+    ).toBeVisible();
+    const editor = page.getByRole("dialog", { name: "Edit Family profile" });
+    await expect(editor.getByLabel("Name", { exact: true })).toBeVisible();
+    await page.screenshot({ path: `test-results/profile-dialog-${width}.png` });
+    const box = await editor.boundingBox();
+    expect(box!.width).toBeLessThanOrEqual(width);
+    if (width === 390) {
+      expect(box!.width).toBe(390);
+      expect(box!.height).toBe(844);
+    }
+    await page
+      .getByLabel("Primary servers", { exact: true })
+      .scrollIntoViewIfNeeded();
+    const saveBox = await editor
+      .getByRole("button", { name: "Save 0 changes" })
+      .boundingBox();
+    expect(saveBox!.y).toBeGreaterThanOrEqual(0);
+    expect(saveBox!.y + saveBox!.height).toBeLessThan(844);
+    await expect(
+      editor.getByRole("button", { name: "Cancel" }),
+    ).toBeInViewport();
+    await expect(
+      editor.getByRole("heading", { name: "Edit Family profile" }),
+    ).toBeInViewport();
+    await page.getByLabel("Name", { exact: true }).fill("Draft family");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+      "Draft family",
+    );
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Edit Family profile" }),
+    ).toBeFocused();
+    await page
+      .getByRole("button", { name: "Create profile", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Create profile" }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("dialog", { name: "Create profile" })
+        .getByLabel("Name", { exact: true }),
+    ).toBeFocused();
+    await page.getByText("Advanced identification", { exact: true }).click();
+    await page.getByLabel("Stable ID", { exact: true }).fill("new-profile");
+    await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveCount(
+      0,
+    );
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.keyboard.press("Escape");
+    await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
+      "new-profile",
+    );
+    await expect(page.getByLabel("Profile to edit")).toHaveCount(0);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Create profile", exact: true }),
+    ).toBeFocused();
   });
-  await page.goto("/profiles");
-  await page.getByLabel("DNS filtering", { exact: true }).selectOption("off");
-  // Clicking the current tab must not clear protection for the still-visible draft.
-  await page
-    .getByRole("button", { name: "Network defaults", exact: true })
-    .click();
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("button", { name: "Profiles", exact: true }).click();
-  await expect(page.getByLabel("Profile to edit")).toHaveCount(0);
-  await expect(page.getByLabel("DNS filtering", { exact: true })).toHaveValue(
-    "off",
-  );
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Profiles", exact: true }).click();
-  await page.getByLabel("Profile to edit").selectOption("family");
-  await expect(
-    page.getByRole("heading", { name: "Profile: Family" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Create profile", exact: true })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "Create profile" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("dialog", { name: "Create profile" })
-      .getByLabel("Name", { exact: true }),
-  ).toBeFocused();
-  await page.getByText("Advanced identification", { exact: true }).click();
-  await page.getByLabel("Stable ID", { exact: true }).fill("new-profile");
-  await expect(
-    page.getByLabel("DNS filtering", { exact: true }),
-  ).toBeDisabled();
-  page.once("dialog", (dialog) => dialog.dismiss());
-  await page.keyboard.press("Escape");
-  await expect(page.getByLabel("Stable ID", { exact: true })).toHaveValue(
-    "new-profile",
-  );
-  await expect(page.getByLabel("Profile to edit")).toHaveValue("family");
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Create profile", exact: true }),
-  ).toBeFocused();
-});
+}
 
 test("shows pending pause and matching identity before saving", async ({
   page,

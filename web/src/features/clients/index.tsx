@@ -23,6 +23,7 @@ import {
 import { DomainInspector } from "./inspect";
 import { usePolicyDraft } from "./draft";
 import { ProfileAssignment, ProfileMap } from "./assignment";
+import { ProfileEditorDialog } from "./profile-editor-dialog";
 import { ClientIdentity, ClientDeviceButton } from "@/components/client-identity";
 import { SortableHead, useSortableTable, type SortColumn } from "@/components/table-sorting";
 
@@ -303,6 +304,7 @@ function DeviceRow({
 export function Profiles() {
   const draft = usePolicyDraft();
   const createTrigger = useRef<HTMLButtonElement>(null);
+  const editTrigger = useRef<HTMLElement | null>(null);
   const profiles = useResource<{
     items: Schema["PolicyProfile"][];
     status: Schema["Activation"];
@@ -311,10 +313,9 @@ export function Profiles() {
   const [selected, setSelected] = useState<string>();
   const [tab, setTab] = useState<"network" | "profiles">("network");
   const [creating, setCreating] = useState(false);
-  const [editorEpoch, setEditorEpoch] = useState(0);
-  const editor = useRef<HTMLFieldSetElement>(null);
+  const [createBusy, setCreateBusy] = useState(false);
   const closeCreate = () => {
-    if (draft.confirmLeave()) setCreating(false);
+    if (!createBusy && draft.confirmLeave()) setCreating(false);
   };
   return (
     <div className="space-y-4">
@@ -348,7 +349,6 @@ export function Profiles() {
           onClick={() => {
             if (draft.confirmLeave()) {
               draft.onDirty(false);
-              setEditorEpoch((x) => x + 1);
               setTab("profiles");
               setCreating(true);
             }
@@ -367,40 +367,15 @@ export function Profiles() {
               profiles={profiles.data?.items ?? []}
               reload={() => clients.reload()}
               disabled={creating || draft.dirty}
-              onEdit={(id) => {
-                if (id === selected) return;
+              onEdit={(id, trigger) => {
                 if (draft.confirmLeave()) {
                   draft.onDirty(false);
+                  editTrigger.current = trigger;
                   setSelected(id);
                 }
               }}
             />
           </Resource>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="min-w-0 max-w-full text-sm">
-              Edit profile
-              <select
-                aria-label="Profile to edit"
-                className={`${selectClass} ml-2 max-w-full`}
-                value={selected ?? ""}
-                onChange={(e) => {
-                  if (draft.confirmLeave()) {
-                    draft.onDirty(false);
-                    draft.onCreateDirty(false);
-                    setCreating(false);
-                    setSelected(e.target.value || undefined);
-                  }
-                }}
-              >
-                <option value="">Choose a profile</option>
-                {profiles.data?.items.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name || p.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
         </>
       )}
       {profiles.error && <ErrorNotice error={profiles.error} />}
@@ -413,7 +388,7 @@ export function Profiles() {
         <DialogContent
           onCloseAutoFocus={(e) => {
             e.preventDefault();
-            createTrigger.current?.focus({ preventScroll: true });
+            if (!selected) createTrigger.current?.focus({ preventScroll: true });
           }}
         >
           <DialogTitle>Create profile</DialogTitle>
@@ -423,35 +398,38 @@ export function Profiles() {
           <CreateOwner
             scope="profile"
             onDirty={draft.onCreateDirty}
+            onBusy={setCreateBusy}
             revision={profiles.data?.status.saved_revision ?? ""}
             cancel={closeCreate}
             saved={(id) => {
               draft.onDirty(false);
               setCreating(false);
+              editTrigger.current = createTrigger.current;
               setSelected(id);
               void profiles.reload();
-              requestAnimationFrame(() => editor.current?.scrollIntoView({ block: "start" }));
             }}
           />
         </DialogContent>
       </Dialog>
-      {(tab === "network" || selected) && (
-        <fieldset ref={editor} disabled={creating} className="min-w-0">
-          <PolicyEditor
-            key={editorEpoch}
-            scope={tab === "profiles" ? "profile" : "network"}
-            id={tab === "profiles" ? selected : undefined}
-            onDirty={draft.onDirty}
-            onDeleted={
-              tab === "profiles" && selected
-                ? () => {
-                    setSelected(undefined);
-                    void profiles.reload();
-                  }
-                : undefined
-            }
-          />
-        </fieldset>
+      {tab === "network" && <PolicyEditor scope="network" onDirty={draft.onDirty} />}
+      {tab === "profiles" && selected && (
+        <ProfileEditorDialog
+          key={selected}
+          id={selected}
+          name={profiles.data?.items.find((p) => p.id === selected)?.name || selected}
+          onDirty={draft.onDirty}
+          confirmLeave={draft.confirmLeave}
+          returnFocus={editTrigger}
+          onClose={() => {
+            setSelected(undefined);
+            void profiles.reload();
+          }}
+          onDeleted={() => {
+            editTrigger.current = createTrigger.current;
+            setSelected(undefined);
+            void profiles.reload();
+          }}
+        />
       )}
     </div>
   );
@@ -463,6 +441,7 @@ function CreateOwner({
   cancel,
   saved,
   onDirty,
+  onBusy,
 }: {
   scope: PolicyScope;
   observed?: Schema["ObservedClients"]["items"][number];
@@ -470,6 +449,7 @@ function CreateOwner({
   cancel: () => void;
   saved: (id: string) => void;
   onDirty: (dirty: boolean) => void;
+  onBusy?: (busy: boolean) => void;
 }) {
   const [initialID] = useState(() => policyID(scope === "client" ? "device" : "profile"));
   const [id, setID] = useState(initialID);
@@ -481,6 +461,10 @@ function CreateOwner({
   const [address, setAddress] = useState(observed?.address ?? "");
   const [useMAC, setUseMAC] = useState(!!observed?.authoritative_mac);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    onBusy?.(busy);
+  }, [busy, onBusy]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
   const [error, setError] = useState<Error>();
   const [status, setStatus] = useState<Schema["Activation"]>();
   useEffect(() => {
@@ -598,7 +582,7 @@ function CreateOwner({
         <Button disabled={busy || !editRevision} type="submit">
           {busy ? "Creating…" : scope === "client" ? "Save device settings" : "Create profile"}
         </Button>
-        <Button type="button" variant="ghost" onClick={cancel}>
+        <Button type="button" variant="ghost" disabled={busy} onClick={cancel}>
           Cancel
         </Button>
       </div>

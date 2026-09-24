@@ -22,7 +22,8 @@ type Subscription struct {
 	// Omission preserves the legacy enabled-source behavior.
 	DefaultApply *bool `yaml:"default_apply,omitempty" json:"DefaultApply,omitempty"`
 	// A deletion of >= 50% is quarantined until explicitly approved in text.
-	AllowLargeDeletion bool `yaml:"allow_large_deletion,omitempty"`
+	AllowLargeDeletion bool              `yaml:"allow_large_deletion,omitempty"`
+	BuiltinOverrides   *BuiltinOverrides `yaml:"builtin_overrides,omitempty" json:"BuiltinOverrides,omitempty"`
 }
 type Version struct {
 	Rules           []policy.Rule
@@ -50,7 +51,15 @@ func (f *Fetcher) Refresh(ctx context.Context, dir string, s Subscription, offli
 		if s.Dialect != Adblock || s.DomainKind != policy.Suffix {
 			return Version{}, fmt.Errorf("source %s: built-in work list requires dns-adblock and suffix", s.ID)
 		}
-		parsed, err := Parse(strings.NewReader(workCompatibility), source, DefaultLimits())
+		text, err := builtinText(s)
+		if err != nil {
+			return Version{}, err
+		}
+		// An owner may intentionally exclude the entire installed baseline.
+		if text == "" {
+			return Version{SHA256: fmt.Sprintf("%x", sha256.Sum256(nil))}, nil
+		}
+		parsed, err := Parse(strings.NewReader(text), source, DefaultLimits())
 		if err != nil {
 			return Version{}, fmt.Errorf("source %s: %w", s.ID, err)
 		}

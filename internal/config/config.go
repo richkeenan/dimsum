@@ -155,6 +155,14 @@ func (d *Document) Config() Config {
 	}
 	c.DNS.Fallback = append([]string(nil), c.DNS.Fallback...)
 	c.Lists = append([]lists.Subscription(nil), c.Lists...)
+	for i := range c.Lists {
+		if o := c.Lists[i].BuiltinOverrides; o != nil {
+			c.Lists[i].BuiltinOverrides = &lists.BuiltinOverrides{
+				Additions:  append([]string(nil), o.Additions...),
+				Exclusions: append([]string(nil), o.Exclusions...),
+			}
+		}
+	}
 	c.Rules = append([]CustomRule(nil), c.Rules...)
 	c.Records = append([]Record(nil), c.Records...)
 	c.Clients = append([]ClientOverride(nil), c.Clients...)

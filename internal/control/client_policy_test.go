@@ -14,6 +14,7 @@ import (
 	"github.com/richkeenan/dimsum/internal/config"
 	"github.com/richkeenan/dimsum/internal/dhcp"
 	"github.com/richkeenan/dimsum/internal/lists"
+	"github.com/richkeenan/dimsum/internal/policy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -90,6 +91,26 @@ func TestBuiltinWorkSubscriptionActivatesOnlyForProfile(t *testing.T) {
 	assert.True(t, on)
 	on, _ = store.Snapshot().ClientPolicies().Network().List("work-tools")
 	assert.False(t, on)
+	_, err = s.MutateClientPolicy(t.Context(), ClientPolicyMutation{Revision: store.Inspect().SavedRevision, Scope: "client", ID: "desktop", Create: true, Selectors: &config.ClientSelectors{Addresses: []string{"192.0.2.11"}}, Fields: []config.PolicyField{{Path: []string{"lists", "work-tools"}, Value: true}}})
+	require.NoError(t, err)
+	_, err = s.MutateBuiltinList(t.Context(), "work-tools", BuiltinListMutation{Revision: store.Inspect().SavedRevision, Action: "add", Domain: "custom.example"})
+	require.NoError(t, err)
+	for _, id := range []string{"laptop", "desktop", ""} {
+		v, err := s.ExplainClientPolicy(ClientPolicyExplain{Name: "custom.example", ClientID: id})
+		require.NoError(t, err)
+		if id == "" {
+			assert.Equal(t, policy.Forward, v.Decision.Result)
+		} else {
+			assert.Equal(t, policy.Allow, v.Decision.Result)
+		}
+	}
+	_, err = s.MutateBuiltinList(t.Context(), "work-tools", BuiltinListMutation{Revision: store.Inspect().SavedRevision, Action: "remove", Domain: "custom.example"})
+	require.NoError(t, err)
+	for _, id := range []string{"laptop", "desktop"} {
+		v, err := s.ExplainClientPolicy(ClientPolicyExplain{Name: "custom.example", ClientID: id})
+		require.NoError(t, err)
+		assert.Equal(t, policy.Forward, v.Decision.Result)
+	}
 }
 
 func TestClientPolicyReenableListPreservesNetworkApplication(t *testing.T) {
