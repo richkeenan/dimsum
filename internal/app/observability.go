@@ -214,13 +214,20 @@ func (o *observability) noteRule(generation, id uint32, result transport.Result)
 
 func (o *observability) enrich(events []stats.QueryEvent) (storage.BatchOptions, error) {
 	var out storage.BatchOptions
-	responses := make([]responseNote, 0, len(events))
+	type capturedResponse struct {
+		sequence uint64
+		limited  bool
+		wire     []byte
+	}
+	responses := make([]capturedResponse, 0, len(events))
 	seen := make(map[[2]uint32]bool)
 	o.mu.Lock()
 	for _, e := range events {
 		r := &o.responses[e.Sequence%uint64(len(o.responses))]
 		if r.sequence == e.Sequence && r.size > 0 {
-			responses = append(responses, *r)
+			// Own only the captured bytes before releasing the ring's lock. A full
+			// fixed-size slot per event would copy and retain mostly unused space.
+			responses = append(responses, capturedResponse{sequence: r.sequence, limited: r.limited, wire: append([]byte(nil), r.wire[:r.size]...)})
 		}
 		a := &o.aliases[e.Sequence%uint64(len(o.aliases))]
 		if a.sequence == e.Sequence && a.size > 0 {
@@ -242,7 +249,7 @@ func (o *observability) enrich(events []stats.QueryEvent) (storage.BatchOptions,
 	o.mu.Unlock()
 	// Response parsing and formatting happen on the consumer, outside the lock.
 	for _, r := range responses {
-		if response := queryresult.Summarize(r.wire[:r.size], r.limited); response != nil {
+		if response := queryresult.Summarize(r.wire, r.limited); response != nil {
 			if out.Responses == nil {
 				out.Responses = make(map[uint64]*queryresult.Summary)
 			}

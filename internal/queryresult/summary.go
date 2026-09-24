@@ -73,11 +73,44 @@ func displayName(n dnswire.Name) string {
 }
 
 func typeName(t uint16) string {
-	s := map[uint16]string{1: "A", 2: "NS", 5: "CNAME", 6: "SOA", 12: "PTR", 15: "MX", 16: "TXT", 28: "AAAA", 33: "SRV", 39: "DNAME", 43: "DS", 46: "RRSIG", 47: "NSEC", 48: "DNSKEY", 64: "SVCB", 65: "HTTPS", 257: "CAA"}[t]
-	if s == "" {
+	switch t {
+	case 1:
+		return "A"
+	case 2:
+		return "NS"
+	case 5:
+		return "CNAME"
+	case 6:
+		return "SOA"
+	case 12:
+		return "PTR"
+	case 15:
+		return "MX"
+	case 16:
+		return "TXT"
+	case 28:
+		return "AAAA"
+	case 33:
+		return "SRV"
+	case 39:
+		return "DNAME"
+	case 43:
+		return "DS"
+	case 46:
+		return "RRSIG"
+	case 47:
+		return "NSEC"
+	case 48:
+		return "DNSKEY"
+	case 64:
+		return "SVCB"
+	case 65:
+		return "HTTPS"
+	case 257:
+		return "CAA"
+	default:
 		return "TYPE" + strconv.Itoa(int(t))
 	}
-	return s
 }
 
 func recordValue(wire []byte, r dnswire.Record) string {
