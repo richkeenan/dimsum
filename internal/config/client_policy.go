@@ -41,6 +41,7 @@ type ClientSelectors struct {
 type ClientOverride struct {
 	Address     string          `yaml:"address,omitempty"`
 	Name        string          `yaml:"name,omitempty"`
+	Icon        string          `yaml:"icon,omitempty" json:"icon,omitempty"`
 	ID          string          `yaml:"id,omitempty" json:"id,omitempty"`
 	Selectors   ClientSelectors `yaml:"selectors,omitempty" json:"selectors,omitempty"`
 	Profile     string          `yaml:"profile,omitempty" json:"profile,omitempty"`
@@ -233,6 +234,9 @@ func validateClientPolicy(c Config) error {
 		return nil
 	}
 	for i, p := range c.Clients {
+		if !clients.ValidIcon(p.Icon) {
+			return fmt.Errorf("clients[%d].icon: unknown Lucide icon %q", i, p.Icon)
+		}
 		if p.ID == "" && (p.Address == "" || strings.TrimSpace(p.Name) == "" || p.Profile != "" || len(p.Selectors.Addresses)+len(p.Selectors.CIDRs)+len(p.Selectors.MACs) > 0 || p.Overrides.Blocking != nil || p.Overrides.Upstream != nil || len(p.Overrides.Lists)+len(p.Overrides.Rules) > 0 || p.PausedUntil != nil) {
 			return fmt.Errorf("clients[%d]: stable ID required for policy/selectors; legacy entries require address/name", i)
 		}

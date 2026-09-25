@@ -15,6 +15,23 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resource := strings.TrimPrefix(r.URL.Path, "/api/v1/")
+	if resource == "device-rules" {
+		switch r.Method {
+		case "GET":
+			v, e := s.service.ReadDeviceRules()
+			s.result(w, r, v, e)
+		case "PATCH":
+			var b control.DeviceRulesMutation
+			if !decode(w, r, &b) {
+				return
+			}
+			v, e := s.service.MutateDeviceRules(r.Context(), b)
+			s.result(w, r, v, e)
+		default:
+			s.fail(w, r, 405, "method_not_allowed", "unsupported device catalogue operation")
+		}
+		return
+	}
 	if strings.HasPrefix(resource, "builtin-lists/") {
 		id := strings.TrimPrefix(resource, "builtin-lists/")
 		switch r.Method {

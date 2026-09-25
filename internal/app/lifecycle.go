@@ -95,6 +95,9 @@ func (s *Service) startForwarding(ctx context.Context, c config.Config, store *c
 		names.SetDHCP(func(view *clients.View, address netip.Addr) (clients.Name, bool) {
 			return leaseNames.name(store.Snapshot(), view, address)
 		})
+		names.SetIcon(func(view *clients.View, address netip.Addr) string {
+			return leaseNames.icon(store.Snapshot(), view, address)
+		})
 	}
 	pipeline := resolve.NewWithNames(u, store, names)
 	pipeline.SetLeases(leaseNames.capture)

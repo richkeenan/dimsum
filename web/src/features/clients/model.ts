@@ -20,7 +20,17 @@ export function clientIdentity(row: ClientRow) {
       row.configured?.address ||
       row.configured?.selectors?.addresses?.[0] ||
       "",
-    device: observation?.device,
+    device: row.configured?.icon
+      ? {
+          category: "unknown" as const,
+          reason: "Configured device icon",
+          inferred: false,
+          fresh: true,
+          evidence: [],
+          ...observation?.device,
+          icon: row.configured.icon,
+        }
+      : observation?.device,
     source: observation?.name_source,
   };
 }

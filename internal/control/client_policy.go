@@ -27,6 +27,7 @@ type ClientPolicyMutation struct {
 	Delete       bool                    `json:"delete,omitempty"`
 	PromoteID    string                  `json:"promote_id,omitempty"`
 	Name         string                  `json:"name,omitempty"`
+	Icon         *string                 `json:"icon,omitempty"`
 	Selectors    *config.ClientSelectors `json:"selectors,omitempty"`
 	LeaseAddress string                  `json:"lease_address,omitempty"`
 	Profile      *string                 `json:"profile,omitempty"`
@@ -96,7 +97,7 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 	index := -1
 	switch m.Scope {
 	case "network":
-		if id != "" || m.Create || m.Delete || m.PromoteID != "" || m.Name != "" || m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause {
+		if id != "" || m.Create || m.Delete || m.PromoteID != "" || m.Name != "" || m.Icon != nil || m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause {
 			return nil, "", fmt.Errorf("network policy has no device identity")
 		}
 	case "client":
@@ -108,7 +109,7 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 		owner = []string{"clients", strconv.Itoa(index)}
 		base = append(append([]string{}, owner...), "overrides")
 	case "profile":
-		if m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause || m.PromoteID != "" {
+		if m.Icon != nil || m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause || m.PromoteID != "" {
 			return nil, "", fmt.Errorf("profile cannot have device identity fields")
 		}
 		for i, v := range c.Profiles {
@@ -125,7 +126,7 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 		return nil, "", fmt.Errorf("explicit stable id required; inspect clients and select one, never guess from a name")
 	}
 	if m.Delete {
-		if m.Create || m.ResetAll || len(m.Fields) > 0 || len(m.Subscribe) > 0 || m.Name != "" || m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause || m.PromoteID != "" {
+		if m.Create || m.ResetAll || len(m.Fields) > 0 || len(m.Subscribe) > 0 || m.Name != "" || m.Icon != nil || m.Selectors != nil || m.LeaseAddress != "" || m.Profile != nil || m.PausedUntil != nil || m.ResetPause || m.PromoteID != "" {
 			return nil, "", fmt.Errorf("delete cannot be combined with other changes")
 		}
 		if index < 0 {
@@ -211,6 +212,13 @@ func (s *Service) clientPolicyCandidate(m ClientPolicyMutation) (*config.Documen
 	}
 	if !m.Create && m.Name != "" {
 		fields = append(fields, config.PolicyField{Path: appendPath(owner, "name"), Value: m.Name})
+	}
+	if m.Icon != nil {
+		field := config.PolicyField{Path: appendPath(owner, "icon"), Reset: *m.Icon == ""}
+		if !field.Reset {
+			field.Value = *m.Icon
+		}
+		fields = append(fields, field)
 	}
 	if !m.Create && selectors != nil {
 		fields = append(fields, config.PolicyField{Path: appendPath(owner, "address"), Reset: true}, config.PolicyField{Path: appendPath(owner, "selectors"), Value: *selectors})

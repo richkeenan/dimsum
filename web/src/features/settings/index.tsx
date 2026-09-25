@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgentAccess } from "./agents";
 import { DiscoverySettings } from "./discovery";
+import { DeviceRules } from "./device-rules";
 import { BootstrapSettings } from "./bootstrap";
 
 export function Revision({ value }: { value?: Settings }) {
@@ -292,6 +293,7 @@ export default function SettingsView() {
             refresh={() => setTick((t) => t + 1)}
             diagnostics={diagnostics.data?.naming as Row | undefined}
           />
+          <DeviceRules />
           <BootstrapSettings settings={state.data} refresh={() => setTick((t) => t + 1)} />
           {state.error && <ErrorNotice error={state.error} retry={() => setTick((t) => t + 1)} />}
         </>

@@ -12,13 +12,14 @@ import (
 )
 
 type Settings struct {
-	Resolver  string       `yaml:"resolver,omitempty"`
-	HostsFile string       `yaml:"hosts_file,omitempty"`
-	MDNS      MDNSSettings `yaml:"mdns,omitempty"`
+	DNSGuesses DNSGuessOverrides `yaml:"dns_guesses,omitempty"`
+	Resolver   string            `yaml:"resolver,omitempty"`
+	HostsFile  string            `yaml:"hosts_file,omitempty"`
+	MDNS       MDNSSettings      `yaml:"mdns,omitempty"`
 }
 
 func (s Settings) IsZero() bool {
-	return s.Resolver == "" && s.HostsFile == "" && !s.MDNS.Enabled && len(s.MDNS.Interfaces) == 0
+	return s.Resolver == "" && s.HostsFile == "" && !s.MDNS.Enabled && len(s.MDNS.Interfaces) == 0 && len(s.DNSGuesses.Custom)+len(s.DNSGuesses.Rules) == 0
 }
 
 type Override struct {
@@ -26,6 +27,8 @@ type Override struct {
 	Name    string `yaml:"name"`
 }
 type View struct {
+	guesses          guessRules
+	guessScope       [32]byte
 	settings         Settings
 	scope            string
 	overrides, local map[netip.Addr]string
@@ -36,6 +39,11 @@ func NewView(settings Settings, overrides []Override, local map[netip.Addr]strin
 		return nil, err
 	}
 	settings.MDNS.Interfaces = slices.Clone(settings.MDNS.Interfaces)
+	settings.DNSGuesses = settings.DNSGuesses.Clone()
+	guesses, _, err := compileDNSGuessCatalogue(dnsGuessRules, settings.DNSGuesses)
+	if err != nil {
+		return nil, fmt.Errorf("dns_guesses: %w", err)
+	}
 	if settings.Resolver != "" {
 		a, e := netip.ParseAddrPort(settings.Resolver)
 		if e != nil || a.Port() == 0 || !localAddress(a.Addr()) {
@@ -43,6 +51,7 @@ func NewView(settings Settings, overrides []Override, local map[netip.Addr]strin
 		}
 	}
 	v := &View{settings: settings, scope: namingScope(settings), overrides: map[netip.Addr]string{}, local: map[netip.Addr]string{}}
+	v.guesses, v.guessScope = guesses, guesses.scope()
 	for _, o := range overrides {
 		a, e := netip.ParseAddr(o.Address)
 		if e != nil || strings.TrimSpace(o.Name) == "" || v.overrides[a.Unmap()] != "" {
@@ -86,12 +95,14 @@ type Manager struct {
 	mdnsObserve      chan netip.Addr
 	mdnsNames        map[netip.Addr]entry
 	dnsActivity      map[netip.Addr][]DNSActivity
+	dnsScope         [32]byte
 	diagnostics      DiscoveryDiagnostics
 	persistenceError string
 	openMDNS         func(context.Context, MDNSSettings) (mdnsTransport, []string)
 	lookupSpotify    func(context.Context, spotifyEndpoint) (Evidence, error)
 	current          func() *View
 	dhcp             func(*View, netip.Addr) (Name, bool)
+	icon             func(*View, netip.Addr) string
 	mu               sync.Mutex
 	cache            map[netip.Addr]entry
 	pending          map[job]bool
@@ -111,6 +122,10 @@ func New(current func() *View) *Manager {
 // or Get begins. The bool marks address-generated fallback labels. Jobs never
 // capture lease publications and background discovery remains independent.
 func (m *Manager) SetDHCP(lookup func(*View, netip.Addr) (Name, bool)) { m.dhcp = lookup }
+
+// SetIcon installs a generation-compatible configured icon lookup before Run/Get.
+// Apply it after enrichment so neither discovery nor DNS guesses replace it.
+func (m *Manager) SetIcon(lookup func(*View, netip.Addr) string) { m.icon = lookup }
 
 func (m *Manager) Get(address netip.Addr) Name {
 	a, v := address.Unmap(), m.current()
@@ -134,16 +149,26 @@ func (m *Manager) Get(address netip.Addr) Name {
 	m.mu.Lock()
 	found := m.mdnsNames[a]
 	activity := m.dnsActivity[a]
+	rules, scope := catalogueFor(v)
+	if m.dnsScope != scope {
+		activity = nil
+	}
 	m.mu.Unlock()
 	if compatibleNames(found.view, v) {
 		n = mergeDiscovered(n, found.name, time.Now())
 	} else {
 		n = mergeDiscovered(n, Name{}, time.Now())
 	}
-	n = applyDNSGuess(n, a, activity, now)
+	n = rules.apply(n, a, activity, now)
 	if n.Name == "" && fallback.Name != "" {
 		fallback.Device = n.Device
 		n = fallback
+	}
+	if m.icon != nil {
+		if icon := m.icon(v, a); icon != "" {
+			n.Device = cloneDevice(n.Device)
+			n.Device.Icon = icon
+		}
 	}
 	return n
 }

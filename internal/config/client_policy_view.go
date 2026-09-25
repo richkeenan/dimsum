@@ -23,6 +23,7 @@ type effectiveBool struct {
 // copies; Policy shares the generation's compiled indexes with every device.
 type EffectivePolicy struct {
 	clientID, profileID string
+	icon                string
 	blocking            effectiveBool
 	lists               map[string]effectiveBool
 	route               *effectiveRoute
@@ -37,6 +38,7 @@ type effectiveRoute struct {
 }
 
 func (p *EffectivePolicy) ClientID() string               { return p.clientID }
+func (p *EffectivePolicy) Icon() string                   { return p.icon }
 func (p *EffectivePolicy) ProfileID() string              { return p.profileID }
 func (p *EffectivePolicy) Blocking() (bool, policy.Scope) { return p.blocking.value, p.blocking.source }
 func (p *EffectivePolicy) List(id string) (bool, policy.Scope) {
@@ -246,6 +248,7 @@ func (c Config) compileClientPolicies(generation uint64, subscriptions *policy.P
 		id := clientID(p)
 		effective := apply(parent, p.Overrides, policy.Scope{Kind: policy.ClientScope, ID: id})
 		effective.clientID = id
+		effective.icon = p.Icon
 		if p.PausedUntil != nil {
 			effective.pausedUntil = *p.PausedUntil
 		}

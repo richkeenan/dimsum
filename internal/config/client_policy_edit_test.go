@@ -24,6 +24,24 @@ func TestPolicyFieldsPreserveCommentsAndReset(t *testing.T) {
 	assert.NotContains(t, string(d.Bytes()), "null")
 }
 
+func TestRemoveDeviceRulePreservesOwnerCommentsAndOtherBytes(t *testing.T) {
+	other := "      - id: other\n        name: 'Other' # untouched\n        domains: [other.example]\n"
+	source := sample + "naming:\n  dns_guesses:\n    custom:\n      # owner note\n      - id: washer\n        name: Washer # preferred description\n        # endpoint note\n        domains: [washer.example]\n" + other
+	d, err := config.Parse([]byte(source))
+	require.NoError(t, err)
+	d, err = d.RemovePreservingComments([]string{"naming", "dns_guesses", "custom", "0"})
+	require.NoError(t, err)
+	assert.Contains(t, string(d.Bytes()), other)
+	assert.Contains(t, string(d.Bytes()), "# owner note")
+	assert.Contains(t, string(d.Bytes()), "# preferred description")
+	assert.Contains(t, string(d.Bytes()), "# endpoint note")
+	require.Len(t, d.Config().Naming.DNSGuesses.Custom, 1)
+	d, err = d.RemovePreservingComments([]string{"naming", "dns_guesses", "custom", "0"})
+	require.NoError(t, err)
+	assert.Empty(t, d.Config().Naming.DNSGuesses.Custom)
+	assert.Contains(t, string(d.Bytes()), "# untouched")
+}
+
 func TestPolicyFieldsAtomicReferencesAndRelink(t *testing.T) {
 	d, err := config.Parse([]byte(sample + "clients:\n  - address: 192.0.2.1\n    name: Phone # keep\n"))
 	require.NoError(t, err)

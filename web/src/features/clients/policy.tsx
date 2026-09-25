@@ -5,6 +5,7 @@ import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeviceIconField, isDeviceIcon } from "@/components/device-icon";
 import {
   ownerPolicy,
   policyRuleID,
@@ -297,6 +298,10 @@ function PolicyForm({
   }, [serialized, changed]);
   async function save(body = mutation) {
     if (status || busy) return;
+    if (body.icon && !isDeviceIcon(body.icon)) {
+      setError(new Error("Choose a known Lucide icon name."));
+      return;
+    }
     if (!body.delete && body.name !== undefined && !body.name.trim()) {
       setError(new Error("Enter a name before saving."));
       return;
@@ -507,6 +512,19 @@ function PolicyForm({
                   />
                 </label>
               }
+              {read.scope === "client" && (
+                <DeviceIconField
+                  value={extra.icon ?? desiredClient.icon ?? ""}
+                  onChange={(icon) =>
+                    setExtra((x) => {
+                      const next = { ...x };
+                      if (icon === (desiredClient.icon ?? "")) delete next.icon;
+                      else next.icon = icon;
+                      return next;
+                    })
+                  }
+                />
+              )}
               {read.scope === "client" && (
                 <label className="space-y-1 text-sm">
                   Profile

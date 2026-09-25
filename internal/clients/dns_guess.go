@@ -30,35 +30,27 @@ type DNSGuess struct {
 	Domains []DNSGuessDomain `json:"domains"`
 	Expires time.Time        `json:"expires"`
 }
-type guessRule struct {
-	id, name, category, reason string
-	domains                    []string
-}
-
-// Deliberately excludes websites, login services, NTP and shared cloud CDNs.
-// Nintendo platform-specific service names are documented by Pretendo's server
-// catalogue. These remain guesses: apps and emulators can use the same services.
-var dnsGuessRules = []guessRule{
-	{"ring", "Ring device", "camera", "Queries to Ring firmware services", []string{"fw-eventstream.ring.com", "fw-snaps.prod.gws.ring.amazon.dev", "fw-eventstream.prod.gws.ring.amazon.dev", "fw.prod.gws.ring.amazon.dev"}},
-	{"reolink", "Reolink device", "camera", "Queries to Reolink push services", []string{"pushx.reolink.com"}},
-	{"switch", "Nintendo Switch", "console", "Queries to Nintendo Switch system services", []string{"sun.hac.lp1.d4c.nintendo.net", "atumn.hac.lp1.d4c.nintendo.net", "aqua.hac.lp1.d4c.nintendo.net"}},
-	{"switch2", "Nintendo Switch 2", "console", "Queries to Nintendo Switch 2 system services", []string{"sun.p01.lp1.d4c.srv.nintendo.net", "atumn.p01.lp1.d4c.srv.nintendo.net", "aqua.p01.lp1.d4c.srv.nintendo.net"}},
-	{"wiiu", "Nintendo Wii U", "console", "Queries to Nintendo Wii U system services", []string{"nus.wup.shop.nintendo.net", "tagaya.wup.shop.nintendo.net"}},
-	{"aws-iot", "IoT device", "unknown", "Queries to an AWS IoT device endpoint; manufacturer unknown", nil},
-}
 
 // DNSGuessSelectors returns exact names and broad suffixes for storage to select.
 // The broader AWS suffix is narrowed again by dnsGuessRule before attribution.
 func DNSGuessSelectors() (exact, suffix []string) {
-	for _, r := range dnsGuessRules {
-		exact = append(exact, r.domains...)
+	return dnsGuessRules.selectors()
+}
+
+func (rules guessRules) selectors() (exact, suffix []string) {
+	for _, r := range rules {
+		exact = append(exact, r.Domains...)
 	}
 	return exact, []string{"amazonaws.com"}
 }
 
 func dnsGuessRule(domain string) int {
-	for i, r := range dnsGuessRules {
-		if slices.Contains(r.domains, domain) {
+	return dnsGuessRules.match(domain)
+}
+
+func (rules guessRules) match(domain string) int {
+	for i, r := range rules {
+		if slices.Contains(r.Domains, domain) {
 			return i
 		}
 	}
@@ -72,13 +64,17 @@ func dnsGuessRule(domain string) int {
 					return -1
 				}
 			}
-			return len(dnsGuessRules) - 1
+			return awsIoTRule
 		}
 	}
 	return -1
 }
 
 func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
+	return dnsGuessRules.guess(address, rows, now)
+}
+
+func (rules guessRules) guess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 	groups := make(map[int][]DNSActivity)
 	seen := make(map[string]bool)
 	for _, r := range rows {
@@ -89,7 +85,7 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 			continue
 		}
 		seen[r.Domain] = true
-		if rule := dnsGuessRule(r.Domain); rule >= 0 {
+		if rule := rules.match(r.Domain); rule != -1 {
 			groups[rule] = append(groups[rule], r)
 		}
 	}
@@ -97,7 +93,7 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 	// competing specific family suppresses attribution, even before corroboration.
 	selected := -1
 	for rule := range groups {
-		if rule == len(dnsGuessRules)-1 {
+		if rule == awsIoTRule {
 			continue
 		}
 		if selected >= 0 {
@@ -106,7 +102,7 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 		selected = rule
 	}
 	if selected < 0 {
-		selected = len(dnsGuessRules) - 1
+		selected = awsIoTRule
 	}
 	matched := groups[selected]
 	var support time.Time
@@ -133,9 +129,12 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 	if support.IsZero() || !now.Before(support.Add(DNSGuessLifetime)) {
 		return Name{}
 	}
-	rule := dnsGuessRules[selected]
+	rule := awsIoTGuess
+	if selected != awsIoTRule {
+		rule = rules[selected]
+	}
 	slices.SortFunc(matched, func(a, b DNSActivity) int { return strings.Compare(a.Domain, b.Domain) })
-	guess := &DNSGuess{Rule: rule.id, Reason: rule.reason, Domains: []DNSGuessDomain{}}
+	guess := &DNSGuess{Rule: rule.ID, Reason: rule.Reason, Domains: []DNSGuessDomain{}}
 	var updated time.Time
 	for _, r := range matched {
 		guess.Domains = append(guess.Domains, DNSGuessDomain{r.Domain, r.First, r.Last, r.Count})
@@ -144,11 +143,15 @@ func dnsGuess(address netip.Addr, rows []DNSActivity, now time.Time) Name {
 		}
 	}
 	guess.Expires = support.Add(DNSGuessLifetime)
-	return Name{Address: address, Name: rule.name, Source: "dns-guess", Fresh: true, Updated: updated, Expires: guess.Expires, Device: &Enrichment{Category: rule.category, Reason: rule.reason, Inferred: true, Fresh: true, Evidence: []Evidence{}, DNSGuess: guess}}
+	return Name{Address: address, Name: rule.Name, Source: "dns-guess", Fresh: true, Updated: updated, Expires: guess.Expires, Device: &Enrichment{Icon: rule.Icon, Category: rule.Category, Reason: rule.Reason, Inferred: true, Fresh: true, Evidence: []Evidence{}, DNSGuess: guess}}
 }
 
 func applyDNSGuess(n Name, address netip.Addr, rows []DNSActivity, now time.Time) Name {
-	guess := dnsGuess(address, rows, now)
+	return dnsGuessRules.apply(n, address, rows, now)
+}
+
+func (rules guessRules) apply(n Name, address netip.Addr, rows []DNSActivity, now time.Time) Name {
+	guess := rules.guess(address, rows, now)
 	if guess.Name == "" {
 		return n
 	}
@@ -164,6 +167,7 @@ func applyDNSGuess(n Name, address netip.Addr, rows []DNSActivity, now time.Time
 	} else {
 		device.DNSGuess = guess.Device.DNSGuess
 		if device.Category == "" || device.Category == "unknown" {
+			device.Icon = guess.Device.Icon
 			device.Category = guess.Device.Category
 			device.Reason = guess.Device.Reason
 			device.Inferred = guess.Device.Inferred
@@ -177,11 +181,28 @@ func applyDNSGuess(n Name, address netip.Addr, rows []DNSActivity, now time.Time
 // ReplaceDNSActivity atomically publishes a private snapshot. Oversized clients
 // are omitted rather than arbitrarily truncating away a conflicting signal.
 func (m *Manager) ReplaceDNSActivity(rows []DNSActivity) {
+	m.ReplaceDNSActivityForView(m.current(), rows)
+}
+
+// DNSGuessSelectors captures the immutable catalogue used for a history refresh.
+func (m *Manager) DNSGuessSelectors() (*View, []string, []string) {
+	v := m.current()
+	rules, _ := catalogueFor(v)
+	exact, suffix := rules.selectors()
+	return v, exact, suffix
+}
+
+func (m *Manager) ReplaceDNSActivityForView(view *View, rows []DNSActivity) {
+	rules, scope := catalogueFor(view)
+	_, currentScope := catalogueFor(m.current())
+	if scope != currentScope {
+		return
+	}
 	byAddress := map[netip.Addr][]DNSActivity{}
 	overflow := map[netip.Addr]bool{}
 	for _, r := range rows {
 		a := r.Address.Unmap()
-		if !a.IsValid() || a.IsUnspecified() || a.IsMulticast() || a.IsLoopback() || dnsGuessRule(r.Domain) < 0 || overflow[a] {
+		if !a.IsValid() || a.IsUnspecified() || a.IsMulticast() || a.IsLoopback() || rules.match(r.Domain) == -1 || overflow[a] {
 			continue
 		}
 		if len(byAddress) >= 4096 && byAddress[a] == nil {
@@ -196,5 +217,6 @@ func (m *Manager) ReplaceDNSActivity(rows []DNSActivity) {
 	}
 	m.mu.Lock()
 	m.dnsActivity = byAddress
+	m.dnsScope = scope
 	m.mu.Unlock()
 }

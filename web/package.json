@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "icons:generate": "node scripts/icon-names.mjs",
     "api:generate": "openapi-typescript ../api/openapi.yaml -o src/lib/openapi.d.ts && oxfmt src/lib/openapi.d.ts",
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
@@ -11,7 +12,7 @@
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "build": "vite build && npm run typecheck && node scripts/embed.mjs",
+    "build": "node scripts/icon-names.mjs --check && vite build && npm run typecheck && node scripts/embed.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "preview": "vite preview --host 127.0.0.1"

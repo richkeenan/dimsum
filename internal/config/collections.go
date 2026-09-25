@@ -204,12 +204,22 @@ func indentItem(b []byte, spaces int) string {
 // Remove deletes a block-sequence item. Comment-bearing items are rejected,
 // rather than silently dropping or reassociating comments the owner wrote.
 func (d *Document) Remove(path []string) (*Document, error) {
+	return d.removeItem(path, false)
+}
+
+// RemovePreservingComments removes one block-sequence item, retaining its
+// comments as standalone source lines and leaving other items byte-for-byte.
+func (d *Document) RemovePreservingComments(path []string) (*Document, error) {
+	return d.removeItem(path, true)
+}
+
+func (d *Document) removeItem(path []string, preserveComments bool) (*Document, error) {
 	editable, err := d.editableUpstreams(path)
 	if err != nil {
 		return nil, err
 	}
 	if editable != d {
-		return editable.Remove(path)
+		return editable.removeItem(path, preserveComments)
 	}
 	if len(path) < 2 {
 		return nil, fmt.Errorf("remove: expected sequence item")
@@ -240,11 +250,32 @@ func (d *Document) Remove(path []string) (*Document, error) {
 		}
 		return false
 	}
-	if comments(n) {
+	if comments(n) && !preserveComments {
 		return nil, fmt.Errorf("remove: comment-bearing item requires explicit text edit")
 	}
 	start, end := lineStart(d.source, n.Line), lineStart(d.source, lastLine(n)+1)
 	out := append([]byte(nil), d.source[:start]...)
+	if preserveComments {
+		inline := map[int]string{}
+		var visit func(*yaml.Node)
+		visit = func(v *yaml.Node) {
+			if v.LineComment != "" {
+				inline[v.Line] = v.LineComment
+			}
+			for _, c := range v.Content {
+				visit(c)
+			}
+		}
+		visit(n)
+		for line := n.Line; line <= lastLine(n); line++ {
+			raw := d.source[lineStart(d.source, line):lineStart(d.source, line+1)]
+			if strings.HasPrefix(strings.TrimSpace(string(raw)), "#") {
+				out = append(out, raw...)
+			} else if comment := inline[line]; comment != "" {
+				out = append(out, []byte(strings.Repeat(" ", parent.Column-1)+comment+"\n")...)
+			}
+		}
+	}
 	if len(parent.Content) == 1 {
 		out = append(out, []byte(strings.Repeat(" ", parent.Column-1)+"[]\n")...)
 	}

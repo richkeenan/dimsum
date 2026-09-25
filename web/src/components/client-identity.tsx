@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { count, type Device } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { DeviceIcon, isDeviceIcon } from "@/components/device-icon";
 import {
   Dialog,
   DialogContent,
@@ -53,9 +54,13 @@ export function ClientIdentity({ address, name, device, source, compact = false 
     <span
       className={`inline-flex max-w-full items-start text-left ${compact ? "gap-2" : "gap-2.5"}`}
     >
-      <Icon
+      <DeviceIcon
+        name={device?.icon}
+        fallback={Icon}
         role="img"
-        aria-label={label}
+        aria-label={
+          device?.icon && isDeviceIcon(device.icon) ? device.icon.replaceAll("-", " ") : label
+        }
         className={`mt-1 shrink-0 text-muted-foreground ${compact ? "size-4" : "size-4.5"}`}
         strokeWidth={1.5}
       />

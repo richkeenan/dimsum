@@ -20,6 +20,8 @@ Read operations (JSON):
   settings | lists | rules | records | clients | upstreams | blocking | diagnostics | jobs | catalog | tokens
   client-policy [--query 'scope=client&id=stable-id'] | profiles
   builtin-list ID            inspect installed baseline and shared customizations
+  device-rules              inspect built-in and custom device identification rules
+  patch device-rules JSON   revision, action save/enable/delete/reset, id and rule/enabled
   patch builtin-lists/ID JSON revision, action add/remove/restore/reset, optional domain
   query ID
   dhcp | dhcp-status | dhcp-leases | dhcp-reservations
@@ -163,7 +165,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if len(args) == 4 {
 			body = args[3]
 		}
-	case "client-policy", "profiles", "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
+	case "device-rules", "client-policy", "profiles", "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
 		if len(args) != 1 {
 			return bad()
 		}

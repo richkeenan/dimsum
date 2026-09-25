@@ -18,6 +18,7 @@ export function useResource<T>(path: string, refresh = 0) {
       "settings",
       "blocking",
       "client-policy",
+      "device-rules",
       "dhcp",
       "dhcp/status",
       "dhcp/reservations",

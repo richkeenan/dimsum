@@ -71,6 +71,11 @@ dhcp:
   local_domain: home.arpa
 records:
   - {name: alias.test, type: CNAME, value: desk.home.arpa, ttl: 60}
+clients:
+  - id: desk
+    icon: bell
+    selectors:
+      macs: ["02:00:00:00:00:01"]
 `
 	path := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(text), 0600))
@@ -94,7 +99,11 @@ records:
 	names.SetDHCP(func(view *clients.View, a netip.Addr) (clients.Name, bool) {
 		return publication.name(store.Snapshot(), view, a)
 	})
+	names.SetIcon(func(view *clients.View, a netip.Addr) string {
+		return publication.icon(store.Snapshot(), view, a)
+	})
 	assert.Equal(t, "desk.home.arpa", names.Get(ip).Name)
+	assert.Equal(t, "bell", names.Get(ip).Device.Icon)
 	p := resolve.NewWithStore(nil, store)
 	p.SetLeases(publication.capture)
 	t.Cleanup(func() { require.NoError(t, p.Close()) })
@@ -155,11 +164,14 @@ records:
 	require.NotEqual(t, snap.Generation(), next.Generation())
 	assert.Nil(t, publication.capture(next))
 	assert.Empty(t, names.Get(ip).Name)
+	assert.Empty(t, names.Get(ip).Device.Icon, "retired leases must not select configured icons")
 	require.NoError(t, supervisor.Reconcile(ctx, next.Config().DHCP, next.Generation()))
 	assert.NotNil(t, publication.capture(next))
 	assert.Equal(t, "desk.home.arpa", names.Get(ip).Name)
 	staleName, _ := publication.name(next, snap.Names(), ip)
 	assert.Empty(t, staleName.Name)
+	assert.Empty(t, publication.icon(next, snap.Names(), ip))
+	assert.Equal(t, "bell", names.Get(ip).Device.Icon)
 	// Concurrent captures during publication switches exercise actual runtime views.
 	var wg sync.WaitGroup
 	for range 4 {
@@ -182,6 +194,7 @@ records:
 	disabled := store.Snapshot()
 	assert.Nil(t, publication.capture(disabled))
 	assert.Empty(t, names.Get(ip).Name)
+	assert.Empty(t, names.Get(ip).Device.Icon)
 	require.NoError(t, supervisor.Reconcile(ctx, disabled.Config().DHCP, disabled.Generation()))
 	wg.Wait()
 	text = strings.Replace(text, "enabled: false", "enabled: true", 1)

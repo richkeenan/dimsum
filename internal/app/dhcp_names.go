@@ -101,3 +101,11 @@ func (d *dhcpNames) name(snapshot *config.Snapshot, view *clients.View, a netip.
 	}
 	return clients.Name{Address: a, Name: lease.Hostname, Source: source, Expires: lease.Expiry, Fresh: true}, lease.Generated
 }
+
+func (d *dhcpNames) icon(snapshot *config.Snapshot, view *clients.View, a netip.Addr) string {
+	if snapshot == nil || snapshot.Names() != view {
+		return ""
+	}
+	mac := d.capture(snapshot).AuthoritativeMAC(a, time.Now())
+	return snapshot.ClientPolicies().Select(a, mac).Icon()
+}

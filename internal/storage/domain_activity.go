@@ -23,7 +23,7 @@ type DomainActivityRow struct {
 // The secondary domain/time index avoids scanning every client's full history.
 // A truncated result must not be used for attribution: missing rows can conflict.
 func (d *DB) DomainActivity(ctx context.Context, start, end time.Time, exact, suffix []string) ([]DomainActivityRow, bool, error) {
-	if !end.After(start) || end.Sub(start) > 24*time.Hour || len(exact)+len(suffix) == 0 || len(exact)+len(suffix) > 32 {
+	if !end.After(start) || end.Sub(start) > 24*time.Hour || len(exact)+len(suffix) == 0 || len(exact) > 4096 || len(suffix) > 32 {
 		return nil, false, fmt.Errorf("invalid domain activity bounds")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -34,6 +34,7 @@ func (d *DB) DomainActivity(ctx context.Context, start, end time.Time, exact, su
 		values []string
 		suffix bool
 	}{{exact, false}, {suffix, true}} {
+		var placeholders []string
 		for _, name := range names.values {
 			n, err := policy.NormalizeName(name)
 			if err != nil {
@@ -45,9 +46,12 @@ func (d *DB) DomainActivity(ctx context.Context, start, end time.Time, exact, su
 				clauses = append(clauses, "substr(name,-?)=?")
 				args = append(args, len(wire), wire)
 			} else {
-				clauses = append(clauses, "name=?")
+				placeholders = append(placeholders, "?")
 				args = append(args, wire)
 			}
+		}
+		if len(placeholders) > 0 {
+			clauses = append(clauses, "name IN ("+strings.Join(placeholders, ",")+")")
 		}
 	}
 	query := `WITH activity AS MATERIALIZED (SELECT c.address,n.name,e.client_id,e.domain_id,MIN(e.timestamp) AS first,MAX(e.timestamp) AS last,COUNT(*) AS count

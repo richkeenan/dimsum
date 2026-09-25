@@ -86,7 +86,7 @@ them when it connects, so you can ask for a task without knowing tool names.
 | --- | --- |
 | Traffic and performance | `get_summary`, `get_rankings`, `get_timeseries`, `get_performance`, `list_queries`, `get_query` |
 | Filtering | `get_blocking`, `set_blocking`, `explain_domain`; list, add, edit, and remove rules and filter subscriptions; inspect the subscription catalog |
-| Devices and local DNS | Client inventory and names, local DNS records; `list_profiles`, `get_client_policy`, `preview_client_policy`, `update_client_policy` |
+| Devices and local DNS | Client inventory and names, local DNS records; `list_profiles`, `get_client_policy`, `preview_client_policy`, `update_client_policy`, `get_device_rules`, `update_device_rules` |
 | Upstreams and settings | List, add, edit, and remove upstreams; `get_settings`, `update_settings`, `get_diagnostics` |
 | Staged configuration | `stage_configuration` to validate edits, then `commit_configuration` to commit them |
 | Maintenance | `create_job` for refresh, backup, restore, and diagnostics; `list_jobs` to inspect results |
@@ -160,6 +160,13 @@ independent diagnostic calls in parallel, collect each success or error rather
 than letting one rejected name hide the other results.
 
 ### Device policy operations
+
+Device identification clues are managed separately from filtering policy through
+`get_device_rules` and `update_device_rules`. Read the current revision, then save
+a rule, enable/disable it, delete a custom rule, or reset customisations. Reset
+without an ID resets the whole catalogue to the installed defaults; it does not
+reset manual names/icons. Read back the catalogue and activation status; DNS
+evidence refreshes within 30 seconds. See [Device guesses and icons](device-identification.md).
 
 For **“Add the NSFW list to Jan’s iPhone”**, the agent should:
 

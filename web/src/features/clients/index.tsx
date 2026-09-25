@@ -4,6 +4,7 @@ import { useResource } from "@/lib/hooks";
 import { ErrorNotice, Resource } from "@/components/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeviceIconField } from "@/components/device-icon";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { ActivationStatus, PolicyEditor } from "./policy";
@@ -458,6 +459,7 @@ function CreateOwner({
     if (!editRevision && revision) setEditRevision(revision);
   }, [revision, editRevision]);
   const [name, setName] = useState(observed?.name ?? "");
+  const [icon, setIcon] = useState("");
   const [address, setAddress] = useState(observed?.address ?? "");
   const [useMAC, setUseMAC] = useState(!!observed?.authoritative_mac);
   const [busy, setBusy] = useState(false);
@@ -472,10 +474,11 @@ function CreateOwner({
       !status &&
         (id !== initialID ||
           name !== (observed?.name ?? "") ||
+          icon !== "" ||
           address !== (observed?.address ?? "") ||
           useMAC !== !!observed?.authoritative_mac),
     );
-  }, [id, initialID, name, address, useMAC, observed, status, onDirty]);
+  }, [id, initialID, name, icon, address, useMAC, observed, status, onDirty]);
   useEffect(() => () => onDirty(false), [onDirty]);
   const firstField = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -495,6 +498,7 @@ function CreateOwner({
             id: id.trim(),
             create: true,
             ...(name.trim() ? { name: name.trim() } : {}),
+            ...(scope === "client" && icon ? { icon } : {}),
             ...(scope === "client"
               ? useMAC
                 ? { lease_address: observed!.address }
@@ -519,6 +523,7 @@ function CreateOwner({
           Name
           <Input ref={firstField} required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
+        {scope === "client" && <DeviceIconField value={icon} onChange={setIcon} />}
       </div>
       <details>
         <summary className="text-xs text-muted-foreground">Advanced identification</summary>

@@ -4,6 +4,58 @@
  */
 
 export interface paths {
+  "/api/v1/device-rules": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Effective saved catalogue with per-rule installed baseline and origin */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            "application/json": components["schemas"]["DeviceRulesRead"];
+          };
+        };
+        default: components["responses"]["Error"];
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          "application/json": components["schemas"]["DeviceRulesMutation"];
+        };
+      };
+      responses: {
+        200: components["responses"]["Activation"];
+        default: components["responses"]["Error"];
+      };
+    };
+    trace?: never;
+  };
   "/api/v1/builtin-lists/{id}": {
     parameters: {
       query?: never;
@@ -2130,6 +2182,7 @@ export interface components {
       id?: string;
       address?: string;
       name?: string;
+      icon?: components["schemas"]["DeviceIcon"];
       selectors?: components["schemas"]["PolicySelectors"];
       profile?: string;
       overrides?: components["schemas"]["PolicyOverrides"];
@@ -2179,6 +2232,8 @@ export interface components {
       /** @description Required when explicitly saving policy on a legacy address identity */
       promote_id?: string;
       name?: string;
+      /** @description Client only. Named Lucide icon; empty string removes the explicit icon and restores automatic selection. */
+      icon?: components["schemas"]["DeviceIcon"];
       /** @description Replace all selectors and remove legacy address while retaining stable ID and policy */
       selectors?: components["schemas"]["PolicySelectors"];
       /** @description Create or relink using MAC-only selectors from a generation-compatible unexpired committed DHCP lease. Mutually exclusive with selectors. No sticky dynamic IP is added. */
@@ -2636,6 +2691,55 @@ export interface components {
       /** Format: date-time */
       expires: string;
     };
+    DeviceRule: {
+      id: string;
+      name: string;
+      /** @enum {string} */
+      category?:
+        | "unknown"
+        | "phone"
+        | "tablet"
+        | "laptop"
+        | "desktop"
+        | "tv"
+        | "speaker"
+        | "printer"
+        | "camera"
+        | "lighting"
+        | "appliance"
+        | "server"
+        | "console";
+      reason?: string;
+      icon?: components["schemas"]["DeviceIcon"];
+      /** @description Exact lowercase DNS names without trailing dots; custom rules need at least one domain */
+      domains: string[];
+    };
+    DeviceRuleEntry: {
+      rule: components["schemas"]["DeviceRule"];
+      builtin?: components["schemas"]["DeviceRule"];
+      /** @enum {string} */
+      origin: "builtin" | "modified" | "custom";
+      enabled: boolean;
+      /** @description False for retained overrides whose baseline is absent from this release */
+      available: boolean;
+    };
+    DeviceRulesRead: {
+      revision: string;
+      status: components["schemas"]["Activation"];
+      entries: components["schemas"]["DeviceRuleEntry"][];
+      customized: boolean;
+    };
+    /** @description save requires id and matching rule. enable requires id and enabled. delete requires a custom id. reset with id restores one rule; without id resets the entire catalogue. rule/enabled are accepted only by their corresponding actions. */
+    DeviceRulesMutation: {
+      revision: string;
+      /** @enum {string} */
+      action: "save" | "enable" | "delete" | "reset";
+      id?: string;
+      rule?: components["schemas"]["DeviceRule"];
+      enabled?: boolean;
+    };
+    /** @description Optional kebab-case Lucide icon name from the bundled version. Unknown names are rejected when saving configuration. */
+    DeviceIcon: string;
     /** @description Current derived device presentation; explicit client names always take priority over discovered names. Not an authenticated physical identity. */
     DeviceEnrichment: {
       /** @enum {string} */
@@ -2653,6 +2757,7 @@ export interface components {
         | "appliance"
         | "server"
         | "console";
+      icon?: components["schemas"]["DeviceIcon"];
       reason: string;
       inferred: boolean;
       fresh: boolean;

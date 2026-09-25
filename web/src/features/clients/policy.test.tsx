@@ -99,6 +99,28 @@ function setup(
   );
   return writes;
 }
+it("saves a named device icon", async () => {
+  const writes = setup();
+  fireEvent.change(await screen.findByLabelText("Icon"), { target: { value: "washing-machine" } });
+  fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({ scope: "client", id: "tablet", icon: "washing-machine" });
+});
+it("clears the saved icon to restore automatic selection", async () => {
+  const desired = { ...policy.desired, icon: "bell" };
+  const writes = setup(false, desired);
+  fireEvent.change(await screen.findByLabelText("Icon"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
+  await waitFor(() => expect(writes).toHaveLength(1));
+  expect(writes[0]).toMatchObject({ icon: "" });
+});
+it("rejects an unknown icon without saving", async () => {
+  const writes = setup();
+  fireEvent.change(await screen.findByLabelText("Icon"), { target: { value: "not-an-icon" } });
+  fireEvent.click(screen.getByRole("button", { name: /Save 1 change/ }));
+  expect(await screen.findByText("Choose a known Lucide icon name.")).toBeVisible();
+  expect(writes).toHaveLength(0);
+});
 it("saves an explicit equal-to-parent override sparsely and previews scope", async () => {
   const writes = setup();
   fireEvent.change(await screen.findByLabelText("DNS filtering"), {

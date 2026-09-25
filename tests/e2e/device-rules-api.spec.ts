@@ -1,0 +1,57 @@
+import { readFile } from "node:fs/promises";
+import { test, expect } from "../../web/e2e";
+
+test.skip(!process.env.DIMSUM_E2E_CONFIG, "Run through the isolated Go browser harness");
+test("device rules edit live through UI and MCP and reset to installed defaults", async ({ page }, testInfo) => {
+  await page.goto("/settings");
+  await page.getByLabel("Admin password").fill(process.env.DIMSUM_E2E_PASSWORD!);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Add rule", exact: true }).click();
+  await page.getByLabel("Rule ID").fill("browser-washer");
+  await page.getByLabel("Rule name").fill("Example washing machine");
+  await page.getByLabel("Category", { exact: true }).selectOption("appliance");
+  await page.getByLabel("Icon", { exact: true }).fill("washing-machine");
+  await page.getByLabel("DNS domains", { exact: true }).fill("firmware.washer.example\nevents.washer.example");
+  // The icon's geometry must arrive from an embedded local lazy chunk.
+  await expect(page.getByRole("dialog").locator("svg circle")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("dialog")).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("device-rule-mobile.png"), fullPage: true });
+  await page.getByRole("button", { name: "Save rule", exact: true }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Example washing machine", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.getByLabel("Token name", { exact: true }).fill("Device catalogue test");
+  await page.getByRole("button", { name: "Create token", exact: true }).click();
+  const token = await page.getByLabel("New token", { exact: true }).inputValue();
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/json, text/event-stream" };
+  const init = await page.request.post("/mcp", { headers, data: { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "device-catalogue-test", version: "1" } } } });
+  expect(init.status()).toBe(200);
+  let sequence = 1;
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const response = await page.request.post("/mcp", { headers, data: { jsonrpc: "2.0", id: ++sequence, method: "tools/call", params: { name, arguments: args } } });
+    expect(response.status()).toBe(200);
+    const value = await response.json();
+    expect(value.error).toBeUndefined();
+    expect(value.result.isError).not.toBe(true);
+    return value.result.structuredContent;
+  };
+  let catalogue = await call("get_device_rules");
+  const custom = catalogue.entries.find((entry: any) => entry.rule.id === "browser-washer");
+  expect(custom.rule.icon).toBe("washing-machine");
+  expect(custom.origin).toBe("custom");
+  await call("update_device_rules", { body: { revision: catalogue.revision, action: "enable", id: "browser-washer", enabled: false } });
+  catalogue = await call("get_device_rules");
+  expect(catalogue.entries.find((entry: any) => entry.rule.id === "browser-washer").enabled).toBe(false);
+  await expect(page.getByRole("button", { name: "Enable Example washing machine", exact: true })).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Reset all rules", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit Example washing machine", exact: true })).toHaveCount(0);
+  catalogue = await call("get_device_rules");
+  expect(catalogue.customized).toBe(false);
+  expect(catalogue.status.saved_revision).toBe(catalogue.status.active_revision);
+  expect(await readFile(process.env.DIMSUM_E2E_CONFIG!, "utf8")).not.toContain("browser-washer");
+  await page.getByRole("button", { name: "Revoke Device catalogue test", exact: true }).click();
+});

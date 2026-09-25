@@ -20,6 +20,7 @@ type Evidence struct {
 	Expires      time.Time `json:"expires"`
 }
 type Enrichment struct {
+	Icon         string     `json:"icon,omitempty"`
 	DNSGuess     *DNSGuess  `json:"dns_guess,omitempty"`
 	Category     string     `json:"category"`
 	Reason       string     `json:"reason"`

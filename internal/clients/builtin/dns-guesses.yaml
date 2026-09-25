@@ -1,0 +1,49 @@
+# Exact DNS names only. Prefer device-specific services over websites, login,
+# NTP and shared cloud CDNs. These are clues, not verified product identities.
+# category, reason and icon are optional. Icons use Lucide's kebab-case names.
+# AWS IoT's structured hostname matcher remains in Go.
+
+- id: ring
+  name: Ring device
+  category: camera
+  reason: Queries to Ring firmware services
+  domains:
+    - fw-eventstream.ring.com
+    - fw-snaps.prod.gws.ring.amazon.dev
+    - fw-eventstream.prod.gws.ring.amazon.dev
+    - fw.prod.gws.ring.amazon.dev
+
+- id: reolink
+  name: Reolink device
+  category: camera
+  reason: Queries to Reolink push services
+  domains:
+    - pushx.reolink.com
+
+# Nintendo platform-specific service names are documented by Pretendo's server
+# catalogue. Apps and emulators may use the same services.
+- id: switch
+  name: Nintendo Switch
+  category: console
+  reason: Queries to Nintendo Switch system services
+  domains:
+    - sun.hac.lp1.d4c.nintendo.net
+    - atumn.hac.lp1.d4c.nintendo.net
+    - aqua.hac.lp1.d4c.nintendo.net
+
+- id: switch2
+  name: Nintendo Switch 2
+  category: console
+  reason: Queries to Nintendo Switch 2 system services
+  domains:
+    - sun.p01.lp1.d4c.srv.nintendo.net
+    - atumn.p01.lp1.d4c.srv.nintendo.net
+    - aqua.p01.lp1.d4c.srv.nintendo.net
+
+- id: wiiu
+  name: Nintendo Wii U
+  category: console
+  reason: Queries to Nintendo Wii U system services
+  domains:
+    - nus.wup.shop.nintendo.net
+    - tagaya.wup.shop.nintendo.net

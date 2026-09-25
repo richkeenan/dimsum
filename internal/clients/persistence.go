@@ -17,7 +17,14 @@ func namingScope(settings Settings) string {
 		settings.MDNS.Interfaces = nil
 	}
 	slices.Sort(settings.MDNS.Interfaces)
-	b, _ := json.Marshal(settings)
+	// Keep the existing on-disk scope format and exclude the independently
+	// versioned DNS catalogue from local-discovery cache compatibility.
+	discovery := struct {
+		Resolver  string
+		HostsFile string
+		MDNS      MDNSSettings
+	}{settings.Resolver, settings.HostsFile, settings.MDNS}
+	b, _ := json.Marshal(discovery)
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

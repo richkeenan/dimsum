@@ -60,6 +60,9 @@ wildcard listeners. DHCP has a [separate guide](dhcp.md).
 
 ## Discovered client names
 
+See [Device guesses and icons](device-identification.md) for the embedded DNS
+guess catalogue and optional Lucide icons on manually named devices.
+
 When mDNS discovery expires because a device stops responding, dimsum keeps its
 last discovered name and device type for up to **48 hours from the discovery
 confirmation**. Partial expiry of friendly-name or device metadata also keeps

@@ -8,7 +8,7 @@ import (
 )
 
 func refreshDNSGuesses(ctx context.Context, db *storage.DB, names *clients.Manager, now time.Time) error {
-	exact, suffix := clients.DNSGuessSelectors()
+	view, exact, suffix := names.DNSGuessSelectors()
 	rows, truncated, err := db.DomainActivity(ctx, now.Add(-clients.DNSGuessLifetime), now, exact, suffix)
 	if err != nil {
 		return err
@@ -19,7 +19,7 @@ func refreshDNSGuesses(ctx context.Context, db *storage.DB, names *clients.Manag
 			activity = append(activity, clients.DNSActivity{Address: r.Address, Domain: r.Domain, First: r.First, Last: r.Last, Corroborated: r.Corroborated, Count: r.Count})
 		}
 	}
-	names.ReplaceDNSActivity(activity)
+	names.ReplaceDNSActivityForView(view, activity)
 	return nil
 }
 

@@ -146,6 +146,7 @@ func checkNodes(n *yaml.Node) error {
 
 func (d *Document) Config() Config {
 	c := d.value
+	c.Naming.DNSGuesses = c.Naming.DNSGuesses.Clone()
 	c.DHCP = c.DHCP.Clone()
 	c.Admin.AllowedHosts = append([]string(nil), c.Admin.AllowedHosts...)
 	c.DNS.Listen = append([]string(nil), c.DNS.Listen...)

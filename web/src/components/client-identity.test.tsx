@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { ClientIdentity, DeviceDetails } from "./client-identity";
 
@@ -27,6 +27,31 @@ it("uses a generic device for older or unknown responses", () => {
   render(<ClientIdentity address="192.0.2.30" />);
   expect(screen.getByLabelText("Device")).toBeVisible();
   expect(screen.getByText("192.0.2.30")).toBeVisible();
+});
+
+it("renders a named icon and falls back for an unknown name", async () => {
+  const device = {
+    category: "appliance" as const,
+    reason: "",
+    inferred: false,
+    fresh: true,
+    evidence: [],
+    icon: "washing-machine",
+  };
+  const view = render(<ClientIdentity address="192.0.2.20" name="Utility room" device={device} />);
+  await waitFor(() => {
+    const icon = screen.getByRole("img", { name: "washing machine" });
+    expect(icon).toBeVisible();
+    expect(icon).not.toHaveClass("lucide-plug");
+  });
+  view.rerender(
+    <ClientIdentity
+      address="192.0.2.20"
+      name="Utility room"
+      device={{ ...device, icon: "not-an-icon" }}
+    />,
+  );
+  expect(screen.getByRole("img", { name: "Appliance" })).toBeVisible();
 });
 
 it("marks DNS guesses and explains their observed domains", () => {

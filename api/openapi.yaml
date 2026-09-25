@@ -27,6 +27,27 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/v1/device-rules:
+    x-mcp-tools:
+      get: {name: get_device_rules, description: Read installed DNS device identification defaults and saved custom rules or overrides with revision and activation status}
+      patch: {name: update_device_rules, description: 'Revision-checked device identification catalogue edits. Save a complete rule by id; built-in edits are stored as sparse differences. Enable/disable with action enable and enabled. Delete custom rules only. Reset with id restores that rule; reset without id removes ALL catalogue customisations using installed defaults. Manual device names/icons are unaffected. Read back saved revision and activation; DNS history refreshes within 30 seconds.'}
+    get:
+      responses:
+        '200':
+          description: Effective saved catalogue with per-rule installed baseline and origin
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DeviceRulesRead'}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DeviceRulesMutation'}
+      responses:
+        '200': {$ref: '#/components/responses/Activation'}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/builtin-lists/{id}:
     x-mcp-tools:
       get: {name: get_builtin_list, description: Read the installed built-in baseline and saved shared domain additions and exclusions for an explicit subscription ID}
@@ -881,6 +902,7 @@ components:
         id: {type: string, description: 'Omitted for legacy naming entries; effective identity is address:<canonical IP> until an explicit policy save with promote_id.'}
         address: {type: string}
         name: {type: string}
+        icon: {$ref: '#/components/schemas/DeviceIcon'}
         selectors: {$ref: '#/components/schemas/PolicySelectors'}
         profile: {type: string}
         overrides: {$ref: '#/components/schemas/PolicyOverrides'}
@@ -935,6 +957,7 @@ components:
         delete: {type: boolean, description: Delete by stable ID without other changes; referenced profiles are rejected until assignments are resolved}
         promote_id: {type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$', description: Required when explicitly saving policy on a legacy address identity}
         name: {type: string}
+        icon: {$ref: '#/components/schemas/DeviceIcon', description: 'Client only. Named Lucide icon; empty string removes the explicit icon and restores automatic selection.'}
         selectors: {$ref: '#/components/schemas/PolicySelectors', description: Replace all selectors and remove legacy address while retaining stable ID and policy}
         lease_address: {type: string, description: 'Create or relink using MAC-only selectors from a generation-compatible unexpired committed DHCP lease. Mutually exclusive with selectors. No sticky dynamic IP is added.'}
         profile: {type: string, description: Assign one profile; empty string removes the assignment}
@@ -1399,12 +1422,57 @@ components:
         device_type: {type: string, maxLength: 256}
         updated: {type: string, format: date-time}
         expires: {type: string, format: date-time}
+    DeviceRule:
+      type: object
+      additionalProperties: false
+      required: [id, name, domains]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64, pattern: '^[a-z0-9_-]+$'}
+        name: {type: string, minLength: 1, maxLength: 256}
+        category: {type: string, enum: [unknown, phone, tablet, laptop, desktop, tv, speaker, printer, camera, lighting, appliance, server, console]}
+        reason: {type: string, maxLength: 1024}
+        icon: {$ref: '#/components/schemas/DeviceIcon'}
+        domains: {type: array, maxItems: 256, items: {type: string, minLength: 1, maxLength: 253}, description: Exact lowercase DNS names without trailing dots; custom rules need at least one domain}
+    DeviceRuleEntry:
+      type: object
+      required: [rule, origin, enabled, available]
+      properties:
+        rule: {$ref: '#/components/schemas/DeviceRule'}
+        builtin: {$ref: '#/components/schemas/DeviceRule'}
+        origin: {type: string, enum: [builtin, modified, custom]}
+        enabled: {type: boolean}
+        available: {type: boolean, description: False for retained overrides whose baseline is absent from this release}
+    DeviceRulesRead:
+      type: object
+      required: [revision, status, entries, customized]
+      properties:
+        revision: {type: string}
+        status: {$ref: '#/components/schemas/Activation'}
+        entries: {type: array, items: {$ref: '#/components/schemas/DeviceRuleEntry'}}
+        customized: {type: boolean}
+    DeviceRulesMutation:
+      type: object
+      additionalProperties: false
+      required: [revision, action]
+      properties:
+        revision: {type: string, minLength: 1}
+        action: {type: string, enum: [save, enable, delete, reset]}
+        id: {type: string, minLength: 1, maxLength: 64}
+        rule: {$ref: '#/components/schemas/DeviceRule'}
+        enabled: {type: boolean}
+      description: 'save requires id and matching rule. enable requires id and enabled. delete requires a custom id. reset with id restores one rule; without id resets the entire catalogue. rule/enabled are accepted only by their corresponding actions.'
+    DeviceIcon:
+      type: string
+      maxLength: 80
+      pattern: '^([a-z0-9]+(-[a-z0-9]+)*)?$'
+      description: Optional kebab-case Lucide icon name from the bundled version. Unknown names are rejected when saving configuration.
     DeviceEnrichment:
       type: object
       description: Current derived device presentation; explicit client names always take priority over discovered names. Not an authenticated physical identity.
       required: [category, reason, inferred, fresh, evidence]
       properties:
         category: {type: string, enum: [unknown, phone, tablet, laptop, desktop, tv, speaker, printer, camera, lighting, appliance, server, console]}
+        icon: {$ref: '#/components/schemas/DeviceIcon'}
         reason: {type: string}
         inferred: {type: boolean}
         fresh: {type: boolean}

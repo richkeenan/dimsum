@@ -1,6 +1,7 @@
 package control
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -18,6 +19,56 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestClientIconSaveResetAndValidation(t *testing.T) {
+	s, store := dhcpFixture(t)
+	var mutation ClientPolicyMutation
+	require.NoError(t, json.Unmarshal([]byte(`{"scope":"client","id":"washer","create":true,"name":"Utility room","icon":"washing-machine","selectors":{"addresses":["192.0.2.20"]}}`), &mutation))
+	mutation.Revision = store.Inspect().SavedRevision
+	_, err := s.MutateClientPolicy(t.Context(), mutation)
+	require.NoError(t, err)
+	doc, err := s.document()
+	require.NoError(t, err)
+	assert.Equal(t, "washing-machine", doc.Config().Clients[0].Icon)
+	assert.Equal(t, "washing-machine", store.Snapshot().ClientPolicies().Select(netip.MustParseAddr("192.0.2.20"), "").Icon())
+
+	for _, icon := range []string{"bell", ""} {
+		require.NoError(t, json.Unmarshal([]byte(`{"scope":"client","id":"washer","icon":"`+icon+`"}`), &mutation))
+		mutation.Create = false
+		mutation.Revision = store.Inspect().SavedRevision
+		_, err = s.MutateClientPolicy(t.Context(), mutation)
+		require.NoError(t, err)
+		assert.Equal(t, icon, store.Snapshot().ClientPolicies().Select(netip.MustParseAddr("192.0.2.20"), "").Icon())
+		doc, err = s.document()
+		require.NoError(t, err)
+		if icon == "" {
+			assert.NotContains(t, string(doc.Bytes()), "icon:")
+		} else {
+			assert.Equal(t, "bell", doc.Config().Clients[0].Icon)
+		}
+	}
+	before, err := os.ReadFile(s.options.ConfigPath)
+	require.NoError(t, err)
+	for _, scope := range []string{"client", "network", "profile"} {
+		t.Run(scope, func(t *testing.T) {
+			var invalid ClientPolicyMutation
+			icon := "bell"
+			if scope == "client" {
+				icon = "not-a-lucide-icon"
+			}
+			require.NoError(t, json.Unmarshal([]byte(`{"scope":"`+scope+`","icon":"`+icon+`"}`), &invalid))
+			if scope != "network" {
+				invalid.ID = "washer"
+			}
+			invalid.Revision = store.Inspect().SavedRevision
+			_, err := s.MutateClientPolicy(t.Context(), invalid)
+			assert.Error(t, err)
+		})
+	}
+	after, err := os.ReadFile(s.options.ConfigPath)
+	require.NoError(t, err)
+	assert.Equal(t, before, after)
+}
 
 func TestClientPolicyAtomicSubscribePreviewAndConflict(t *testing.T) {
 	s, store := dhcpFixture(t)

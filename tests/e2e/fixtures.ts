@@ -206,6 +206,7 @@ export async function fixtureAPI(page: Page) {
       tokens: { items: [] },
       profiles: { status: activation, items: [] },
       "client-policy": policyFixture,
+      "device-rules": { revision: activation.saved_revision, status: activation, customized: false, entries: [] },
       summary,
       performance,
       settings,
