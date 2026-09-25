@@ -1951,7 +1951,7 @@ export interface paths {
       requestBody: {
         content: {
           "application/json": {
-            /** @description DNS name copied from query logs, including ASCII labels and three-digit decimal escapes for arbitrary bytes, or a Unicode hostname (IDNA). Unicode and escapes cannot be mixed. Empty string or dot denotes root. No DNS lookup is performed. */
+            /** @description DNS name copied from query logs, including ASCII labels and three-digit decimal escapes for arbitrary bytes, a Unicode hostname (IDNA), or a full HTTP/HTTPS URL. Surrounding whitespace is trimmed; URLs are tested using only their hostname. Unicode and escapes cannot be mixed. Empty string or dot denotes root. No DNS lookup is performed. */
             name: string;
             /** @description DNS type name or numeric type, defaults to A; local routing is type-aware. No DNS lookup is performed. */
             qtype?: string;

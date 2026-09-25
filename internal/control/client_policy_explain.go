@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -82,9 +83,9 @@ func (s *Service) ExplainClientPolicy(m ClientPolicyExplain) (ClientPolicyExplan
 	if m.ClientID != "" && m.Address != "" {
 		return result, fmt.Errorf("select client_id or address, not both")
 	}
-	n, err := policy.ParseObservedName(m.Name)
+	n, err := parseExplanationName(m.Name)
 	if err != nil {
-		return result, &FieldError{Path: []string{"name"}, Message: err.Error()}
+		return result, err
 	}
 	now := time.Now()
 	p := snap.ClientPolicies().Network()
@@ -160,4 +161,23 @@ func (s *Service) ExplainClientPolicy(m ClientPolicyExplain) (ClientPolicyExplan
 	}
 	result = ClientPolicyExplanation{Name: m.Name, Normalized: n.Display(), Generation: generation, ClientID: p.ClientID(), MatchingMethod: method, AuthoritativeMAC: mac, Handling: handling, Effective: effective, Decision: PolicyDecision{Result: decision.Result, Generation: generation, RuleID: decision.RuleID, SourceIDs: sources, Scope: decision.Scope}}
 	return result, nil
+}
+
+// parseExplanationName accepts pasted web URLs at the control boundary while
+// retaining the byte-safe DNS names used by query logs.
+func parseExplanationName(value string) (policy.Name, error) {
+	invalid := &FieldError{Path: []string{"name"}, Message: "Enter a valid domain or URL, such as example.com or https://example.com."}
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "://") {
+		u, err := url.Parse(value)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+			return policy.Name{}, invalid
+		}
+		value = u.Hostname()
+	}
+	n, err := policy.ParseObservedName(value)
+	if err != nil {
+		return policy.Name{}, invalid
+	}
+	return n, nil
 }

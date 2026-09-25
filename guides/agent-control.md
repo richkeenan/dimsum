@@ -146,6 +146,10 @@ and a `message`. Rejected edits do not save or activate configuration.
 
 ### Explaining names from query logs
 
+The rule tester, CLI `rules-test`, and MCP `explain_domain` also accept full
+HTTP/HTTPS URLs. The server trims surrounding whitespace and tests only the
+hostname, ignoring the port, path, query string, and fragment.
+
 Pass a query's displayed `name` directly to `explain_domain`. Query filtering and
 explanation accept the same byte-safe DNS presentation, including labels such as
 `r1---edge.example` and three-digit decimal escapes for arbitrary label bytes.

@@ -821,7 +821,7 @@ it("explains a blocked rule test without displaying raw JSON by default", async 
     decision: { result: "block", rule_id: "internal-rule" },
   });
   render(<Configuration kind="rules" range="" />);
-  fireEvent.change(screen.getByLabelText("Domain"), {
+  fireEvent.change(screen.getByLabelText("Domain or URL"), {
     target: { value: "ads.example.com" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Test rule" }));

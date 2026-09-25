@@ -264,7 +264,7 @@ test("real Go authentication, scalar text edit, collection writes, conflicts and
   const rules = await page.evaluate(async () => (await fetch("/api/v1/rules")).json());
   const rule = rules.items.find((item: { pattern: string }) => item.pattern === "ads.example.test");
   expect(rule?.id).toBeTruthy();
-  await page.getByLabel("Domain", { exact: true }).fill("ads.example.test");
+  await page.getByLabel("Domain or URL", { exact: true }).fill("https://ads.example.test/embed?source=popup");
   await page.getByRole("button", { name: "Test rule", exact: true }).click();
   await expect(page.getByRole("status").getByText("Blocked", { exact: true })).toBeVisible();
   await page.getByText("Match details", { exact: true }).click();

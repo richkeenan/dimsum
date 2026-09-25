@@ -742,7 +742,7 @@ paths:
               type: object
               required: [name]
               properties:
-                name: {type: string, description: 'DNS name copied from query logs, including ASCII labels and three-digit decimal escapes for arbitrary bytes, or a Unicode hostname (IDNA). Unicode and escapes cannot be mixed. Empty string or dot denotes root. No DNS lookup is performed.'}
+                name: {type: string, description: 'DNS name copied from query logs, including ASCII labels and three-digit decimal escapes for arbitrary bytes, a Unicode hostname (IDNA), or a full HTTP/HTTPS URL. Surrounding whitespace is trimmed; URLs are tested using only their hostname. Unicode and escapes cannot be mixed. Empty string or dot denotes root. No DNS lookup is performed.'}
                 qtype: {type: string, description: 'DNS type name or numeric type, defaults to A; local routing is type-aware. No DNS lookup is performed.'}
                 generation: {type: string, pattern: '^[0-9]+$'}
                 client_id: {type: string, description: Explicit configured ID; mutually exclusive with address}

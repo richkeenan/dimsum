@@ -54,7 +54,7 @@ func TestCollectionPathErrorAndRecoveryThroughMCP(t *testing.T) {
 	}})
 	require.False(t, result.IsError, "%v", result.StructuredContent)
 	assert.False(t, store.Snapshot().Config().Lists[0].Enabled)
-	for _, name := range []string{"r1---edge.example", "", ".", `\000\255.example`} {
+	for _, name := range []string{"r1---edge.example", "", ".", `\000\255.example`, "https://ads.example/embed?source=popup"} {
 		result = call(t, session, "explain_domain", map[string]any{"body": map[string]any{"name": name}})
 		assert.False(t, result.IsError, "%v", result.StructuredContent)
 	}

@@ -915,7 +915,7 @@ function RuleTester() {
         }}
       >
         <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
-          Domain
+          Domain or URL
           <Input required value={name} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="flex min-w-0 basis-40 flex-1 flex-col gap-1.5 text-xs font-normal">
