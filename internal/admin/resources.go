@@ -92,6 +92,8 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		var v any
 		var e error
 		switch resource {
+		case "icons":
+			v = s.service.Icons(r.URL.Query().Get("search"))
 		case "catalog":
 			v = s.service.Catalog()
 		case "clients":

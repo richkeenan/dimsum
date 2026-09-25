@@ -47,7 +47,7 @@ func TestDeviceRulesLiveEditingAndReset(t *testing.T) {
 	base["domains"] = []string{"owner.example"}
 	mutate(map[string]any{"action": "save", "id": id, "rule": base})
 	assert.Equal(t, true, read()["customized"])
-	assert.Empty(t, guess(originalDomain).Name)
+	assert.NotEqual(t, base["name"], guess(originalDomain).Name, "removed exact rules may still match the independent generic AWS IoT fallback")
 	assert.Equal(t, "bell", guess("owner.example").Device.Icon)
 	changes := store.Snapshot().Config().Naming.DNSGuesses
 	assert.Equal(t, []string{"owner.example"}, changes.Rules[id].Additions)

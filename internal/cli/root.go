@@ -21,6 +21,7 @@ Read operations (JSON):
   client-policy [--query 'scope=client&id=stable-id'] | profiles
   builtin-list ID            inspect installed baseline and shared customizations
   device-rules              inspect built-in and custom device identification rules
+  icons [--query 'search=plant']  list installed Lucide icon names (optional substring search)
   patch device-rules JSON   revision, action save/enable/delete/reset, id and rule/enabled
   patch builtin-lists/ID JSON revision, action add/remove/restore/reset, optional domain
   query ID
@@ -165,7 +166,7 @@ func Run(ctx context.Context, args []string, out, stderr io.Writer) int {
 		if len(args) == 4 {
 			body = args[3]
 		}
-	case "device-rules", "client-policy", "profiles", "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
+	case "icons", "device-rules", "client-policy", "profiles", "summary", "timeseries", "performance", "queries", "rankings", "settings", "lists", "rules", "records", "clients", "upstreams", "diagnostics", "jobs", "events", "catalog", "tokens":
 		if len(args) != 1 {
 			return bad()
 		}

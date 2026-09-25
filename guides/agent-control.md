@@ -162,6 +162,9 @@ than letting one rejected name hide the other results.
 ### Device policy operations
 
 Device identification clues are managed separately from filtering policy through
+the device catalogue. Use `list_icons` with optional `search` to discover valid
+installed Lucide names before choosing an icon for a device or rule.
+Manage the rules through
 `get_device_rules` and `update_device_rules`. Read the current revision, then save
 a rule, enable/disable it, delete a custom rule, or reset customisations. Reset
 without an ID resets the whole catalogue to the installed defaults; it does not

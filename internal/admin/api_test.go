@@ -140,6 +140,9 @@ func TestUnixPermissionsAndCLIParity(t *testing.T) {
 	go func() { done <- httpServer.Serve(listener) }()
 	t.Cleanup(func() { httpServer.Close(); e := <-done; assert.ErrorIs(t, e, http.ErrServerClosed) })
 	var out, stderr bytes.Buffer
+	require.Equal(t, 0, cli.Run(t.Context(), []string{"--socket", socket, "icons", "--query", "search=plant"}, &out, &stderr), stderr.String())
+	assert.JSONEq(t, `{"items":["plant-pot"]}`, out.String())
+	out.Reset()
 	code := cli.Run(t.Context(), []string{"--socket", socket, "settings"}, &out, &stderr)
 	require.Equal(t, 0, code, stderr.String())
 	assert.JSONEq(t, request(server.LocalHandler(), "GET", "/api/v1/settings", "").Body.String(), out.String())

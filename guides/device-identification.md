@@ -48,6 +48,20 @@ Names and evidence explanations are single-line text.
 
 ### CLI and MCP
 
+To choose an icon, call MCP `list_icons` with optional `search`, for example
+`{"search":"plant"}` returns `{"items":["plant-pot"]}`. Search matches a
+case-insensitive substring of the installed icon names, ignoring surrounding
+whitespace. Omit search to browse the full alphabetical list; no matches returns
+an empty list. Use a returned name in `update_client_policy` or
+`update_device_rules`.
+
+The same read-only catalogue is available at `GET /api/v1/icons?search=plant`
+and through the CLI:
+
+```sh
+dimsum icons --query 'search=plant'
+```
+
 Use `get_device_rules` and `update_device_rules` over MCP, or the equivalent CLI
 commands. Read the saved revision first and read back the catalogue and activation
 status after a change:

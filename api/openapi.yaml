@@ -27,6 +27,26 @@ security:
   - session: []
   - bearer: []
 paths:
+  /api/v1/icons:
+    x-mcp-tools:
+      get: {name: list_icons, description: 'List valid Lucide icon names installed in this dimsum version. Optional search is a case-insensitive substring of the icon name (for example plant finds plant-pot); omit search to get the complete alphabetical list. Use a returned name as icon in update_client_policy or update_device_rules when choosing an appropriate device icon.'}
+    get:
+      parameters:
+        - in: query
+          name: search
+          schema: {type: string}
+          description: Case-insensitive substring of the icon name; surrounding whitespace is ignored. Empty or omitted returns all names. No matches returns an empty items array.
+      responses:
+        '200':
+          description: Matching installed icon names in alphabetical order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {type: string}, uniqueItems: true}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/device-rules:
     x-mcp-tools:
       get: {name: get_device_rules, description: Read installed DNS device identification defaults and saved custom rules or overrides with revision and activation status}
