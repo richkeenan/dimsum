@@ -20,6 +20,16 @@
   domains:
     - pushx.reolink.com
 
+# Home Mini endpoint observed in an independent network teardown:
+# https://cyberhost.uk/octopus-home-mini-teardown-review/
+- id: octopus-home-mini
+  name: Octopus Home Mini
+  category: appliance
+  icon: zap
+  reason: Queries to the Octopus Home Mini cloud endpoint
+  domains:
+    - aw1e0kzydzq4m-ats.iot.eu-west-1.amazonaws.com
+
 # Nintendo platform-specific service names are documented by Pretendo's server
 # catalogue. Apps and emulators may use the same services.
 - id: switch
