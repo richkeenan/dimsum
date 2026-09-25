@@ -3,6 +3,43 @@ import { fixtureAPI } from "./fixtures";
 
 test.beforeEach(async ({ page }) => fixtureAPI(page));
 
+for (const selection of [
+  { range: "7d" },
+  { range: "custom", from: "2026-09-18T12:00:00Z", to: "2026-09-25T12:00:00Z" },
+]) {
+  test(`device query drill-down preserves ${selection.range} from Overview`, async ({ page }) => {
+    const search = new URLSearchParams({ range: selection.range });
+    if (selection.from && selection.to) {
+      search.set("from", selection.from);
+      search.set("to", selection.to);
+    }
+    await page.goto(`/overview?${search}`);
+    await page
+      .getByRole("navigation", { name: "Main navigation", exact: true })
+      .getByRole("link", { name: "Devices", exact: true })
+      .click();
+    await expect(page.getByLabel("Time range")).toHaveValue(selection.range);
+    const queries = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === "/api/v1/queries" && url.searchParams.has("client");
+    });
+    await page.getByRole("button", { name: "View queries for Study laptop", exact: true }).click();
+    await expect(page.getByLabel("Time range")).toHaveValue(selection.range);
+    const url = new URL(page.url());
+    expect(url.searchParams.get("client")).toBe("192.0.2.12");
+    for (const [key, value] of search) expect(url.searchParams.get(key)).toBe(value);
+    const requested = new URL((await queries).url()).searchParams;
+    if (selection.range === "custom") {
+      expect(Date.parse(requested.get("from")!)).toBe(Date.parse(selection.from!));
+      expect(Date.parse(requested.get("to")!)).toBe(Date.parse(selection.to!));
+    } else {
+      expect(Date.parse(requested.get("to")!) - Date.parse(requested.get("from")!)).toBe(
+        7 * 24 * 60 * 60 * 1000,
+      );
+    }
+  });
+}
+
 test("grouped navigation preserves deep links and the selected time range", async ({ page }) => {
   await page.goto("/performance?range=7d");
   const main = page.getByRole("navigation", { name: "Main navigation", exact: true });

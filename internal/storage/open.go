@@ -35,6 +35,9 @@ var queryResponseSchema string
 //go:embed migrations/006_client_names.sql
 var clientNamesSchema string
 
+//go:embed migrations/007_client_inventory.sql
+var clientInventorySchema string
+
 type DB struct {
 	write     *sql.DB
 	read      *sql.DB
@@ -81,7 +84,9 @@ func Open(path string) (*DB, error) {
 	w.SetMaxIdleConns(1)
 	d := &DB{write: w, retention: DefaultRetention()}
 	fail := func(err error) (*DB, error) { w.Close(); return nil, err }
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Index migrations scan retained history, which can exceed five seconds on
+	// slower storage. Normal opens still only validate the schema.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	var version string
 	if err = w.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&version); err != nil {
@@ -106,7 +111,7 @@ func Open(path string) (*DB, error) {
 	if err = w.QueryRowContext(ctx, "PRAGMA user_version").Scan(&schema); err != nil {
 		return fail(err)
 	}
-	if schema > 6 {
+	if schema > 7 {
 		return fail(fmt.Errorf("unsupported storage schema %d", schema))
 	}
 	if schema == 0 {
@@ -189,6 +194,19 @@ func Open(path string) (*DB, error) {
 			return fail(e)
 		}
 		if _, e = tx.ExecContext(ctx, clientNamesSchema); e != nil {
+			tx.Rollback()
+			return fail(fmt.Errorf("invalid storage schema migration: %w", e))
+		}
+		if e = tx.Commit(); e != nil {
+			return fail(e)
+		}
+	}
+	if schema < 7 {
+		tx, e := w.BeginTx(ctx, nil)
+		if e != nil {
+			return fail(e)
+		}
+		if _, e = tx.ExecContext(ctx, clientInventorySchema); e != nil {
 			tx.Rollback()
 			return fail(fmt.Errorf("invalid storage schema migration: %w", e))
 		}

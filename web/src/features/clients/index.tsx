@@ -32,10 +32,12 @@ export default function Clients({
   range,
   selected,
   onSelect,
+  onClientQueries,
 }: {
   range: string;
   selected?: string;
   onSelect: (id?: string) => void;
+  onClientQueries: (address: string) => void;
 }) {
   const draft = usePolicyDraft();
   const settingsTrigger = useRef<HTMLElement | null>(null);
@@ -198,6 +200,7 @@ export default function Clients({
                   profiles={profiles.data?.items ?? []}
                   reload={() => state.reload()}
                   onStatus={setAssignmentStatus}
+                  onClientQueries={onClientQueries}
                   select={() => {
                     if (row.configured) onSelect(row.key);
                     else if (draft.confirmLeave()) {
@@ -242,6 +245,7 @@ function DeviceRow({
   profiles,
   reload,
   onStatus,
+  onClientQueries,
 }: {
   row: ClientRow;
   select: () => void;
@@ -249,6 +253,7 @@ function DeviceRow({
   profiles: Schema["PolicyProfile"][];
   reload: () => Promise<unknown>;
   onStatus: (status: Schema["Activation"]) => void;
+  onClientQueries: (address: string) => void;
 }) {
   const identity = clientIdentity(row);
   const { name } = identity;
@@ -260,9 +265,7 @@ function DeviceRow({
           <button
             aria-label={`View queries for ${name || identity.address}`}
             className="min-h-10 max-w-full text-left text-sm font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-            onClick={() =>
-              window.location.assign(`/queries?client=${encodeURIComponent(identity.address)}`)
-            }
+            onClick={() => onClientQueries(identity.address)}
           >
             <ClientIdentity {...identity} compact />
           </button>

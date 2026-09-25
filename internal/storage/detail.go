@@ -70,8 +70,10 @@ func (d *DB) GetClients(ctx context.Context, start, end time.Time, limit int) (C
 		return result, e
 	}
 	defer view.Rollback()
+	// Keep clients in the outer loop so each group is contiguous. The covering
+	// index avoids reading response payloads and sorting every event into groups.
 	rows, e := view.QueryContext(ctx, `SELECT c.address,COUNT(*),SUM(CASE WHEN e.outcome=? THEN 1 ELSE 0 END),MAX(e.timestamp)
- FROM query_events e JOIN clients c ON c.id=e.client_id
+ FROM clients c CROSS JOIN query_events e INDEXED BY events_client_time ON c.id=e.client_id
  WHERE e.timestamp>=? AND e.timestamp<? AND e.outcome<>? AND e.timestamp >= (SELECT value FROM storage_meta WHERE key='detail_cutoff')
  GROUP BY c.address ORDER BY COUNT(*) DESC,c.address LIMIT ?`, stats.PolicyBlock, start.UnixMicro(), end.UnixMicro(), stats.AdmissionRejected, limit+1)
 	if e != nil {

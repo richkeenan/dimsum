@@ -54,7 +54,7 @@ function devices() {
 }
 
 it("sorts merged devices by total queries, displayed names, profiles and latest observation", () => {
-  render(<Clients range="" onSelect={() => {}} />);
+  render(<Clients range="" onSelect={() => {}} onClientQueries={() => {}} />);
   expect(devices()).toEqual(["Zulu192.0.2.3", "Alpha192.0.2.2", "Offline192.0.2.1"]);
   expect(screen.getByRole("columnheader", { name: "Queries" })).toHaveAttribute(
     "aria-sort",

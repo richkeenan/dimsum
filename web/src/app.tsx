@@ -440,6 +440,7 @@ export default function App() {
                 range={rangeParams}
                 selected={search.device}
                 onSelect={(device) => go("clients", { ...rangeSearch, device })}
+                onClientQueries={(address) => go("queries", { ...rangeSearch, client: address })}
               />
             ) : page === "profiles" ? (
               <Profiles />
