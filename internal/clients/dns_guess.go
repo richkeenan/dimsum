@@ -39,7 +39,7 @@ type guessRule struct {
 // Nintendo platform-specific service names are documented by Pretendo's server
 // catalogue. These remain guesses: apps and emulators can use the same services.
 var dnsGuessRules = []guessRule{
-	{"ring", "Ring device", "camera", "Queries to Ring firmware services", []string{"fw-eventstream.ring.com", "fw-snaps.prod.gws.ring.amazon.dev"}},
+	{"ring", "Ring device", "camera", "Queries to Ring firmware services", []string{"fw-eventstream.ring.com", "fw-snaps.prod.gws.ring.amazon.dev", "fw-eventstream.prod.gws.ring.amazon.dev", "fw.prod.gws.ring.amazon.dev"}},
 	{"reolink", "Reolink device", "camera", "Queries to Reolink push services", []string{"pushx.reolink.com"}},
 	{"switch", "Nintendo Switch", "console", "Queries to Nintendo Switch system services", []string{"sun.hac.lp1.d4c.nintendo.net", "atumn.hac.lp1.d4c.nintendo.net", "aqua.hac.lp1.d4c.nintendo.net"}},
 	{"switch2", "Nintendo Switch 2", "console", "Queries to Nintendo Switch 2 system services", []string{"sun.p01.lp1.d4c.srv.nintendo.net", "atumn.p01.lp1.d4c.srv.nintendo.net", "aqua.p01.lp1.d4c.srv.nintendo.net"}},
